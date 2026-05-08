@@ -4,7 +4,7 @@ import { convertToModelMessages, streamText, type UIMessage } from "ai"
 import { twinTools } from "@/lib/twin-tools"
 import { buildSystemPrompt } from "@/lib/prompts"
 import { readTwinRecords } from "@/lib/ens"
-import { jsonError, parseJsonBody, requireEnv } from "@/lib/api-guard"
+import { jsonError, parseJsonBody } from "@/lib/api-guard"
 
 export const runtime = "nodejs"
 export const maxDuration = 60
@@ -14,15 +14,28 @@ const twinChatBodySchema = z.object({
   ensName: z.string().optional(),
 })
 
-export async function POST(req: Request) {
-  const anthropicKey = requireEnv("ANTHROPIC_API_KEY")
-  if (!anthropicKey.ok) return anthropicKey.response
+function mockTwinReply(ensName: string) {
+  return [
+    `Mock Twin online for ${ensName}.`,
+    "Privy authentication and chat transport are working.",
+    "Anthropic API key is not configured yet, so this is a local fallback response.",
+  ].join(" ")
+}
 
+export async function POST(req: Request) {
   const parsed = await parseJsonBody(req, twinChatBodySchema)
   if (!parsed.ok) return parsed.response
 
   const body = parsed.data
-  const ensName = body.ensName ?? "twin.twinpilot.eth"
+  const ensName = body.ensName ?? "twin.ethtwin.eth"
+
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return Response.json({
+      id: crypto.randomUUID(),
+      role: "assistant",
+      content: mockTwinReply(ensName),
+    })
+  }
 
   let records = null
   try {
