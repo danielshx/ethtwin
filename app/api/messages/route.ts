@@ -6,14 +6,16 @@ import { jsonError, parseJsonBody } from "@/lib/api-guard"
 export const runtime = "nodejs"
 export const maxDuration = 60
 
-// GET /api/messages?for=alice.ethtwin.eth
+// GET /api/messages?for=alice.ethtwin.eth[&limit=10]
 export async function GET(req: Request) {
   const url = new URL(req.url)
   const forEns = url.searchParams.get("for")
   if (!forEns) return jsonError("?for=<ensName> is required", 400)
+  const limitRaw = url.searchParams.get("limit")
+  const limit = limitRaw ? Math.min(50, Math.max(1, Number(limitRaw))) : undefined
 
   try {
-    const messages = await readInbox(forEns)
+    const messages = await readInbox(forEns, limit)
     return Response.json({ ok: true, ensName: forEns, messages })
   } catch (error) {
     return jsonError(

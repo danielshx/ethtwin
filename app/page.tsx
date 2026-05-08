@@ -130,10 +130,15 @@ function App() {
     toast.success(`${next.ensName} is live`)
     addHistoryEntry({
       kind: "mint",
+      status: "success",
       chain: "sepolia",
       summary: `Twin minted: ${next.ensName}`,
       description: `Linked to wallet ${next.smartWalletAddress}`,
       explorerUrl: `https://sepolia.app.ens.domains/${next.ensName}`,
+      syncTo: {
+        ens: next.ensName,
+        getAuthToken: () => privy.getAccessToken().catch(() => null),
+      },
     })
   }
 
@@ -258,7 +263,10 @@ function SignedInTabs({
           className="w-full border-white/10 bg-card/80 backdrop-blur"
         />
       ) : (
-        <History className="w-full border-white/10 bg-card/80 backdrop-blur" />
+        <History
+          ensName={session.ensName}
+          className="w-full border-white/10 bg-card/80 backdrop-blur"
+        />
       )}
     </div>
   )

@@ -11,8 +11,14 @@ import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { addHistoryEntry } from "@/lib/history"
 import { cn } from "@/lib/utils"
+import { AgentProfileDialog, AvatarImage } from "@/components/agent-profile"
 
-type AgentEntry = { ens: string; addedAt: number }
+type AgentEntry = {
+  ens: string
+  addedAt: number
+  avatar?: string | null
+  description?: string | null
+}
 type Chain = "sepolia" | "base-sepolia"
 type Token = "ETH" | "USDC"
 
@@ -58,6 +64,7 @@ export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTrans
   const [balanceLoading, setBalanceLoading] = useState(false)
   const [sending, setSending] = useState(false)
   const [recent, setRecent] = useState<RecentTransfer[]>([])
+  const [profileEns, setProfileEns] = useState<string | null>(null)
 
   // Load agents + recent transfers on mount.
   const loadAgents = useCallback(async () => {
@@ -158,6 +165,14 @@ export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTrans
       }
       if (!data.ok) {
         toast.error(data.error ?? "Transfer failed")
+        addHistoryEntry({
+          kind: "transfer",
+          status: "failed",
+          chain: chain2send,
+          summary: `Failed: ${amt} ${token2send} → ${recip}`,
+          errorMessage: data.error,
+          syncTo: { ens: myEnsName, getAuthToken },
+        })
         return
       }
 
@@ -179,17 +194,28 @@ export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTrans
 
       addHistoryEntry({
         kind: "transfer",
+        status: "success",
         chain: chain2send,
         summary: `Sent ${data.amount} ${token2send} → ${recip}`,
         description: data.to ? `Resolved to ${data.to}` : undefined,
         txHash: data.txHash,
         explorerUrl: data.blockExplorerUrl,
+        syncTo: { ens: myEnsName, getAuthToken },
       })
 
       // Refresh balance after send.
       loadBalance()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Transfer failed")
+      const msg = err instanceof Error ? err.message : "Transfer failed"
+      toast.error(msg)
+      addHistoryEntry({
+        kind: "transfer",
+        status: "failed",
+        chain,
+        summary: `Failed: ${amount} ${token} → ${recipient.trim()}`,
+        errorMessage: msg,
+        syncTo: { ens: myEnsName, getAuthToken },
+      })
     } finally {
       setSending(false)
     }
@@ -232,18 +258,42 @@ export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTrans
               </div>
             ) : (
               agents.map((a) => (
-                <button
+                <div
                   key={a.ens}
-                  onClick={() => pickAgent(a.ens)}
                   className={cn(
-                    "w-full rounded-md px-3 py-2 text-left font-mono text-xs transition",
+                    "group flex items-center gap-2 rounded-md transition",
                     recipient.trim().toLowerCase() === a.ens.toLowerCase()
-                      ? "bg-primary/15 text-primary"
-                      : "hover:bg-white/5 text-muted-foreground",
+                      ? "bg-primary/15"
+                      : "hover:bg-white/5",
                   )}
                 >
-                  {a.ens}
-                </button>
+                  <button
+                    onClick={() => pickAgent(a.ens)}
+                    className="flex flex-1 items-center gap-2 px-2 py-2 text-left"
+                  >
+                    <AvatarImage src={a.avatar ?? null} ens={a.ens} size={28} />
+                    <span
+                      className={cn(
+                        "truncate font-mono text-xs",
+                        recipient.trim().toLowerCase() === a.ens.toLowerCase()
+                          ? "text-primary"
+                          : "text-muted-foreground",
+                      )}
+                    >
+                      {a.ens}
+                    </span>
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setProfileEns(a.ens)
+                    }}
+                    title="View profile"
+                    className="px-2 py-2 text-[10px] text-muted-foreground opacity-0 transition group-hover:opacity-100 hover:text-primary"
+                  >
+                    info
+                  </button>
+                </div>
               ))
             )}
           </div>
@@ -270,9 +320,30 @@ export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTrans
             <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
               Recipient
             </div>
-            <div className="mt-1 font-mono text-sm">
-              {recipient || <span className="text-muted-foreground">pick an agent or paste an address</span>}
-            </div>
+            {recipient ? (
+              <button
+                onClick={() => recipient.includes(".") && setProfileEns(recipient)}
+                className="mt-1 flex items-center gap-2 rounded-md px-1 -mx-1 py-1 text-left hover:bg-white/5"
+                disabled={!recipient.includes(".")}
+                title={recipient.includes(".") ? "View profile" : undefined}
+              >
+                <AvatarImage
+                  src={
+                    agents.find((a) => a.ens.toLowerCase() === recipient.toLowerCase())
+                      ?.avatar ?? null
+                  }
+                  ens={recipient}
+                  size={28}
+                />
+                <span className="font-mono text-sm">{recipient}</span>
+              </button>
+            ) : (
+              <div className="mt-1 font-mono text-sm">
+                <span className="text-muted-foreground">
+                  pick an agent or paste an address
+                </span>
+              </div>
+            )}
           </motion.div>
 
           {/* Chain toggle */}
@@ -399,6 +470,12 @@ export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTrans
           )}
         </div>
       </section>
+
+      <AgentProfileDialog
+        ens={profileEns}
+        open={profileEns !== null}
+        onOpenChange={(open) => !open && setProfileEns(null)}
+      />
     </Card>
   )
 }
