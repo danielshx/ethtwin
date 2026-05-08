@@ -76,11 +76,22 @@ async function readSingleMessage(messageEns: string, label: string): Promise<Mes
   }
 }
 
+// Vercel Hobby caps function execution at 10s. Each message = 3 RPC calls,
+// so an unbounded inbox can timeout under load. Cap to the most recent N labels;
+// the index is already in chronological-ish order (append-only).
+const DEFAULT_INBOX_LIMIT = 30
+
 /** Full inbox read for a recipient ENS, sorted newest-first. */
-export async function readInbox(recipientEns: string): Promise<Message[]> {
+export async function readInbox(
+  recipientEns: string,
+  limit: number = DEFAULT_INBOX_LIMIT,
+): Promise<Message[]> {
   const labels = await readMessageList(recipientEns)
+  // The list is append-only; newest entries are at the tail. Take the tail and
+  // hydrate only that slice — keeps RPC fan-out bounded.
+  const recent = labels.slice(-Math.max(1, limit))
   const messages = await Promise.all(
-    labels.map((label) => readSingleMessage(`${label}.${recipientEns}`, label)),
+    recent.map((label) => readSingleMessage(`${label}.${recipientEns}`, label)),
   )
   return messages.filter((m): m is Message => m !== null).sort((a, b) => b.at - a.at)
 }
