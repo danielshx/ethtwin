@@ -9,12 +9,9 @@ import {
   verifyAgentRegistration,
 } from "./ensip25"
 import { readTwinRecords } from "./ens"
-<<<<<<< HEAD
 import { describeTx } from "./tx-decoder"
 import { sendStealthUSDC } from "./payments"
-=======
 import { getWalletSummary } from "./wallet-summary"
->>>>>>> fcd697cc67b018f9b9a5e0e6858009dc80ea45ec
 
 export const twinTools = {
   getWalletSummary: tool({

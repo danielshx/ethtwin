@@ -16,15 +16,11 @@ import { toast } from "sonner"
 
 const PARENT_DOMAIN = process.env.NEXT_PUBLIC_PARENT_DOMAIN ?? "ethtwin.eth"
 const PRIVY_CONFIGURED = !!process.env.NEXT_PUBLIC_PRIVY_APP_ID
-<<<<<<< HEAD
-const STORAGE_KEY = "twinpilot.session.v1"
+const STORAGE_KEY = "ethtwin.session.v1"
 // Fallback addr record when an email-only user signs in but no embedded smart
 // wallet has surfaced yet. The twin is mintable; the addr record points at the
 // shared dev wallet. Caveat: multiple email-only users would share an addr.
 const DEV_WALLET_FALLBACK = "0x4E09c220BD556396Bc255A4DD24F858Bafeba6f5"
-=======
-const STORAGE_KEY = "ethtwin.session.v1"
->>>>>>> fcd697cc67b018f9b9a5e0e6858009dc80ea45ec
 
 type SessionState = {
   ensName: string
