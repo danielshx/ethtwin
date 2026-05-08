@@ -7,8 +7,8 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "test:chain": "tsx scripts/test-chain.ts",
-    "test:claude": "tsx scripts/test-claude.ts"
+    "test:chain": "tsx --env-file=.env.local scripts/test-chain.ts",
+    "test:claude": "tsx --env-file=.env.local scripts/test-claude.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "3.0.76",

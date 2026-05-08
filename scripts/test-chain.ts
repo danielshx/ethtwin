@@ -1,17 +1,46 @@
-import { createPublicClient, http } from "viem"
-import { sepolia, baseSepolia } from "viem/chains"
+import { addEnsContracts, ensPublicActions } from "@ensdomains/ensjs"
+import { createPublicClient, http, getAddress } from "viem"
+import { sepolia } from "viem/chains"
+import { sepoliaClient } from "../lib/viem"
 
-const sepoliaClient = createPublicClient({
-  chain: sepolia,
-  transport: http(process.env.SEPOLIA_RPC),
-})
-const baseClient = createPublicClient({
-  chain: baseSepolia,
-  transport: http(process.env.NEXT_PUBLIC_BASE_RPC ?? "https://sepolia.base.org"),
-})
+// vitalik.eth resolves on Sepolia ENS deployment too.
+const VITALIK = getAddress("0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045")
 
-console.log("Sepolia block:", await sepoliaClient.getBlockNumber())
-console.log("Base Sepolia block:", await baseClient.getBlockNumber())
+async function step<T>(label: string, fn: () => Promise<T>): Promise<void> {
+  try {
+    const result = await fn()
+    console.log(`OK    ${label}`)
+    console.log(`      →`, result)
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    console.log(`FAIL  ${label}`)
+    console.log(`      →`, msg.split("\n")[0])
+  }
+}
 
-const addr = await sepoliaClient.getEnsAddress({ name: "vitalik.eth" })
-console.log("vitalik.eth →", addr)
+async function main() {
+  if (!process.env.SEPOLIA_RPC) {
+    console.log("WARN  SEPOLIA_RPC is not set in .env.local — falling back to viem default.")
+  }
+
+  await step("sepolia getBlockNumber", () => sepoliaClient.getBlockNumber())
+  await step("sepolia chainId", () => sepoliaClient.getChainId())
+
+  await step("sepolia getEnsAddress(vitalik.eth)", () =>
+    sepoliaClient.getEnsAddress({ name: "vitalik.eth" }),
+  )
+  await step("sepolia getEnsText(vitalik.eth, url)", () =>
+    sepoliaClient.getEnsText({ name: "vitalik.eth", key: "url" }),
+  )
+
+  const ensjsClient = createPublicClient({
+    chain: addEnsContracts(sepolia),
+    transport: http(process.env.SEPOLIA_RPC ?? undefined),
+  }).extend(ensPublicActions)
+
+  await step("ensjs sepolia getName(vitalik addr)", () =>
+    ensjsClient.getName({ address: VITALIK }),
+  )
+}
+
+main()
