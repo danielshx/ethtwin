@@ -28,6 +28,7 @@ import {
 import { ENS_REGISTRY, readTextRecordFast } from "./ens"
 import { ensResolverAbi, ensRegistryAbi } from "./abis"
 import { getDevWalletClient, sepoliaClient } from "./viem"
+import { sepolia as sepoliaChain } from "viem/chains"
 
 const MESSAGES_LIST_KEY = "messages.list"
 const MAX_LIST_ENTRIES = 200 // text record size cap
@@ -138,9 +139,8 @@ export async function sendMessage(args: {
   if (!body.trim()) throw new Error("Message body is empty.")
   if (body.length > 1000) throw new Error("Message body exceeds 1000 chars.")
 
-  const { wallet, account } = getDevWalletClient()
+  const { account } = getDevWalletClient()
 
-  // Parallel reads — avoid sequential RPC waterfall on Vercel.
   const [existingList, startingNonce] = await Promise.all([
     readMessageList(toEns),
     sepoliaClient.getTransactionCount({
@@ -154,7 +154,8 @@ export async function sendMessage(args: {
   const label = `msg-${at}-${seq}`
   const messageEns = `${label}.${toEns}`
 
-  // Step 1: broadcast createSubname (no wait for receipt — fits Vercel timeouts)
+  // Step 1: broadcast createSubname via raw tx (no viem wrapper to avoid
+  // hidden RPC calls that hang on Vercel-Sepolia).
   const createData = encodeFunctionData({
     abi: ensRegistryAbi,
     functionName: "setSubnodeRecord",
@@ -166,15 +167,19 @@ export async function sendMessage(args: {
       0n,
     ],
   })
-  const createSubnameTx = await wallet.sendTransaction({
-    account,
-    chain: wallet.chain,
+  const signedCreate = await account.signTransaction({
+    chainId: sepoliaChain.id,
+    type: "eip1559",
     to: ENS_REGISTRY,
     data: createData,
     nonce: startingNonce,
     gas: CREATE_SUBNAME_GAS,
     maxFeePerGas: SEPOLIA_MAX_FEE_PER_GAS,
     maxPriorityFeePerGas: SEPOLIA_MAX_PRIORITY_FEE_PER_GAS,
+    value: 0n,
+  })
+  const createSubnameTx = await sepoliaClient.sendRawTransaction({
+    serializedTransaction: signedCreate,
   })
 
   // Step 2: broadcast multicall with nonce N+1. Both txs settle in the next
@@ -212,15 +217,19 @@ export async function sendMessage(args: {
     functionName: "multicall",
     args: [calls],
   })
-  const recordsMulticallTx = await wallet.sendTransaction({
-    account,
-    chain: wallet.chain,
+  const signedRecords = await account.signTransaction({
+    chainId: sepoliaChain.id,
+    type: "eip1559",
     to: PARENT_RESOLVER,
     data: multicallData,
     nonce: startingNonce + 1,
     gas: RESOLVER_MULTICALL_GAS,
     maxFeePerGas: SEPOLIA_MAX_FEE_PER_GAS,
     maxPriorityFeePerGas: SEPOLIA_MAX_PRIORITY_FEE_PER_GAS,
+    value: 0n,
+  })
+  const recordsMulticallTx = await sepoliaClient.sendRawTransaction({
+    serializedTransaction: signedRecords,
   })
 
   return {

@@ -1,8 +1,9 @@
 import { getAddress, type Address, type Hash } from "viem"
+import { sepolia } from "viem/chains"
 import { z } from "zod"
 import { encodeInteropAddress, ERC8004_REGISTRY, CHAIN_REFERENCE } from "@/lib/ensip25"
 import { PARENT_DOMAIN, getDevWalletClient, sepoliaClient } from "@/lib/viem"
-import { ENS_REGISTRY, readAddrFast, readSubnameOwner } from "@/lib/ens"
+import { ENS_REGISTRY, readSubnameOwner } from "@/lib/ens"
 import { ensRegistryAbi, ensResolverAbi } from "@/lib/abis"
 import { buildDefaultProfileRecords } from "@/lib/twin-profile"
 import { encodeFunctionData, keccak256, namehash, toBytes } from "viem"
@@ -60,7 +61,7 @@ export async function POST(req: Request) {
 
   try {
     log("start")
-    const { wallet, account: devAccount } = getDevWalletClient()
+    const { account: devAccount } = getDevWalletClient()
     log("wallet ready")
 
     // Only two reads: existing-owner check (to know if we need to create) and
@@ -109,6 +110,9 @@ export async function POST(req: Request) {
     ]
     log(`built ${calls.length} resolver calls`)
 
+    // Bypass viem's wrapper — sign locally, send raw. This avoids any of
+    // wallet.sendTransaction's internal RPC calls (chain validation, fee
+    // discovery, simulation) which were the suspected hang on Vercel.
     let createTx: Hash | null = null
     let recordsNonce = startingNonce
 
@@ -120,16 +124,21 @@ export async function POST(req: Request) {
         functionName: "setSubnodeRecord",
         args: [parentNode, labelHash, devAccount.address, PARENT_RESOLVER, 0n],
       })
-      log("createTx broadcasting…")
-      createTx = await wallet.sendTransaction({
-        account: devAccount,
-        chain: wallet.chain,
+      log("createTx signing…")
+      const signedCreate = await devAccount.signTransaction({
+        chainId: sepolia.id,
+        type: "eip1559",
         to: ENS_REGISTRY,
         data: createData,
         nonce: startingNonce,
         gas: CREATE_SUBNAME_GAS,
         maxFeePerGas: SEPOLIA_MAX_FEE_PER_GAS,
         maxPriorityFeePerGas: SEPOLIA_MAX_PRIORITY_FEE_PER_GAS,
+        value: 0n,
+      })
+      log("createTx broadcasting raw…")
+      createTx = await sepoliaClient.sendRawTransaction({
+        serializedTransaction: signedCreate,
       })
       log(`createTx broadcast: ${createTx}`)
       recordsNonce = startingNonce + 1
@@ -140,16 +149,21 @@ export async function POST(req: Request) {
       functionName: "multicall",
       args: [calls],
     })
-    log(`recordsTx broadcasting (${calls.length} sub-calls)…`)
-    const recordsTx = await wallet.sendTransaction({
-      account: devAccount,
-      chain: wallet.chain,
+    log(`recordsTx signing (${calls.length} sub-calls)…`)
+    const signedRecords = await devAccount.signTransaction({
+      chainId: sepolia.id,
+      type: "eip1559",
       to: PARENT_RESOLVER,
       data: recordsData,
       nonce: recordsNonce,
       gas: RESOLVER_MULTICALL_GAS,
       maxFeePerGas: SEPOLIA_MAX_FEE_PER_GAS,
       maxPriorityFeePerGas: SEPOLIA_MAX_PRIORITY_FEE_PER_GAS,
+      value: 0n,
+    })
+    log("recordsTx broadcasting raw…")
+    const recordsTx = await sepoliaClient.sendRawTransaction({
+      serializedTransaction: signedRecords,
     })
     log(`recordsTx broadcast: ${recordsTx}`)
 

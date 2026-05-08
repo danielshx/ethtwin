@@ -180,28 +180,46 @@ export async function sendToken(args: {
     }
   }
 
-  // Fire-and-forget broadcast — fits Vercel's function timeout. UI polls
-  // balance / explorer to confirm landing.
+  // Bypass viem's wrapper: fetch nonce + sign locally + send raw bytes. Avoids
+  // any hidden RPC roundtrips inside wallet.sendTransaction that hang on Vercel.
+  const nonce = await spec.client.getTransactionCount({
+    address: account.address,
+    blockTag: "pending",
+  })
+
+  const txCommon = {
+    chainId: spec.chain.id,
+    type: "eip1559" as const,
+    nonce,
+    // Generous fixed pricing so we don't need eth_feeHistory on Vercel.
+    maxFeePerGas: 5_000_000_000n,
+    maxPriorityFeePerGas: 1_500_000_000n,
+  }
+
   let txHash: Hash
   if (args.token === "ETH") {
-    txHash = await wallet.sendTransaction({
-      account,
-      chain: spec.chain,
+    const signed = await account.signTransaction({
+      ...txCommon,
       to: recipient,
       value: amount,
+      gas: 21_000n,
+      data: "0x" as const,
     })
+    txHash = await spec.client.sendRawTransaction({ serializedTransaction: signed })
   } else {
     const data = encodeFunctionData({
       abi: erc20Abi,
       functionName: "transfer",
       args: [recipient, amount],
     })
-    txHash = await wallet.sendTransaction({
-      account,
-      chain: spec.chain,
+    const signed = await account.signTransaction({
+      ...txCommon,
       to: spec.usdc,
       data,
+      gas: 100_000n,
+      value: 0n,
     })
+    txHash = await spec.client.sendRawTransaction({ serializedTransaction: signed })
   }
 
   return {
