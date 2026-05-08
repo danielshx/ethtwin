@@ -1,5 +1,6 @@
 import { tool } from "ai"
 import { z } from "zod"
+import { type Address, type Hex } from "viem"
 import { callApifyX402 } from "./x402-client"
 import { generatePrivateAddress } from "./stealth"
 import {
@@ -8,6 +9,8 @@ import {
   verifyAgentRegistration,
 } from "./ensip25"
 import { readTwinRecords } from "./ens"
+import { describeTx } from "./tx-decoder"
+import { sendStealthUSDC } from "./payments"
 
 export const twinTools = {
   requestDataViaX402: tool({
@@ -25,18 +28,58 @@ export const twinTools = {
 
   decodeTransaction: tool({
     description:
-      "Translate a raw transaction or call data into plain English so the user can decide whether to sign.",
+      "Translate a raw transaction (to/value/data) into plain English so the user can decide whether to sign. Recognizes ENS, ERC-20, ERC-721, and USDC transfers.",
     inputSchema: z.object({
-      to: z.string(),
-      value: z.string().optional(),
-      data: z.string().optional(),
-      chain: z.enum(["base-sepolia", "sepolia", "mainnet"]).default("base-sepolia"),
+      to: z.string().describe("Contract address or recipient EOA"),
+      value: z.string().optional().describe("Wei amount as string, e.g. '1000000000000000000' for 1 ETH"),
+      data: z.string().optional().describe("Calldata hex string starting with 0x"),
     }),
-    execute: async ({ to, value, data, chain }) => {
-      // Stub — Phase 1 implements real decoding via ABIs + ENS reverse-resolve.
+    execute: async ({ to, value, data }) => {
+      const result = await describeTx({
+        to: to as Address,
+        value: value ? BigInt(value) : undefined,
+        data: (data ?? "0x") as Hex,
+      })
       return {
-        plainEnglish: `Send ${value ?? "0"} to ${to} on ${chain}.`,
-        rawData: data ?? null,
+        plainEnglish: result.english,
+        contractName: result.decoded.contractName,
+        functionName: result.decoded.functionName,
+        args: result.decoded.args.map((a) => ({
+          name: a.name,
+          type: a.type,
+          value: typeof a.value === "bigint" ? a.value.toString() : a.value,
+        })),
+        matched: result.decoded.matched,
+      }
+    },
+  }),
+
+  sendStealthUsdc: tool({
+    description:
+      "Send USDC on Base Sepolia to an ENS recipient via a one-time stealth address (EIP-5564). The recipient must have a stealth-meta-address text record. Returns the stealth address, on-chain tx hash, and a block-explorer link.",
+    inputSchema: z.object({
+      recipientEnsName: z.string().describe("e.g. 'alice.ethtwin.eth'"),
+      amountUsdc: z
+        .union([z.string(), z.number()])
+        .describe("Human-readable USDC amount, e.g. 0.5 or '0.01'"),
+    }),
+    execute: async ({ recipientEnsName, amountUsdc }) => {
+      try {
+        const result = await sendStealthUSDC({ recipientEnsName, amountUsdc })
+        return {
+          ok: true,
+          recipientEnsName: result.recipient.ens,
+          stealthAddress: result.stealth.stealthAddress,
+          ephemeralPublicKey: result.stealth.ephemeralPublicKey,
+          viewTag: result.stealth.viewTag,
+          cosmicSeeded: result.stealth.cosmicSeeded,
+          amount: result.amountHuman + " USDC",
+          txHash: result.txHash,
+          blockNumber: result.blockNumber.toString(),
+          blockExplorerUrl: result.blockExplorerUrl,
+        }
+      } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : String(err) }
       }
     },
   }),

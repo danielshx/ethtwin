@@ -1,0 +1,56 @@
+import { z } from "zod"
+import { verifyAuthToken } from "@/lib/privy-server"
+import { readInbox, sendMessage } from "@/lib/messages"
+import { jsonError, parseJsonBody } from "@/lib/api-guard"
+
+export const runtime = "nodejs"
+export const maxDuration = 60
+
+// GET /api/messages?for=alice.ethtwin.eth
+export async function GET(req: Request) {
+  const url = new URL(req.url)
+  const forEns = url.searchParams.get("for")
+  if (!forEns) return jsonError("?for=<ensName> is required", 400)
+
+  try {
+    const messages = await readInbox(forEns)
+    return Response.json({ ok: true, ensName: forEns, messages })
+  } catch (error) {
+    return jsonError(
+      error instanceof Error ? error.message : "Failed to read inbox",
+      502,
+    )
+  }
+}
+
+const sendBodySchema = z.object({
+  privyToken: z.string().min(1),
+  fromEns: z.string().min(1),
+  toEns: z.string().min(1),
+  body: z.string().min(1).max(1000),
+})
+
+export async function POST(req: Request) {
+  const parsed = await parseJsonBody(req, sendBodySchema)
+  if (!parsed.ok) return parsed.response
+  const { privyToken, fromEns, toEns, body } = parsed.data
+
+  try {
+    await verifyAuthToken(privyToken)
+  } catch (error) {
+    return jsonError(
+      error instanceof Error ? error.message : "Privy token verification failed",
+      401,
+    )
+  }
+
+  try {
+    const result = await sendMessage({ fromEns, toEns, body })
+    return Response.json({ ok: true, ...result })
+  } catch (error) {
+    return jsonError(
+      error instanceof Error ? error.message : "Failed to send message",
+      502,
+    )
+  }
+}

@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge"
 import { Card } from "@/components/ui/card"
 import { OnboardingFlow, type OnboardingResult } from "@/components/onboarding-flow"
 import { TwinChat } from "@/components/twin-chat"
+import { Messenger } from "@/components/messenger"
 import { Toaster } from "@/components/ui/sonner"
 import { toast } from "sonner"
 
@@ -158,13 +159,54 @@ function App() {
             />
           </>
         ) : (
-          <TwinChat
-            ensName={session.ensName}
-            className="h-[70dvh] w-full max-w-2xl border-white/10 bg-card/80 backdrop-blur"
-          />
+          <SignedInTabs session={session} privy={privy} />
         )}
       </section>
     </>
+  )
+}
+
+function SignedInTabs({
+  session,
+  privy,
+}: {
+  session: SessionState
+  privy: ReturnType<typeof usePrivy>
+}) {
+  const [tab, setTab] = useState<"chat" | "messenger">("chat")
+  return (
+    <div className="flex w-full max-w-3xl flex-col gap-4">
+      <div className="flex items-center gap-1 self-center rounded-full border border-white/10 bg-card/60 p-1 text-xs backdrop-blur">
+        <Button
+          variant={tab === "chat" ? "default" : "ghost"}
+          size="sm"
+          className="rounded-full"
+          onClick={() => setTab("chat")}
+        >
+          Twin Chat
+        </Button>
+        <Button
+          variant={tab === "messenger" ? "default" : "ghost"}
+          size="sm"
+          className="rounded-full"
+          onClick={() => setTab("messenger")}
+        >
+          ENS Messenger
+        </Button>
+      </div>
+      {tab === "chat" ? (
+        <TwinChat
+          ensName={session.ensName}
+          className="h-[70dvh] w-full border-white/10 bg-card/80 backdrop-blur"
+        />
+      ) : (
+        <Messenger
+          myEnsName={session.ensName}
+          getAuthToken={() => privy.getAccessToken().catch(() => null)}
+          className="w-full border-white/10 bg-card/80 backdrop-blur"
+        />
+      )}
+    </div>
   )
 }
 

@@ -2,14 +2,16 @@ import { getAddress, type Address } from "viem"
 import { z } from "zod"
 import { verifyAuthToken } from "@/lib/privy-server"
 import { encodeInteropAddress, ERC8004_REGISTRY, CHAIN_REFERENCE } from "@/lib/ensip25"
-import { PARENT_DOMAIN, sepoliaClient } from "@/lib/viem"
+import { PARENT_DOMAIN, getDevWalletClient, sepoliaClient } from "@/lib/viem"
 import {
   createSubname,
   readResolver,
   readSubnameOwner,
+  resolveEnsAddress,
   setAddressRecord,
   setTextRecord,
 } from "@/lib/ens"
+import { addAgentToDirectory } from "@/lib/agents"
 import {
   ensLabelSchema,
   ethereumAddressSchema,
@@ -72,16 +74,32 @@ export async function POST(req: Request) {
       )
     }
 
+    // Architecture: dev wallet retains registry ownership of every subname so
+    // it can write records + create message sub-subnames on the user's behalf.
+    // The user's wallet appears in the `addr` record (forward resolution still
+    // points at them). Hijacking check uses the existing addr record, since
+    // the registry owner is always the dev wallet.
+    const { account: devAccount } = getDevWalletClient()
     const existingOwner = await readSubnameOwner(ensName)
+    const existingAddr = await resolveEnsAddress(ensName)
+
     if (existingOwner === ZERO_ADDRESS) {
+      // Fresh subname — mint with dev wallet as registry owner.
       const createTx = await createSubname({
         parent: PARENT_DOMAIN,
         label: body.username,
-        owner: walletAddress,
+        owner: devAccount.address,
         resolver: parentResolver,
       })
       await waitForTx(createTx)
+    } else if (existingAddr && getAddress(existingAddr) !== walletAddress) {
+      // Subname already taken by a different user (different addr record).
+      return jsonError(
+        `${ensName} is already taken by ${existingAddr}. Pick a different username.`,
+        409,
+      )
     }
+    // else: fresh OR same user re-registering (existingAddr matches) — fall through.
 
     const addrTx = await setAddressRecord(ensName, walletAddress)
     await waitForTx(addrTx)
@@ -107,6 +125,10 @@ export async function POST(req: Request) {
       const tx = await setTextRecord(ensName, key, value)
       await waitForTx(tx)
     }
+
+    // Register agent in the on-chain directory (idempotent — skipped if already present).
+    const directoryTx = await addAgentToDirectory(ensName)
+    if (directoryTx) await waitForTx(directoryTx)
   } catch (error) {
     return jsonError(
       error instanceof Error ? error.message : "Sepolia ENS onboarding failed",
