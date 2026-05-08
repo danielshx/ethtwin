@@ -19,6 +19,8 @@
     "test:x402-mock": "tsx --env-file=.env.local scripts/test-x402-mock.ts",
     "send:stealth-usdc": "tsx --env-file=.env.local scripts/send-stealth-usdc.ts",
     "send:token": "tsx --env-file=.env.local scripts/send-token.ts",
+    "wallet:generate": "tsx --env-file=.env.local scripts/generate-dev-wallet.ts",
+    "wallet:rotate": "tsx --env-file=.env.local scripts/rotate-dev-wallet.ts",
     "test:privy-key": "tsx --env-file=.env.local scripts/test-privy-key.ts"
   },
   "dependencies": {

@@ -22,9 +22,9 @@ import {
   formatEther,
   formatUnits,
   getAddress,
+  namehash,
   parseEther,
   type Address,
-  type Hash,
 } from "viem"
 import { baseSepolia, sepolia } from "viem/chains"
 import { privateKeyToAccount } from "viem/accounts"
@@ -282,11 +282,7 @@ async function main() {
   console.log(`  For Vercel deploy: paste the same DEV_WALLET_PRIVATE_KEY value into the project's encrypted env vars.`)
 }
 
-// ENS namehash helper, inline to avoid a cycle with lib/ens.ts.
 function nameToNode(name: string): `0x${string}` {
-  // viem's namehash is what we want.
-  // Importing inline rather than at top to keep the script's deps tight.
-  const { namehash } = require("viem")
   return namehash(name)
 }
 
