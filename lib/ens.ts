@@ -118,6 +118,39 @@ export async function readTextRecord(name: string, key: string) {
   return client.getEnsText({ name, key })
 }
 
+// Resolver address shared by every ethtwin.eth subname (and the parent itself).
+// Hardcoding lets us bypass the Universal Resolver (CCIP-Read, 3-6 roundtrips
+// per text-record read) and use a single eth_call instead — required for
+// Vercel function timeouts.
+const PARENT_RESOLVER_FAST: `0x${string}` = "0xE99638b40E4Fff0129D56f03b55b6bbC4BBE49b5"
+
+const RESOLVER_TEXT_ABI = [
+  {
+    name: "text",
+    type: "function",
+    stateMutability: "view",
+    inputs: [
+      { name: "node", type: "bytes32" },
+      { name: "key", type: "string" },
+    ],
+    outputs: [{ name: "", type: "string" }],
+  },
+] as const
+
+/**
+ * Fast text-record read: direct eth_call to the known parent resolver,
+ * skipping the Universal Resolver and CCIP-Read fallback. Use only for names
+ * under ethtwin.eth that share the parent's resolver. Returns "" for empty.
+ */
+export async function readTextRecordFast(name: string, key: string): Promise<string> {
+  return client.readContract({
+    address: PARENT_RESOLVER_FAST,
+    abi: RESOLVER_TEXT_ABI,
+    functionName: "text",
+    args: [namehash(name), key],
+  })
+}
+
 export async function readSubnameOwner(name: string): Promise<Address> {
   return client.readContract({
     address: ENS_REGISTRY,

@@ -8,7 +8,7 @@
 // ENS text-record resolution.
 
 import { PARENT_DOMAIN } from "./viem"
-import { readTextRecord, setTextRecord } from "./ens"
+import { readTextRecordFast, setTextRecord } from "./ens"
 import type { Hash } from "viem"
 
 const DIRECTORY_KEY = "agents.directory"
@@ -22,7 +22,7 @@ export type AgentEntry = {
 /** Read the on-chain agent directory. Returns [] if empty/missing. */
 export async function readAgentDirectory(): Promise<AgentEntry[]> {
   try {
-    const raw = await readTextRecord(PARENT_DOMAIN, DIRECTORY_KEY)
+    const raw = await readTextRecordFast(PARENT_DOMAIN, DIRECTORY_KEY)
     if (!raw) return []
     const parsed = JSON.parse(raw) as unknown
     if (!Array.isArray(parsed)) return []

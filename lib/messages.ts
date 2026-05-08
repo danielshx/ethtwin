@@ -25,7 +25,7 @@ import {
   type Hash,
   type Hex,
 } from "viem"
-import { ENS_REGISTRY, readTextRecord } from "./ens"
+import { ENS_REGISTRY, readTextRecordFast } from "./ens"
 import { ensResolverAbi, ensRegistryAbi } from "./abis"
 import { getDevWalletClient, sepoliaClient } from "./viem"
 
@@ -45,7 +45,7 @@ export type Message = {
 /** Read a recipient's `messages.list` (JSON array of message labels). */
 export async function readMessageList(recipientEns: string): Promise<string[]> {
   try {
-    const raw = await readTextRecord(recipientEns, MESSAGES_LIST_KEY)
+    const raw = await readTextRecordFast(recipientEns, MESSAGES_LIST_KEY)
     if (!raw) return []
     const parsed = JSON.parse(raw) as unknown
     if (!Array.isArray(parsed)) return []
@@ -59,9 +59,9 @@ export async function readMessageList(recipientEns: string): Promise<string[]> {
 async function readSingleMessage(messageEns: string, label: string): Promise<Message | null> {
   try {
     const [from, body, at] = await Promise.all([
-      readTextRecord(messageEns, "from"),
-      readTextRecord(messageEns, "body"),
-      readTextRecord(messageEns, "at"),
+      readTextRecordFast(messageEns, "from"),
+      readTextRecordFast(messageEns, "body"),
+      readTextRecordFast(messageEns, "at"),
     ])
     if (!from || !body || !at) return null
     return {
