@@ -1,5 +1,6 @@
 import { z } from "zod"
 import { anthropic } from "@ai-sdk/anthropic"
+import { openai } from "@ai-sdk/openai"
 import { convertToModelMessages, streamText, type UIMessage } from "ai"
 import { twinTools } from "@/lib/twin-tools"
 import { buildSystemPrompt } from "@/lib/prompts"
@@ -14,11 +15,24 @@ const twinChatBodySchema = z.object({
   ensName: z.string().optional(),
 })
 
+/**
+ * Pick the LLM provider based on which API key is configured.
+ * Order: OpenAI → Anthropic → null (mock). Never expose the choice to the client.
+ */
+function selectModel() {
+  if (process.env.OPENAI_API_KEY) {
+    return openai("gpt-4o-mini")
+  }
+  if (process.env.ANTHROPIC_API_KEY) {
+    return anthropic("claude-sonnet-4-6")
+  }
+  return null
+}
+
 function mockTwinReply(ensName: string) {
   return [
-    `Mock Twin online for ${ensName}.`,
-    "Privy authentication and chat transport are working.",
-    "Anthropic API key is not configured yet, so this is a local fallback response.",
+    `${ensName} online — but no model key is configured.`,
+    "Add OPENAI_API_KEY (or ANTHROPIC_API_KEY) to .env.local and restart.",
   ].join(" ")
 }
 
@@ -29,7 +43,8 @@ export async function POST(req: Request) {
   const body = parsed.data
   const ensName = body.ensName ?? "twin.ethtwin.eth"
 
-  if (!process.env.ANTHROPIC_API_KEY) {
+  const model = selectModel()
+  if (!model) {
     return Response.json({
       id: crypto.randomUUID(),
       role: "assistant",
@@ -48,7 +63,7 @@ export async function POST(req: Request) {
     const messages = await convertToModelMessages(body.messages)
 
     const result = streamText({
-      model: anthropic("claude-sonnet-4-6"),
+      model,
       system: buildSystemPrompt(records, ensName),
       messages,
       tools: twinTools,

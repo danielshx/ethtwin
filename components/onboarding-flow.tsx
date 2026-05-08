@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { CheckCircle2, KeyRound, Loader2, Sparkles } from "lucide-react"
+import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -79,6 +80,53 @@ export function OnboardingFlow({
   }
 
   async function handleCosmic() {
+    if (!walletAddr) {
+      setError("connect a wallet first")
+      return
+    }
+    setError(null)
+
+    // Pre-flight: is this username already taken?
+    try {
+      const res = await fetch(`/api/check-username?u=${encodeURIComponent(username)}`)
+      const data = (await res.json()) as {
+        ok: boolean
+        taken: boolean
+        ownerAddr: string | null
+        ensName: string
+        error?: string
+      }
+      if (data.ok && data.taken) {
+        const ownerLower = (data.ownerAddr ?? "").toLowerCase()
+        const meLower = walletAddr.toLowerCase()
+        if (ownerLower && ownerLower === meLower) {
+          // Same wallet — skip mint, sign them straight in.
+          toast.success(`Welcome back to ${data.ensName}`)
+          setStep("done")
+          setTimeout(() => {
+            onComplete({
+              ensName: data.ensName,
+              username,
+              smartWalletAddress: walletAddr,
+              cosmicAttestation: cosmic.sample?.attestation ?? "mock-attestation",
+            })
+          }, 600)
+          return
+        }
+        // Different wallet — block + error popup.
+        const ownerShort = data.ownerAddr ? shortAddr(data.ownerAddr) : "another wallet"
+        toast.error(`${data.ensName} is already taken`, {
+          description: `Owned by ${ownerShort}. Pick a different username.`,
+        })
+        setError(`${data.ensName} is already taken by ${ownerShort}. Pick a different name.`)
+        return
+      }
+    } catch {
+      // If the check-username route fails, fall through and let the mint route
+      // produce the canonical error. We don't want network blips to block onboarding.
+    }
+
+    // Free name — proceed with cosmic + mint.
     setStep("cosmic")
     const sample = await cosmic.fetchSeed()
     if (!sample) {
