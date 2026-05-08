@@ -22,8 +22,10 @@ const PRIVY_CONFIGURED = !!process.env.NEXT_PUBLIC_PRIVY_APP_ID
 const STORAGE_KEY = "ethtwin.session.v1"
 // Fallback addr record when an email-only user signs in but no embedded smart
 // wallet has surfaced yet. The twin is mintable; the addr record points at the
-// shared dev wallet. Caveat: multiple email-only users would share an addr.
-const DEV_WALLET_FALLBACK = "0x4E09c220BD556396Bc255A4DD24F858Bafeba6f5"
+// shared dev wallet. Sourced from env so a key rotation also rotates this.
+// Caveat: multiple email-only users would share an addr.
+const DEV_WALLET_FALLBACK = (process.env.NEXT_PUBLIC_DEV_WALLET_ADDRESS ??
+  "0x4E09c220BD556396Bc255A4DD24F858Bafeba6f5") as `0x${string}`
 
 type SessionState = {
   ensName: string
