@@ -72,30 +72,27 @@
 
 ---
 
-## 🌐 ENS Strategy: NameStone empfohlen
+## 🌐 ENS Strategy: gewählt = on-chain Sepolia (entschieden 2026-05-08)
 
-Nach Recherche ist **NameStone** die beste Option für 48h-Hackathon:
+Nach Spike-Test haben wir uns für **direktes on-chain Sepolia ENS** entschieden, NICHT NameStone:
 
-**Pro:**
-- REST API: `POST /api/public_v1/set-name`
-- Gasless (CCIP-Read / ERC-3668)
-- Kostenlos für Hackathon
-- 30 Min Setup
-- Works mit Standard ENS Resolver weltweit
-
-**Con:**
-- Centralized service (leichter Bruch für Privacy-Story, aber für Demo OK)
+**Warum on-chain Sepolia:**
+- Sepolia-Gas ist gratis (Faucet)
+- Echter Resolver, kein CCIP-Read-Indirection-Layer
+- Wir können selbst Sub-Subnames erstellen → ENS-Messenger (jede Message = `msg-<ts>-<seq>.<recipient>` Subname mit `from/body/at` Records). Das geht mit NameStone nicht.
+- Multicall: `setAddr` + 7 `setText` + `agents.directory` Append in **eine** Tx
 
 **Setup:**
-1. Account bei [namestone.com](https://namestone.com)
-2. Parent-Domain registrieren oder claim (z.B. `ethtwin.eth`)
-3. API-Key holen
-4. POST `/api/public_v1/set-name` für jeden Subname
+1. dev wallet auf Sepolia funden (Faucet)
+2. `ethtwin.eth` auf Sepolia ENS registrieren
+3. Public Resolver auf der Parent-Domain setzen
+4. dev wallet als Owner setzen
+5. Check via `pnpm ens:check-parent`
 
-**Alternative:**
-- Sepolia ENS (on-chain testnet) — works but less authentic
-- Mainnet ENS — costs ETH but most authentic
-- Durin (L2) — coolest narrative but Solidity needed
+**Backup eingecheckt (aber nicht aktiv):**
+- `lib/namestone.ts` — REST-Client, falls Sepolia-RPC instabil wird
+- Mainnet ENS — verworfen (ETH-Cost zu hoch)
+- Durin auf Base — verworfen (Solidity-Effort für 48h zu groß)
 
 ---
 
@@ -144,12 +141,11 @@ Nach Recherche ist **NameStone** die beste Option für 48h-Hackathon:
 - In `lib/cosmic.ts`: rolling cache mit 60s TTL
 - Demo zeigt "live request" auch wenn cached (attestation ist trotzdem echt)
 
-### 7. ENS Subnames Strategy
-**Workaround:**
-- **Phase 0 ENS-Booth Pflicht:** Mit workemon entscheiden
-- Default: NameStone offchain
-- Backup: Sepolia ENS
-- Stretch: Durin auf Base
+### 7. ENS Subnames Strategy (entschieden 2026-05-08)
+- **Gewählt:** on-chain Sepolia ENS direkt (`ethtwin.eth` parent owned by dev wallet)
+- **Backup:** NameStone (`lib/namestone.ts` checked-in but not active)
+- Mainnet ENS verworfen (zu teuer für Demo-Volumen)
+- Durin auf Base verworfen (Solidity-Effort für 48h zu groß)
 
 ### 8. AI SDK v5 → v6 Syntax-Breaking-Changes
 **Workaround:**
@@ -260,7 +256,7 @@ curl -X POST https://sepolia.base.org \
   - [ ] Privy Account + App-ID/Secret + Smart Wallets enabled
   - [ ] Apify Account
   - [ ] Orbitport (von Pedro)
-  - [ ] NameStone API Key
+  - [ ] (NameStone API Key — only if Sepolia ENS pivot triggers)
 - [ ] **Mentor-Pings raus** an alle 4 (Pedro, workemon, Jakub, Francesco)
 - [ ] **Voice-Spike-Test:** 1h OpenAI Realtime + Tool-Call basic getestet
 - [ ] **Stealth-SDK-Spike-Test:** 1h `@scopelift/stealth-address-sdk` Beta probiert
@@ -278,7 +274,7 @@ curl -X POST https://sepolia.base.org \
 4. **Coinbase x402** ist **production-ready** (119M+ Tx, Stripe nutzt es seit Feb 2026).
 5. **@x402/fetch v2.x** ist die korrekte Generation (nicht das ältere `x402-fetch` v1.x).
 6. **Claude Sonnet 4.6** mit 1M context ist deutlich besser für Plain-English-Tx-Decoding als 4.5.
-7. **NameStone offchain** ENS Subnames sind die clever-Easy Lösung für 48h.
+7. **On-chain Sepolia ENS** direkt geliefert: dev wallet ownt `ethtwin.eth`, jeder Twin ist ein echter Subname mit 7 Text Records + ENSIP-25 + agents.directory in einer Multicall-Tx. NameStone bleibt eingecheckt als Notfall-Pfad.
 8. **Privy Smart Wallets via Kernel** ist die fastest DX für Account Abstraction in 48h.
 
 ## 📚 Sources

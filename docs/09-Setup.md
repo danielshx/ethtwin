@@ -12,7 +12,7 @@ Die "Initial Setup" + "Init-Script"-Schritte unten sind **bereits ausgeführt**,
 
 1. `cp .env.example .env.local` und Keys eintragen (mind. `NEXT_PUBLIC_PRIVY_APP_ID` damit die Login-UI greift — sonst zeigt die Homepage einen Missing-Env-Hinweis).
 2. Privy-Dashboard konfigurieren (Login-Methods, Smart Wallets, Domains) — siehe Privy-Abschnitt.
-3. NameStone-Domain claimen + API-Key eintragen (oder ENS-Pfad B/C wählen).
+3. **Sepolia ENS Setup**: dev wallet muss `ethtwin.eth` auf Sepolia besitzen + Resolver gesetzt haben. Check: `pnpm ens:check-parent`. Onboarding-API + Provisioning-Scripts mintet alles direkt auf-chain. (NameStone bleibt als Backup-Lib eingecheckt, wird nicht aktiv genutzt.)
 4. Vercel-Link + Env-Vars setzen (Schritte unten gelten unverändert).
 
 Was schon installiert ist (siehe `pnpm-lock.yaml`):
@@ -90,8 +90,8 @@ APIFY_X402_ENDPOINT=https://api.apify.com/v2/acts/{actor}/run-sync-get-dataset-i
 ORBITPORT_API_URL=https://api.orbitport.spacecomputer.io/v1
 ORBITPORT_API_KEY=xxx                                   # von Pedro
 
-# === NAMESTONE (für offchain ENS) ===
-NAMESTONE_API_KEY=xxx                                   # https://namestone.com
+# === NAMESTONE (Backup-Pfad — aktuell ungenutzt) ===
+NAMESTONE_API_KEY=                                      # nur falls auf NameStone gepivotet wird
 
 # === x402 (Twin's spending key for Apify calls) ===
 # Privy Smart Wallet wird typischerweise client-side genutzt für x402
@@ -269,63 +269,32 @@ Code-Beispiele in `docs/12-Code-Beispiele.md`.
 
 ---
 
-## ENS Setup — Strategie-Entscheidung in Phase 0
+## ENS Setup — gewählter Pfad: on-chain Sepolia
 
-Workemon (`@workemon`) entscheidet mit uns in den ersten 2h welcher Pfad:
+**Entscheidung 2026-05-08:** wir nutzen **direktes on-chain Sepolia ENS**, nicht
+NameStone, nicht Mainnet, nicht Durin. Begründung:
 
-### Pfad A: NameStone offchain Subnames ⭐ EMPFOHLEN
+- ✅ Sepolia-Gas ist gratis (nur Faucet nötig)
+- ✅ Echter Resolver, echte ENS-Subnames — keine CCIP-Read-Abhängigkeit
+- ✅ Wir können selber Sub-Subnames anlegen → ENS-Messenger (jede Nachricht ist
+  ein eigener Subname mit `from/body/at` Records)
+- ✅ Multicall via `setRecordsMulticall` collapsed addr + alle Text-Records +
+  agents.directory in **eine** Tx
 
-**Pro:**
-- REST API, gasless, super-fast
-- Funktioniert mit Mainnet ENS Resolver (real ENS)
-- Kostenlos für Hackathon-Use
-- 30 Min Setup
+### Setup-Schritte
 
-**Con:**
-- Centralized service (für Privacy/Decentralization-Story leichter Bruch)
+1. **dev wallet auf Sepolia funden** (Faucet, 0.05 ETH reicht für >100 Onboardings)
+2. **Parent-Domain `ethtwin.eth` auf Sepolia ENS registrieren** und Public-Resolver setzen
+3. **dev wallet als Owner setzen** — alle Subnames werden später vom dev wallet aus geschrieben
+4. Check: `pnpm ens:check-parent` zeigt owner=dev-wallet + resolver≠0x0
+5. **Twin provisionieren**: `pnpm ens:provision` (Standard-Twin)
+6. **Sample-Agent provisionieren**: `pnpm ens:provision-analyst` (für `findAgents`/`hireAgent` Demo)
 
-**Setup:**
-1. Account bei [namestone.com](https://namestone.com)
-2. Parent-Domain registrieren oder claim (z.B. `ethtwin.eth`)
-3. API-Key holen
-4. POST `/api/public_v1/set-name` für jeden Subname
+### Backup-Pfade (eingecheckt aber nicht aktiv)
 
-### Pfad B: Sepolia ENS (on-chain testnet)
-
-**Pro:**
-- Full on-chain ENS auf Sepolia
-- Kostenlos
-- Echter Resolver
-
-**Con:**
-- Less authentic für Demo (Sepolia statt Mainnet)
-- ETH für Gas auf Sepolia (Faucet-supported)
-
-### Pfad C: Mainnet ENS
-
-**Pro:**
-- Real ENS, real subnames, höchste Demo-Authentizität
-
-**Con:**
-- ETH-Cost (~$15-50 für Parent Domain)
-- Mainnet-Tx-Signing für jede Subname-Mint
-
-### Pfad D: Durin auf Base (L2 Subnames)
-
-**Pro:**
-- Coolest narrative — L2-native
-- 30-Min Setup mit Templates
-- ERC-721 Subnames
-
-**Con:**
-- 3 Smart Contracts deployen + verifizieren
-- Höchstes Tech-Risiko
-- Solidity-Knowledge erforderlich
-
-### Empfehlung für 48h ohne Solidity-Erfahrung
-1. **NameStone** als primary (gasless, REST, easy)
-2. **Sepolia ENS** als Fallback wenn NameStone nicht klappt
-3. Durin nur wenn workemon strongly empfiehlt + ETH-Dev confident
+- `lib/namestone.ts` — REST-Client, falls Sepolia-RPC während des Hackathons rumzickt
+- Mainnet ENS — verworfen (ETH-Cost zu hoch für Demo-Volumen)
+- Durin auf Base — verworfen (Solidity-Effort zu groß für 48h)
 
 ---
 

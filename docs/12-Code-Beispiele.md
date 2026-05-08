@@ -369,7 +369,7 @@ export async function verifyENSIP25(
 }
 ```
 
-### NameStone API (offchain subnames — recommended for hackathon)
+### NameStone API (BACKUP path — currently unused; we mint on-chain Sepolia direct)
 
 ```typescript
 // lib/namestone.ts
@@ -803,9 +803,9 @@ Siehe `.env.example` für Master-Liste. Critical für jeden Code-Snippet hier:
 ### 5. OpenAI Realtime → 60s ephemeral key expiry
 - Reconnect-Logik im `useVoice` Hook implementiert
 
-### 6. NameStone für offchain Subnames empfohlen
-- Gasless, REST API
-- Fallback: direct viem ENS calls auf Sepolia
+### 6. ENS Subnames direkt auf Sepolia (entschieden)
+- Gewählt: on-chain mint via dev wallet als Parent-Owner — `lib/ens.ts` + `app/api/onboarding/route.ts`
+- Fallback eingecheckt: NameStone (`lib/namestone.ts`) — REST, gasless, falls Sepolia-RPC ausfällt
 
 ### 7. ERC-7930 interoperable address für ENSIP-25
 - Format komplex — Hilfsfunktion in `lib/ensip25.ts` oben

@@ -87,7 +87,7 @@ if (isVerified) showBadge("✓ ENSIP-25 Verified Agent")
 | Anforderung | Status | Wo bei uns |
 |---|---|---|
 | Naming individual agents with ENS | ✅ | Jeder Twin = `{name}.ethtwin.eth` |
-| Subname registry for fleet | ✅ | `*.ethtwin.eth` Tree (NameStone) |
+| Subname registry for fleet | ✅ | `*.ethtwin.eth` minted on Sepolia ENS (dev wallet = parent owner), agents auto-eingetragen in `agents.directory` text record |
 | Capabilities, endpoints in text records | ✅ | `twin.capabilities`, `twin.endpoint` |
 | Agent-to-agent discovery via ENS | ✅ | Twin findet `analyst.ethtwin.eth` live |
 | **ENS + verifiable credentials/attestations** | ✅✅ | **ENSIP-25 + ERC-8004 implementation** |

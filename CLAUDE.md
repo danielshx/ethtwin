@@ -33,6 +33,7 @@ These were verified — use these EXACT values:
 | `@scopelift/stealth-address-sdk` | 1.0.0-beta.5 | ⚠️ **BETA** |
 | `@x402/fetch` | 2.11.0 | ✅ **Use this (x402-foundation v2)** |
 | `@x402/next` | 2.11.0 | ✅ Server middleware |
+| `@x402/core` | 2.11.0 | ✅ Direct dep — used for `x402ResourceServer` / `HTTPFacilitatorClient` in paywalled routes |
 | `x402-fetch` | 1.2.0 | ❌ Don't use (older v1, Coinbase) |
 | `@coinbase/x402` | 2.1.0 | ✅ Facilitator (server settlement) |
 | `framer-motion` | 11+ | ✅ |
@@ -50,11 +51,9 @@ These were verified — use these EXACT values:
   - **Mainnet:** `0x8004A169FB4a3325136EB29fA0ceB6D2e539a432`
   - **Base Sepolia:** `0x8004A818BFB912233c491871b3d84c89A494BD9e`
   - **Sepolia:** `0x8004A818BFB912233c491871b3d84c89A494BD9e`
-- **Subname options for 48h:**
-  1. **NameStone offchain ENS subnames** ⭐ recommended — REST API, gasless, fast
-  2. **Sepolia ENS** — testnet ENS, free, on-chain
-  3. **Mainnet ENS subnames** — costs ETH, most authentic
-  4. **Durin on Base** — 30-min setup, ERC-721 subnames on L2
+- **Subname strategy (decided 2026-05-08):** **on-chain Sepolia ENS direct.**
+  - We own `ethtwin.eth` on Sepolia; dev wallet is parent registry owner; every twin is a real subname (NFT) with addr + 7 text records + ENSIP-25 + agents.directory in one multicall.
+  - Backup paths checked-in but unused: `lib/namestone.ts` (REST client, would unblock if Sepolia RPC fails). Durin/Mainnet rejected — too expensive or too much Solidity for 48h.
 
 ### AI SDK v6 Tool Syntax (verified)
 ```typescript
@@ -104,11 +103,11 @@ const myTool = tool({
 
 - TypeScript strict mode. No `any`.
 - Server logic in `app/api/*/route.ts`. Never expose API keys client-side.
-- ENS-related code in `lib/ens.ts`. Stealth in `lib/stealth.ts`. Cosmic in `lib/cosmic.ts`. x402 in `lib/x402-client.ts`.
+- ENS-related code in `lib/ens.ts` + `lib/agents.ts` (directory). Stealth in `lib/stealth.ts` + `lib/payments.ts`. Cosmic in `lib/cosmic.ts`. x402 in `lib/x402-client.ts`. ENS-Subname-Messenger primitives in `lib/messages.ts`. Hybrid history (client + server) in `lib/history.ts` + `lib/history-server.ts`.
 - Components colocated with their feature. Reusable UI in `components/ui/` (shadcn).
 - Use shadcn components first.
-- Animations are budget. Only the cosmic reveal + onboarding flow get heavy Framer treatment.
-- **AI SDK v6 syntax:** tools use `inputSchema` (zod), not `parameters` (v5 pattern).
+- Animations are budget. The cosmic reveal during onboarding + the **Stealth-Send-Tab** (`components/stealth-send.tsx`) are the only heavy Framer Motion / particle scenes.
+- **AI SDK v6 syntax:** tools use `inputSchema` (zod), not `parameters` (v5 pattern). Twin tools live in `lib/twin-tools.ts`. The chat route (`app/api/twin/route.ts`) calls the `buildTwinTools({ fromEns })` factory so request-scoped context (the user's twin ENS) reaches tools like `sendMessage`.
 
 ## ENS is central — never decorative
 
@@ -128,7 +127,7 @@ If we remove ENS, the product breaks. That's the test for ENS Bounty 1.
 | 30 | cTRNG API hangs | Use cached cTRNG samples + real attestation hashes |
 | 36 | Stealth on-chain buggy | Drop Tier 2 stealth, polish Tier 1 |
 | 36 | x402 live fails | Pre-sign tx + show in block explorer tab |
-| 40 | Durin ENS broken (if chosen) | Pivot to NameStone or Sepolia ENS |
+| 40 | Sepolia RPC outage | Pivot to NameStone (`lib/namestone.ts` is wired but unused) |
 
 **Hour 47 = polish only. No bugfixing.**
 
@@ -141,6 +140,7 @@ If we remove ENS, the product breaks. That's the test for ENS Bounty 1.
 - **Reference `docs/11-Tech-Verifikation.md`** for verified package versions and known risks.
 - **Reference `docs/12-Code-Beispiele.md`** for copy-paste-ready code snippets.
 - **If stuck, check `docs/07-Mentoren.md`** — there's a mentor for every external integration.
+- **Chat-only fallback path:** `docs/13-Chat-Only-Demo-Runbook.md` describes the demo flow if voice / WebRTC drops out.
 
 ## Sub-agents available
 

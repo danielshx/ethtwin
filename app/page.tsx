@@ -14,6 +14,8 @@ import { Messenger } from "@/components/messenger"
 import { TokenTransfer } from "@/components/token-transfer"
 import { StealthSend } from "@/components/stealth-send"
 import { History } from "@/components/history"
+import { Explorer } from "@/components/explorer"
+import { VoiceTwin } from "@/components/voice-twin"
 import { addHistoryEntry } from "@/lib/history"
 import { Toaster } from "@/components/ui/sonner"
 import { toast } from "sonner"
@@ -194,7 +196,11 @@ function App() {
             />
           </>
         ) : (
-          <SignedInTabs session={session} privy={privy} />
+          <SignedInTabs
+            session={session}
+            privy={privy}
+            walletAddress={smartWalletAddress}
+          />
         )}
       </section>
     </>
@@ -204,12 +210,14 @@ function App() {
 function SignedInTabs({
   session,
   privy,
+  walletAddress,
 }: {
   session: SessionState
   privy: ReturnType<typeof usePrivy>
+  walletAddress: string | null
 }) {
   const [tab, setTab] = useState<
-    "chat" | "messenger" | "transfer" | "stealth" | "history"
+    "chat" | "voice" | "messenger" | "transfer" | "stealth" | "history" | "explorer"
   >("chat")
   const getAuthToken = () => privy.getAccessToken().catch(() => null)
   return (
@@ -222,6 +230,14 @@ function SignedInTabs({
           onClick={() => setTab("chat")}
         >
           Twin Chat
+        </Button>
+        <Button
+          variant={tab === "voice" ? "default" : "ghost"}
+          size="sm"
+          className="rounded-full"
+          onClick={() => setTab("voice")}
+        >
+          Voice
         </Button>
         <Button
           variant={tab === "messenger" ? "default" : "ghost"}
@@ -255,11 +271,26 @@ function SignedInTabs({
         >
           History
         </Button>
+        <Button
+          variant={tab === "explorer" ? "default" : "ghost"}
+          size="sm"
+          className="rounded-full"
+          onClick={() => setTab("explorer")}
+        >
+          Explorer
+        </Button>
       </div>
       {tab === "chat" ? (
         <TwinChat
           ensName={session.ensName}
           className="h-[70dvh] w-full border-white/10 bg-card/80 backdrop-blur"
+        />
+      ) : tab === "voice" ? (
+        <VoiceTwin
+          ensName={session.ensName}
+          getAuthToken={getAuthToken}
+          onSwitchToChat={() => setTab("chat")}
+          className="w-full border-white/10 bg-card/80 backdrop-blur"
         />
       ) : tab === "messenger" ? (
         <Messenger
@@ -279,9 +310,15 @@ function SignedInTabs({
           getAuthToken={getAuthToken}
           className="w-full border-white/10 bg-card/80 backdrop-blur"
         />
-      ) : (
+      ) : tab === "history" ? (
         <History
           ensName={session.ensName}
+          className="w-full border-white/10 bg-card/80 backdrop-blur"
+        />
+      ) : (
+        <Explorer
+          ensName={session.ensName}
+          address={walletAddress ?? session.smartWalletAddress}
           className="w-full border-white/10 bg-card/80 backdrop-blur"
         />
       )}

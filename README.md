@@ -32,7 +32,7 @@ The Next.js scaffold + all verified deps are already installed (state of 2026-05
 
 ```bash
 pnpm install                  # restore deps from pnpm-lock.yaml
-cp .env.example .env.local    # fill in API keys (Privy, Anthropic, OpenAI, NameStone, Orbitport, Apify)
+cp .env.example .env.local    # fill in API keys (Privy, Anthropic, OpenAI, Orbitport, Apify, dev wallet)
 pnpm dev                      # → http://localhost:3000
 ```
 
@@ -75,7 +75,7 @@ See [docs/09-Setup.md](./docs/09-Setup.md) for the full setup guide, [docs/03-Ba
 
 - **Models:** `claude-sonnet-4-6` (text), `gpt-4o-realtime-preview` (voice)
 - **ENS:** ENSIP-25 + ERC-8004 IdentityRegistry on Base Sepolia (`0x8004A818BFB912233c491871b3d84c89A494BD9e`)
-- **Subnames:** NameStone offchain (default) — gasless via REST API
+- **Subnames:** on-chain Sepolia ENS direct — `ethtwin.eth` parent owned by dev wallet, every twin minted as a real subname (NameStone lib stays as fallback but is unused)
 - **x402:** `@x402/fetch` v2.11.0 (NOT `x402-fetch` v1.x) + `@coinbase/x402` facilitator
 - **Apify:** $1 USDC min per x402 call, Pay-Per-Event Actors only
 - **Privy:** `@privy-io/react-auth` (client) + `@privy-io/node` (server, NOT deprecated server-auth)

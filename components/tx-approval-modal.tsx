@@ -20,7 +20,14 @@ export type TxIntent = {
   data?: `0x${string}` | string
   chain?: "base-sepolia" | "sepolia" | "mainnet"
   plainEnglish: string
+  /**
+   * Reverse-resolved ENS name for `to`. Callers should populate this via
+   * `useEnsName(intent.to)` from `@/lib/use-ens-name` before opening the
+   * modal — per CLAUDE.md: "Tx approvals show ENS reverse-resolved names,
+   * never 0x...". `null` is fine; the modal falls back to a short 0x…
+   */
   toEnsName?: string | null
+  /** Reverse-resolved ENS name for the sender. See `toEnsName` above. */
   fromEnsName?: string | null
 }
 

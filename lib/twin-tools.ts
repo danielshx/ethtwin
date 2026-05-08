@@ -1,7 +1,8 @@
 import { tool } from "ai"
 import { z } from "zod"
 import { type Address, type Hex } from "viem"
-import { callApifyX402, paidFetch } from "./x402-client"
+import { callApifyX402, paidFetchWithReceipt } from "./x402-client"
+import { appendServerHistory } from "./history-server"
 import { generatePrivateAddress } from "./stealth"
 import {
   ERC8004_REGISTRY,
@@ -34,14 +35,32 @@ export const twinTools = {
 
   requestDataViaX402: tool({
     description:
-      "Fetch live data from an Apify actor via x402 micropayment. Use when you need fresh on-chain or web data the user is asking about.",
+      "Fetch live data from an Apify Pay-Per-Event actor via x402 micropayment ($1+ USDC on Base Mainnet). Returns the actor output AND the on-chain tx hash + basescan link. Use when you need fresh on-chain or web data the user is asking about.",
     inputSchema: z.object({
-      actor: z.string().describe("Apify actor path, e.g. 'username/scraper'"),
+      actor: z
+        .string()
+        .describe("Apify actor path with `~` separator, e.g. 'apify~instagram-post-scraper'"),
       input: z.record(z.string(), z.unknown()).describe("Input payload for the actor"),
     }),
     execute: async ({ actor, input }) => {
-      const data = await callApifyX402(actor, input)
-      return { ok: true, data }
+      try {
+        const { data, receipt } = await callApifyX402(actor, input)
+        return {
+          ok: true,
+          actor,
+          data,
+          txHash: receipt.txHash,
+          chain: receipt.chain,
+          payer: receipt.payer,
+          blockExplorerUrl: receipt.explorerUrl,
+        }
+      } catch (err) {
+        return {
+          ok: false,
+          actor,
+          error: err instanceof Error ? err.message : String(err),
+        }
+      }
     },
   }),
 
@@ -222,9 +241,22 @@ export const twinTools = {
     },
   }),
 
-  hireAgent: tool({
+} as const
+
+export type TwinToolContext = {
+  /** ENS name of the Twin running this conversation. Used as `from` for messenger sends + history scoping. */
+  fromEns?: string
+}
+
+/**
+ * Build the `hireAgent` tool with optional history-context. When `fromEns` is
+ * provided, successful x402 payments are appended to the server-side history
+ * for that ENS so they show up in the Explorer tab.
+ */
+function buildHireAgentTool(ctx: TwinToolContext) {
+  return tool({
     description:
-      "Discover, verify (ENSIP-25), and pay another agent via x402 to perform a sub-task. Posts the task to the agent's twin.endpoint via paidFetch (auto-pays HTTP 402 challenges).",
+      "Discover, verify (ENSIP-25), and pay another agent via x402 to perform a sub-task. Posts the task to the agent's twin.endpoint via paidFetchWithReceipt (auto-pays HTTP 402 challenges) and returns the on-chain tx hash + basescan link if the facilitator settled the payment on-chain.",
     inputSchema: z.object({
       agentEnsName: z.string(),
       agentId: z
@@ -251,8 +283,7 @@ export const twinTools = {
         }
       }
       try {
-        const f = paidFetch()
-        const res = await f(endpoint, {
+        const { response: res, receipt } = await paidFetchWithReceipt(endpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ task }),
@@ -283,6 +314,23 @@ export const twinTools = {
             : typeof body === "string"
               ? body
               : JSON.stringify(body)
+
+        // If the facilitator returned a real on-chain settlement, mirror it
+        // into server history so the Explorer tab can surface the tx.
+        if (ctx.fromEns && receipt.txHash) {
+          await appendServerHistory(ctx.fromEns, {
+            kind: "other",
+            status: "success",
+            summary: `Hired ${agentEnsName} via x402`,
+            description: `Task: ${task.slice(0, 140)}${task.length > 140 ? "…" : ""}`,
+            txHash: receipt.txHash,
+            ...(receipt.explorerUrl !== undefined && { explorerUrl: receipt.explorerUrl }),
+            ...(receipt.chain !== undefined && { chain: receipt.chain }),
+          }).catch(() => {
+            // Best-effort: history failure must not break the tool result.
+          })
+        }
+
         return {
           ok: true,
           verified,
@@ -290,6 +338,10 @@ export const twinTools = {
           endpoint,
           status: res.status,
           answer,
+          txHash: receipt.txHash,
+          chain: receipt.chain,
+          payer: receipt.payer,
+          blockExplorerUrl: receipt.explorerUrl,
         }
       } catch (err) {
         return {
@@ -301,22 +353,19 @@ export const twinTools = {
         }
       }
     },
-  }),
-} as const
-
-export type TwinToolContext = {
-  /** ENS name of the Twin running this conversation. Used as `from` for messenger sends. */
-  fromEns?: string
+  })
 }
 
 /**
  * Context-aware Twin tool surface.
  * Returns the static `twinTools` plus tools that need request-scoped context
- * (e.g. `sendMessage` needs to know which Twin is sending).
+ * (e.g. `sendMessage` needs to know which Twin is sending; `hireAgent` needs
+ * `fromEns` to scope x402 receipts into the right history file).
  */
 export function buildTwinTools(ctx: TwinToolContext = {}) {
   return {
     ...twinTools,
+    hireAgent: buildHireAgentTool(ctx),
     sendMessage: tool({
       description:
         "Send an on-chain ENS message to another twin. Each message becomes a child subname (msg-<ts>-<seq>.<recipient>) carrying from/body/at text records on Sepolia ENS. Use when the user asks the Twin to message, ping, or write to another agent.",
