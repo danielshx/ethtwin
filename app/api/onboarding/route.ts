@@ -8,10 +8,6 @@ import {
   readResolver,
   readSubnameOwner,
   resolveEnsAddress,
-<<<<<<< HEAD
-  setRecordsMulticall,
-=======
->>>>>>> refs/remotes/origin/main
 } from "@/lib/ens"
 import { ensRegistryAbi, ensResolverAbi } from "@/lib/abis"
 import { readAgentDirectory } from "@/lib/agents"
@@ -27,14 +23,10 @@ import {
 } from "@/lib/api-guard"
 
 export const runtime = "nodejs"
-<<<<<<< HEAD
-export const maxDuration = 60
-=======
 // Fire-and-forget: broadcast both txs back-to-back with manual nonces and
 // fixed gas (skipping per-tx simulation). Server returns within ~3 s; the
 // frontend polls until the new twin is fully on-chain. Fits Vercel Hobby.
 export const maxDuration = 30
->>>>>>> refs/remotes/origin/main
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000"
 
@@ -108,13 +100,9 @@ export async function POST(req: Request) {
         409,
       )
     }
-<<<<<<< HEAD
     // else: fresh OR same user re-registering (existingAddr matches) — fall through.
 
-=======
-
     // ── Build the resolver multicall payload (addr + all text records + directory append) ──
->>>>>>> refs/remotes/origin/main
     const profile = buildDefaultProfileRecords(body.username)
     const textRecords: Record<string, string> = {
       ...profile,
@@ -133,15 +121,6 @@ export async function POST(req: Request) {
       [ensipKey]: "1",
     }
 
-<<<<<<< HEAD
-    // Batch addr + all text records into a single resolver multicall tx,
-    // collapsing ~9 sequential Sepolia txs down to one.
-    const recordsTx = await setRecordsMulticall(ensName, {
-      addr: walletAddress,
-      texts: textRecords,
-    })
-    await waitForTx(recordsTx)
-=======
     const ensNode = namehash(ensName)
     const calls: `0x${string}`[] = [
       encodeFunctionData({
@@ -176,7 +155,6 @@ export async function POST(req: Request) {
         }),
       )
     }
->>>>>>> refs/remotes/origin/main
 
     // ── Broadcast back-to-back with sequential nonces, no waits ──
     // Fetching nonce once and assigning manually means viem doesn't need to
