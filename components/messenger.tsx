@@ -9,6 +9,7 @@ import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { addHistoryEntry } from "@/lib/history"
 import { cn } from "@/lib/utils"
 
 type AgentEntry = { ens: string; addedAt: number }
@@ -153,6 +154,16 @@ export function Messenger({ myEnsName, getAuthToken, className }: MessengerProps
       setComposing("")
       toast.success("Message landed on-chain", {
         description: data.blockExplorerUrl,
+      })
+      addHistoryEntry({
+        kind: "message",
+        chain: "sepolia",
+        summary: `Message → ${selected}`,
+        description: data.message?.body
+          ? data.message.body.slice(0, 80) +
+            (data.message.body.length > 80 ? "…" : "")
+          : body.slice(0, 80),
+        explorerUrl: data.blockExplorerUrl,
       })
       // Optimistic append + refresh.
       if (data.message) {

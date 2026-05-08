@@ -11,6 +11,9 @@ import { Card } from "@/components/ui/card"
 import { OnboardingFlow, type AuthMethod, type OnboardingResult } from "@/components/onboarding-flow"
 import { TwinChat } from "@/components/twin-chat"
 import { Messenger } from "@/components/messenger"
+import { TokenTransfer } from "@/components/token-transfer"
+import { History } from "@/components/history"
+import { addHistoryEntry } from "@/lib/history"
 import { Toaster } from "@/components/ui/sonner"
 import { toast } from "sonner"
 
@@ -123,6 +126,13 @@ function App() {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
     } catch {}
     toast.success(`${next.ensName} is live`)
+    addHistoryEntry({
+      kind: "mint",
+      chain: "sepolia",
+      summary: `Twin minted: ${next.ensName}`,
+      description: `Linked to wallet ${next.smartWalletAddress}`,
+      explorerUrl: `https://sepolia.app.ens.domains/${next.ensName}`,
+    })
   }
 
   function handleSignOut() {
@@ -190,7 +200,8 @@ function SignedInTabs({
   session: SessionState
   privy: ReturnType<typeof usePrivy>
 }) {
-  const [tab, setTab] = useState<"chat" | "messenger">("chat")
+  const [tab, setTab] = useState<"chat" | "messenger" | "transfer" | "history">("chat")
+  const getAuthToken = () => privy.getAccessToken().catch(() => null)
   return (
     <div className="flex w-full max-w-3xl flex-col gap-4">
       <div className="flex items-center gap-1 self-center rounded-full border border-white/10 bg-card/60 p-1 text-xs backdrop-blur">
@@ -210,18 +221,42 @@ function SignedInTabs({
         >
           ENS Messenger
         </Button>
+        <Button
+          variant={tab === "transfer" ? "default" : "ghost"}
+          size="sm"
+          className="rounded-full"
+          onClick={() => setTab("transfer")}
+        >
+          Send Tokens
+        </Button>
+        <Button
+          variant={tab === "history" ? "default" : "ghost"}
+          size="sm"
+          className="rounded-full"
+          onClick={() => setTab("history")}
+        >
+          History
+        </Button>
       </div>
       {tab === "chat" ? (
         <TwinChat
           ensName={session.ensName}
           className="h-[70dvh] w-full border-white/10 bg-card/80 backdrop-blur"
         />
-      ) : (
+      ) : tab === "messenger" ? (
         <Messenger
           myEnsName={session.ensName}
-          getAuthToken={() => privy.getAccessToken().catch(() => null)}
+          getAuthToken={getAuthToken}
           className="w-full border-white/10 bg-card/80 backdrop-blur"
         />
+      ) : tab === "transfer" ? (
+        <TokenTransfer
+          myEnsName={session.ensName}
+          getAuthToken={getAuthToken}
+          className="w-full border-white/10 bg-card/80 backdrop-blur"
+        />
+      ) : (
+        <History className="w-full border-white/10 bg-card/80 backdrop-blur" />
       )}
     </div>
   )
