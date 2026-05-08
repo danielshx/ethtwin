@@ -53,7 +53,9 @@ function App() {
     const smartAccount = smart.client?.account?.address
     if (smartAccount) return smartAccount
     const embedded = wallets.find((w) => w.walletClientType === "privy")
-    return embedded?.address ?? null
+    if (embedded?.address) return embedded.address
+    // External wallet login (MetaMask/Rabby/etc.) — use whatever's connected.
+    return wallets[0]?.address ?? null
   }, [smart.client?.account?.address, wallets])
 
   async function handleAuthenticate() {
