@@ -11,8 +11,6 @@ import {
   withX402,
   type RouteConfig,
 } from "@x402/next"
-import { HTTPFacilitatorClient } from "@x402/core/server"
-import { facilitator } from "@coinbase/x402"
 
 export const runtime = "nodejs"
 export const maxDuration = 60
@@ -55,9 +53,7 @@ function buildPaidHandler() {
     description: `Hire ${AGENT_ENS} for one DeFi research task.`,
   }
 
-  const server = new x402ResourceServer(
-    new HTTPFacilitatorClient(facilitator),
-  )
+  const server = new x402ResourceServer()
 
   return withX402(handler, routeConfig, server)
 }
