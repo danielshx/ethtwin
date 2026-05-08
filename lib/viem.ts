@@ -1,15 +1,83 @@
-import { createPublicClient, createWalletClient, http, type Chain } from "viem"
+import {
+  createPublicClient,
+  createWalletClient,
+  fallback,
+  http,
+  type Chain,
+} from "viem"
 import { privateKeyToAccount } from "viem/accounts"
 import { base, baseSepolia, sepolia, mainnet } from "viem/chains"
 
-// Public RPC fallbacks chosen for higher rate limits than viem's default
-// ThirdWeb endpoint (which gets 429s on busy days). Used only when the
-// corresponding env var isn't set.
-const PUBLIC_FALLBACKS: Record<number, string> = {
-  [sepolia.id]: "https://eth-sepolia.public.blastapi.io",
-  [baseSepolia.id]: "https://sepolia.base.org",
-  [base.id]: "https://mainnet.base.org",
-  [mainnet.id]: "https://eth.llamarpc.com",
+/**
+ * Hardcoded RPC fallback chain per chain. Viem's `fallback` transport tries
+ * each in order; if one returns 429 / 5xx / timeout it falls through to the
+ * next. This way the app works even if env vars on Vercel are missing,
+ * empty, or rate-limited. Env override (e.g. user's Alchemy key) gets
+ * prepended at runtime when set.
+ *
+ * The lists below are public Sepolia / Base Sepolia endpoints with generous
+ * rate limits — better than viem's default ThirdWeb URL (which hard-throttles).
+ */
+const HARDCODED_RPCS: Record<number, string[]> = {
+  [sepolia.id]: [
+    "https://eth-sepolia.g.alchemy.com/v2/VnDHq7fsAyloEY3w9oQGK",
+    "https://ethereum-sepolia-rpc.publicnode.com",
+    "https://eth-sepolia.public.blastapi.io",
+    "https://sepolia.gateway.tenderly.co",
+    "https://sepolia.drpc.org",
+    "https://rpc.sepolia.org",
+  ],
+  [baseSepolia.id]: [
+    "https://sepolia.base.org",
+    "https://base-sepolia-rpc.publicnode.com",
+    "https://base-sepolia.gateway.tenderly.co",
+  ],
+  [base.id]: [
+    "https://mainnet.base.org",
+    "https://base.gateway.tenderly.co",
+  ],
+  [mainnet.id]: [
+    "https://eth.llamarpc.com",
+    "https://ethereum-rpc.publicnode.com",
+  ],
+}
+
+function envValue(name: string): string | undefined {
+  const v = process.env[name]?.trim()
+  return v && v.length > 0 ? v : undefined
+}
+
+function urlsForChain(chain: Chain): string[] {
+  const envOverride = (() => {
+    switch (chain.id) {
+      case sepolia.id:
+        return envValue("SEPOLIA_RPC")
+      case baseSepolia.id:
+        return envValue("NEXT_PUBLIC_BASE_RPC")
+      case base.id:
+        return envValue("BASE_RPC")
+      case mainnet.id:
+        return envValue("MAINNET_RPC")
+      default:
+        return undefined
+    }
+  })()
+  const hardcoded = HARDCODED_RPCS[chain.id] ?? []
+  // Prepend the env override (if set) so user-configured keys are tried first,
+  // but always have hardcoded fallbacks behind them.
+  const all = envOverride ? [envOverride, ...hardcoded] : hardcoded
+  // Dedupe to avoid trying the same URL twice.
+  return Array.from(new Set(all))
+}
+
+function transportForChain(chain: Chain) {
+  const urls = urlsForChain(chain)
+  if (urls.length === 0) return http()
+  if (urls.length === 1) return http(urls[0])
+  return fallback(
+    urls.map((url) => http(url)),
+    { rank: false, retryCount: 1 },
+  )
 }
 
 export const PARENT_DOMAIN =
@@ -17,32 +85,23 @@ export const PARENT_DOMAIN =
 
 export const sepoliaClient = createPublicClient({
   chain: sepolia,
-  transport: http(process.env.SEPOLIA_RPC ?? PUBLIC_FALLBACKS[sepolia.id]),
+  transport: transportForChain(sepolia),
 })
 
 export const baseSepoliaClient = createPublicClient({
   chain: baseSepolia,
-  transport: http(process.env.NEXT_PUBLIC_BASE_RPC ?? PUBLIC_FALLBACKS[baseSepolia.id]),
+  transport: transportForChain(baseSepolia),
 })
 
 export const mainnetClient = createPublicClient({
   chain: mainnet,
-  transport: http(process.env.MAINNET_RPC ?? PUBLIC_FALLBACKS[mainnet.id]),
+  transport: transportForChain(mainnet),
 })
 
+// Kept for callers that need a single URL (no fallback chain). Most code
+// should use the public/wallet clients above which already have fallback.
 function rpcUrlForChain(chain: Chain): string {
-  switch (chain.id) {
-    case sepolia.id:
-      return process.env.SEPOLIA_RPC ?? PUBLIC_FALLBACKS[sepolia.id]!
-    case baseSepolia.id:
-      return process.env.NEXT_PUBLIC_BASE_RPC ?? PUBLIC_FALLBACKS[baseSepolia.id]!
-    case base.id:
-      return process.env.BASE_RPC ?? PUBLIC_FALLBACKS[base.id]!
-    case mainnet.id:
-      return process.env.MAINNET_RPC ?? "https://eth.llamarpc.com"
-    default:
-      return PUBLIC_FALLBACKS[chain.id] ?? ""
-  }
+  return urlsForChain(chain)[0] ?? "https://eth-sepolia.public.blastapi.io"
 }
 
 // ⚠️ HARDCODED TESTNET FALLBACK — read this carefully.
@@ -94,7 +153,7 @@ export function getDevWalletClient(chain: Chain = sepolia) {
   const wallet = createWalletClient({
     account,
     chain,
-    transport: http(rpcUrlForChain(chain)),
+    transport: transportForChain(chain),
   })
   return { wallet, account }
 }
