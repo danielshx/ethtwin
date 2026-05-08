@@ -155,6 +155,17 @@ export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTrans
           amount: amt,
         }),
       })
+      // Vercel function timeouts return plain text. Parse defensively.
+      const ct = res.headers.get("content-type") ?? ""
+      if (!ct.includes("application/json")) {
+        const text = await res.text()
+        toast.error(
+          res.status === 504
+            ? "Vercel timed out, but the tx may still be on-chain — refresh balance in ~30s."
+            : `Server error ${res.status}: ${text.slice(0, 120)}`,
+        )
+        return
+      }
       const data = (await res.json()) as {
         ok: boolean
         error?: string

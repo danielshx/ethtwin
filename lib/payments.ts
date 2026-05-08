@@ -110,28 +110,25 @@ export async function sendStealthUSDC(args: {
     )
   }
 
-  const txHash = await wallet.writeContract({
-    account,
-    chain: baseSepolia,
-    address: USDC_BASE_SEPOLIA,
+  // Fire-and-forget broadcast — fits Vercel timeouts. UI can poll the stealth
+  // address's balance to confirm landing.
+  const data = (await import("viem")).encodeFunctionData({
     abi: usdcAbi,
     functionName: "transfer",
     args: [stealth.stealthAddress, amount],
   })
-
-  const receipt = await baseSepoliaClient.waitForTransactionReceipt({ hash: txHash })
-  if (receipt.status !== "success") {
-    throw new Error(
-      `USDC.transfer reverted on-chain: tx ${txHash} (block ${receipt.blockNumber}). ` +
-        `Check basescan-sepolia for revert reason.`,
-    )
-  }
+  const txHash = await wallet.sendTransaction({
+    account,
+    chain: baseSepolia,
+    to: USDC_BASE_SEPOLIA,
+    data,
+  })
 
   return {
     recipient: { ens: recipientEnsName, resolvedAddress: resolvedAddress ?? null },
     stealth,
     txHash,
-    blockNumber: receipt.blockNumber,
+    blockNumber: 0n, // not waited for
     blockExplorerUrl: `https://sepolia.basescan.org/tx/${txHash}`,
     amount,
     amountHuman: formatUnits(amount, USDC_DECIMALS),

@@ -153,6 +153,17 @@ export function Messenger({ myEnsName, getAuthToken, className }: MessengerProps
           body,
         }),
       })
+      // Vercel function timeouts return plain text, not JSON — parse defensively.
+      const ct = res.headers.get("content-type") ?? ""
+      if (!ct.includes("application/json")) {
+        const text = await res.text()
+        toast.error(
+          res.status === 504
+            ? "Vercel timed out, but your message txs may still be on-chain — check the History tab in ~30s."
+            : `Server error ${res.status}: ${text.slice(0, 120)}`,
+        )
+        return
+      }
       const data = (await res.json()) as {
         ok: boolean
         error?: string

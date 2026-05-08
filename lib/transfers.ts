@@ -9,6 +9,7 @@
 // Block explorer URLs are tied per-chain so the UI can show the right link.
 
 import {
+  encodeFunctionData,
   formatEther,
   formatUnits,
   getAddress,
@@ -175,7 +176,8 @@ export async function sendToken(args: {
     }
   }
 
-  // Broadcast.
+  // Fire-and-forget broadcast — fits Vercel's function timeout. UI polls
+  // balance / explorer to confirm landing.
   let txHash: Hash
   if (args.token === "ETH") {
     txHash = await wallet.sendTransaction({
@@ -185,19 +187,17 @@ export async function sendToken(args: {
       value: amount,
     })
   } else {
-    txHash = await wallet.writeContract({
-      account,
-      chain: spec.chain,
-      address: spec.usdc,
+    const data = encodeFunctionData({
       abi: erc20Abi,
       functionName: "transfer",
       args: [recipient, amount],
     })
-  }
-
-  const receipt = await spec.client.waitForTransactionReceipt({ hash: txHash })
-  if (receipt.status !== "success") {
-    throw new Error(`Transfer reverted on-chain: tx ${txHash} (block ${receipt.blockNumber}).`)
+    txHash = await wallet.sendTransaction({
+      account,
+      chain: spec.chain,
+      to: spec.usdc,
+      data,
+    })
   }
 
   return {
@@ -209,7 +209,7 @@ export async function sendToken(args: {
     amount,
     amountHuman: formatUnits(amount, decimals),
     txHash,
-    blockNumber: receipt.blockNumber,
+    blockNumber: 0n, // not waited for; UI can fetch explorer for confirmation
     blockExplorerUrl: `${spec.blockExplorer}/tx/${txHash}`,
   }
 }

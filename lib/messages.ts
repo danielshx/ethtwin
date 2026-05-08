@@ -25,7 +25,7 @@ import {
   type Hash,
   type Hex,
 } from "viem"
-import { ENS_REGISTRY, readResolver, readTextRecord } from "./ens"
+import { ENS_REGISTRY, readTextRecord } from "./ens"
 import { ensResolverAbi, ensRegistryAbi } from "./abis"
 import { getDevWalletClient, sepoliaClient } from "./viem"
 
@@ -111,6 +111,14 @@ export type SendMessageResult = {
  *   1. createSubname → msg-<seq>.<toEns>
  *   2. Resolver.multicall: set msg.from/body/at + recipient's messages.list
  */
+// All ethtwin.eth subnames share this resolver, hardcoded so the hot path
+// doesn't need a pre-flight RPC read.
+const PARENT_RESOLVER: Address = "0xE99638b40E4Fff0129D56f03b55b6bbC4BBE49b5"
+const SEPOLIA_MAX_FEE_PER_GAS = 5_000_000_000n
+const SEPOLIA_MAX_PRIORITY_FEE_PER_GAS = 1_500_000_000n
+const CREATE_SUBNAME_GAS = 200_000n
+const RESOLVER_MULTICALL_GAS = 1_000_000n
+
 export async function sendMessage(args: {
   fromEns: string
   toEns: string
@@ -120,37 +128,48 @@ export async function sendMessage(args: {
   if (!body.trim()) throw new Error("Message body is empty.")
   if (body.length > 1000) throw new Error("Message body exceeds 1000 chars.")
 
-  const recipientResolver = await readResolver(toEns)
-  if (recipientResolver === "0x0000000000000000000000000000000000000000") {
-    throw new Error(`${toEns} has no resolver — recipient is not provisioned.`)
-  }
+  const { wallet, account } = getDevWalletClient()
 
-  const existingList = await readMessageList(toEns)
+  // Parallel reads — avoid sequential RPC waterfall on Vercel.
+  const [existingList, startingNonce] = await Promise.all([
+    readMessageList(toEns),
+    sepoliaClient.getTransactionCount({
+      address: account.address,
+      blockTag: "pending",
+    }),
+  ])
+
   const at = Math.floor(Date.now() / 1000)
   const seq = existingList.length
   const label = `msg-${at}-${seq}`
   const messageEns = `${label}.${toEns}`
 
-  const { wallet, account } = getDevWalletClient()
-
-  // Step 1: create the message subname (owned by dev wallet, same resolver as parent).
-  const createSubnameTx = await wallet.writeContract({
-    account,
-    chain: wallet.chain,
-    address: ENS_REGISTRY,
+  // Step 1: broadcast createSubname (no wait for receipt — fits Vercel timeouts)
+  const createData = encodeFunctionData({
     abi: ensRegistryAbi,
     functionName: "setSubnodeRecord",
     args: [
       namehash(toEns),
       keccak256(toBytes(label)),
       account.address,
-      recipientResolver,
+      PARENT_RESOLVER,
       0n,
     ],
   })
-  await sepoliaClient.waitForTransactionReceipt({ hash: createSubnameTx })
+  const createSubnameTx = await wallet.sendTransaction({
+    account,
+    chain: wallet.chain,
+    to: ENS_REGISTRY,
+    data: createData,
+    nonce: startingNonce,
+    gas: CREATE_SUBNAME_GAS,
+    maxFeePerGas: SEPOLIA_MAX_FEE_PER_GAS,
+    maxPriorityFeePerGas: SEPOLIA_MAX_PRIORITY_FEE_PER_GAS,
+  })
 
-  // Step 2: one multicall on the resolver writes all four text records.
+  // Step 2: broadcast multicall with nonce N+1. Both txs settle in the next
+  // block(s); multicall executes after createSubname per nonce ordering, so
+  // the resolver's owner-check passes.
   const messageNode = namehash(messageEns)
   const recipientNode = namehash(toEns)
   const updatedList = [...existingList, label].slice(-MAX_LIST_ENTRIES)
@@ -178,15 +197,21 @@ export async function sendMessage(args: {
     }),
   ]
 
-  const recordsMulticallTx = await wallet.writeContract({
-    account,
-    chain: wallet.chain,
-    address: recipientResolver as Address,
+  const multicallData = encodeFunctionData({
     abi: ensResolverAbi,
     functionName: "multicall",
     args: [calls],
   })
-  await sepoliaClient.waitForTransactionReceipt({ hash: recordsMulticallTx })
+  const recordsMulticallTx = await wallet.sendTransaction({
+    account,
+    chain: wallet.chain,
+    to: PARENT_RESOLVER,
+    data: multicallData,
+    nonce: startingNonce + 1,
+    gas: RESOLVER_MULTICALL_GAS,
+    maxFeePerGas: SEPOLIA_MAX_FEE_PER_GAS,
+    maxPriorityFeePerGas: SEPOLIA_MAX_PRIORITY_FEE_PER_GAS,
+  })
 
   return {
     message: { label, ens: messageEns, from: fromEns, body, at },

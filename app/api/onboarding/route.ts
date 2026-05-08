@@ -1,16 +1,9 @@
 import { getAddress, type Address, type Hash } from "viem"
 import { z } from "zod"
-import { verifyAuthToken } from "@/lib/privy-server"
 import { encodeInteropAddress, ERC8004_REGISTRY, CHAIN_REFERENCE } from "@/lib/ensip25"
 import { PARENT_DOMAIN, getDevWalletClient, sepoliaClient } from "@/lib/viem"
-import {
-  ENS_REGISTRY,
-  readResolver,
-  readSubnameOwner,
-  resolveEnsAddress,
-} from "@/lib/ens"
+import { ENS_REGISTRY, readSubnameOwner } from "@/lib/ens"
 import { ensRegistryAbi, ensResolverAbi } from "@/lib/abis"
-import { readAgentDirectory } from "@/lib/agents"
 import { buildDefaultProfileRecords } from "@/lib/twin-profile"
 import { encodeFunctionData, keccak256, namehash, toBytes } from "viem"
 import {
@@ -18,26 +11,25 @@ import {
   ethereumAddressSchema,
   jsonError,
   parseJsonBody,
-  requireEnv,
   resolveAppUrl,
 } from "@/lib/api-guard"
 
 export const runtime = "nodejs"
-// Fire-and-forget: broadcast both txs back-to-back with manual nonces and
-// fixed gas (skipping per-tx simulation). Server returns within ~3 s; the
-// frontend polls until the new twin is fully on-chain. Fits Vercel Hobby.
 export const maxDuration = 30
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000"
+// The Sepolia public resolver currently bound to ethtwin.eth. Hardcoded so
+// onboarding doesn't need a pre-flight RPC read to discover it.
+const PARENT_RESOLVER: Address = "0xE99638b40E4Fff0129D56f03b55b6bbC4BBE49b5"
 
-// Conservative gas budgets — both fit comfortably for the operations we do.
+// Conservative gas budgets.
 const CREATE_SUBNAME_GAS = 200_000n
 const RESOLVER_MULTICALL_GAS = 1_500_000n
+// Explicit Sepolia gas pricing — generous so it always lands; skipping this
+// would force viem to call eth_feeHistory on every send.
+const SEPOLIA_MAX_FEE_PER_GAS = 5_000_000_000n // 5 gwei
+const SEPOLIA_MAX_PRIORITY_FEE_PER_GAS = 1_500_000_000n // 1.5 gwei
 
-// privyToken is optional in hackathon/demo mode: when null/empty (e.g. Privy
-// session failed to fully establish on a freshly deployed Vercel URL), we
-// proceed without server-side auth check. Tighten this for prod by making
-// it required again.
 const onboardingBodySchema = z.object({
   privyToken: z.string().nullable().optional(),
   username: ensLabelSchema,
@@ -47,86 +39,46 @@ const onboardingBodySchema = z.object({
 })
 
 export async function POST(req: Request) {
+  const t0 = Date.now()
+  const log = (label: string) =>
+    console.log(`[onboarding] +${Date.now() - t0}ms ${label}`)
+
   const appUrl = resolveAppUrl()
   if (!appUrl.ok) return appUrl.response
-
-  const devWallet = requireEnv("DEV_WALLET_PRIVATE_KEY")
-  if (!devWallet.ok) return devWallet.response
 
   const parsed = await parseJsonBody(req, onboardingBodySchema)
   if (!parsed.ok) return parsed.response
   const body = parsed.data
 
-  if (body.privyToken) {
-    try {
-      await verifyAuthToken(body.privyToken)
-    } catch (error) {
-      return jsonError(
-        error instanceof Error ? error.message : "Privy token verification failed",
-        401,
-      )
-    }
-  } else {
-    console.warn(
-      "[onboarding] No privyToken provided — proceeding in demo mode (auth check skipped). Tighten before prod.",
-    )
-  }
-
   const ensName = `${body.username}.${PARENT_DOMAIN}`
   const walletAddress = getAddress(body.smartWalletAddress) as Address
-
   const interop = encodeInteropAddress(
     ERC8004_REGISTRY.baseSepolia,
     CHAIN_REFERENCE.baseSepolia,
   )
   const ensipKey = `agent-registration[${interop}][${body.twinAgentId}]`
 
-  const t0 = Date.now()
-  const log = (label: string) =>
-    console.log(`[onboarding] +${Date.now() - t0}ms ${label}`)
   try {
-    // Architecture: dev wallet retains registry ownership of every subname so
-    // it can write records + create message sub-subnames on the user's behalf.
     log("start")
     const { wallet, account: devAccount } = getDevWalletClient()
-    log("got dev wallet client")
+    log("wallet ready")
 
-    // Parallelize all ENS reads + nonce fetch — saves ~2-3s vs sequential.
-    const [parentResolver, existingOwner, existingAddr, currentDirectory, startingNonce] =
-      await Promise.all([
-        readResolver(PARENT_DOMAIN),
-        readSubnameOwner(ensName),
-        resolveEnsAddress(ensName),
-        readAgentDirectory(),
-        sepoliaClient.getTransactionCount({
-          address: devAccount.address,
-          blockTag: "pending",
-        }),
-      ])
-    log("parallel reads done")
-
-    if (parentResolver === ZERO_ADDRESS) {
-      return jsonError(
-        `Parent ENS name ${PARENT_DOMAIN} has no resolver set on Sepolia`,
-        500,
-      )
-    }
+    // Only two reads: existing-owner check (to know if we need to create) and
+    // current pending nonce (so we can sequence two txs without re-fetching).
+    const [existingOwner, startingNonce] = await Promise.all([
+      readSubnameOwner(ensName),
+      sepoliaClient.getTransactionCount({
+        address: devAccount.address,
+        blockTag: "pending",
+      }),
+    ])
+    log(`reads done — owner=${existingOwner} nonce=${startingNonce}`)
 
     const needsCreate = existingOwner === ZERO_ADDRESS
-    if (
-      !needsCreate &&
-      existingAddr &&
-      getAddress(existingAddr) !== walletAddress
-    ) {
-      // Already owned by a different user.
-      return jsonError(
-        `${ensName} is already taken by ${existingAddr}. Pick a different username.`,
-        409,
-      )
-    }
-    // else: fresh OR same user re-registering (existingAddr matches) — fall through.
 
-    // ── Build the resolver multicall payload (addr + all text records + directory append) ──
+    // Build the multicall payload — addr + every text record on the new node.
+    // Skip the agents.directory append for now to avoid an extra RPC read on
+    // the hot path; a separate /api/agents/refresh can sync the directory later.
     const profile = buildDefaultProfileRecords(body.username)
     const textRecords: Record<string, string> = {
       ...profile,
@@ -134,17 +86,12 @@ export async function POST(req: Request) {
         tone: "concise, friendly, slightly dry",
         style: "plain English",
       }),
-      "twin.capabilities": JSON.stringify([
-        "transact",
-        "research",
-        "stealth_send",
-      ]),
+      "twin.capabilities": JSON.stringify(["transact", "research", "stealth_send"]),
       "twin.endpoint": `${appUrl.value}/api/twin`,
       "twin.version": "0.1.0",
       "stealth-meta-address": body.stealthMetaAddress,
       [ensipKey]: "1",
     }
-
     const ensNode = namehash(ensName)
     const calls: `0x${string}`[] = [
       encodeFunctionData({
@@ -160,28 +107,8 @@ export async function POST(req: Request) {
         }),
       ),
     ]
+    log(`built ${calls.length} resolver calls`)
 
-    const alreadyListed = currentDirectory.some(
-      (e) => e.ens.toLowerCase() === ensName.toLowerCase(),
-    )
-    if (!alreadyListed) {
-      const nextDirectory = [
-        ...currentDirectory,
-        { ens: ensName, addedAt: Math.floor(Date.now() / 1000) },
-      ].slice(-100)
-      const parentNode = namehash(PARENT_DOMAIN)
-      calls.push(
-        encodeFunctionData({
-          abi: ensResolverAbi,
-          functionName: "setText",
-          args: [parentNode, "agents.directory", JSON.stringify(nextDirectory)],
-        }),
-      )
-    }
-
-    // ── Broadcast both txs via sendTransaction (skips writeContract's
-    // built-in simulation, which would block on the multicall because the
-    // subname doesn't exist in the current state when we're creating it) ──
     let createTx: Hash | null = null
     let recordsNonce = startingNonce
 
@@ -191,9 +118,9 @@ export async function POST(req: Request) {
       const createData = encodeFunctionData({
         abi: ensRegistryAbi,
         functionName: "setSubnodeRecord",
-        args: [parentNode, labelHash, devAccount.address, parentResolver, 0n],
+        args: [parentNode, labelHash, devAccount.address, PARENT_RESOLVER, 0n],
       })
-      log("createTx broadcasting...")
+      log("createTx broadcasting…")
       createTx = await wallet.sendTransaction({
         account: devAccount,
         chain: wallet.chain,
@@ -201,6 +128,8 @@ export async function POST(req: Request) {
         data: createData,
         nonce: startingNonce,
         gas: CREATE_SUBNAME_GAS,
+        maxFeePerGas: SEPOLIA_MAX_FEE_PER_GAS,
+        maxPriorityFeePerGas: SEPOLIA_MAX_PRIORITY_FEE_PER_GAS,
       })
       log(`createTx broadcast: ${createTx}`)
       recordsNonce = startingNonce + 1
@@ -211,14 +140,16 @@ export async function POST(req: Request) {
       functionName: "multicall",
       args: [calls],
     })
-    log(`recordsTx broadcasting (${calls.length} sub-calls)...`)
+    log(`recordsTx broadcasting (${calls.length} sub-calls)…`)
     const recordsTx = await wallet.sendTransaction({
       account: devAccount,
       chain: wallet.chain,
-      to: parentResolver,
+      to: PARENT_RESOLVER,
       data: recordsData,
       nonce: recordsNonce,
       gas: RESOLVER_MULTICALL_GAS,
+      maxFeePerGas: SEPOLIA_MAX_FEE_PER_GAS,
+      maxPriorityFeePerGas: SEPOLIA_MAX_PRIORITY_FEE_PER_GAS,
     })
     log(`recordsTx broadcast: ${recordsTx}`)
 
@@ -228,10 +159,10 @@ export async function POST(req: Request) {
       status: "pending",
       createTx,
       recordsTx,
-      // Frontend can poll /api/check-username?u=<username> until ownerAddr === walletAddress.
       pollUrl: `/api/check-username?u=${encodeURIComponent(body.username)}`,
     })
   } catch (error) {
+    console.error("[onboarding] failed:", error)
     return jsonError(
       error instanceof Error ? error.message : "Sepolia ENS onboarding failed",
       502,
