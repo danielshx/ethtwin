@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
+import { AgentProfileDialog, AvatarImage } from "@/components/agent-profile"
+import { buildAvatarUrl } from "@/lib/twin-profile"
 import { cn } from "@/lib/utils"
 
 type TwinChatProps = {
@@ -62,6 +64,11 @@ export function TwinChat({ ensName, className }: TwinChatProps) {
   const [input, setInput] = useState("")
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const isStreaming = status === "submitted" || status === "streaming"
+  const [profileOpen, setProfileOpen] = useState(false)
+  const avatarUrl = useMemo(() => {
+    const label = ensName.split(".")[0] ?? ensName
+    return buildAvatarUrl(label)
+  }, [ensName])
 
   useEffect(() => {
     const node = scrollRef.current
@@ -80,15 +87,17 @@ export function TwinChat({ ensName, className }: TwinChatProps) {
   return (
     <Card className={cn("flex flex-col gap-0 overflow-hidden p-0", className)}>
       <header className="flex items-center justify-between border-b border-white/10 px-4 py-3">
-        <div className="flex items-center gap-2">
-          <span className="grid h-7 w-7 place-items-center rounded-full bg-primary/20 text-primary">
-            <Sparkles className="h-4 w-4" />
-          </span>
+        <button
+          onClick={() => setProfileOpen(true)}
+          className="flex items-center gap-2 rounded-md px-1 -mx-1 py-1 text-left hover:bg-white/5"
+          title="View profile"
+        >
+          <AvatarImage src={avatarUrl} ens={ensName} size={32} />
           <div className="leading-tight">
             <div className="text-sm font-medium">{ensName}</div>
             <div className="text-xs text-muted-foreground">your AI twin</div>
           </div>
-        </div>
+        </button>
         <Badge variant="secondary" className="font-mono text-[10px]">
           <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-emerald-400" />
           live on {chainLabel()}
@@ -147,6 +156,12 @@ export function TwinChat({ ensName, className }: TwinChatProps) {
           </Button>
         )}
       </form>
+
+      <AgentProfileDialog
+        ens={profileOpen ? ensName : null}
+        open={profileOpen}
+        onOpenChange={setProfileOpen}
+      />
     </Card>
   )
 }

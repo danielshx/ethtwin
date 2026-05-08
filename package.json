@@ -21,6 +21,7 @@
     "send:token": "tsx --env-file=.env.local scripts/send-token.ts",
     "wallet:generate": "tsx --env-file=.env.local scripts/generate-dev-wallet.ts",
     "wallet:rotate": "tsx --env-file=.env.local scripts/rotate-dev-wallet.ts",
+    "twins:backfill": "tsx --env-file=.env.local scripts/backfill-twin-profiles.ts",
     "test:privy-key": "tsx --env-file=.env.local scripts/test-privy-key.ts"
   },
   "dependencies": {

@@ -12,6 +12,7 @@ import {
   setTextRecord,
 } from "@/lib/ens"
 import { addAgentToDirectory } from "@/lib/agents"
+import { buildDefaultProfileRecords } from "@/lib/twin-profile"
 import {
   ensLabelSchema,
   ethereumAddressSchema,
@@ -105,8 +106,9 @@ export async function POST(req: Request) {
     const addrTx = await setAddressRecord(ensName, walletAddress)
     await waitForTx(addrTx)
 
+    const profile = buildDefaultProfileRecords(body.username)
     const textRecords: Record<string, string> = {
-      description: `${body.username}'s AI co-pilot`,
+      ...profile,
       "twin.persona": JSON.stringify({
         tone: "concise, friendly, slightly dry",
         style: "plain English",

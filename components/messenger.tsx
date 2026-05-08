@@ -11,8 +11,14 @@ import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { addHistoryEntry } from "@/lib/history"
 import { cn } from "@/lib/utils"
+import { AgentProfileDialog, AvatarImage } from "@/components/agent-profile"
 
-type AgentEntry = { ens: string; addedAt: number }
+type AgentEntry = {
+  ens: string
+  addedAt: number
+  avatar?: string | null
+  description?: string | null
+}
 type Message = {
   label: string
   ens: string
@@ -39,6 +45,12 @@ export function Messenger({ myEnsName, getAuthToken, className }: MessengerProps
   const [threadLoading, setThreadLoading] = useState(false)
   const [composing, setComposing] = useState("")
   const [sending, setSending] = useState(false)
+  const [profileEns, setProfileEns] = useState<string | null>(null)
+
+  const selectedAgent = useMemo(
+    () => agents.find((a) => a.ens.toLowerCase() === selected?.toLowerCase()),
+    [agents, selected],
+  )
 
   // Combined thread between me and selected agent, sorted oldest → newest.
   const thread = useMemo<Message[]>(() => {
@@ -149,6 +161,15 @@ export function Messenger({ myEnsName, getAuthToken, className }: MessengerProps
       }
       if (!data.ok) {
         toast.error(data.error ?? "Send failed")
+        addHistoryEntry({
+          kind: "message",
+          status: "failed",
+          chain: "sepolia",
+          summary: `Failed message → ${selected}`,
+          description: body.slice(0, 80),
+          errorMessage: data.error,
+          syncTo: { ens: myEnsName, getAuthToken },
+        })
         return
       }
       setComposing("")
@@ -157,6 +178,7 @@ export function Messenger({ myEnsName, getAuthToken, className }: MessengerProps
       })
       addHistoryEntry({
         kind: "message",
+        status: "success",
         chain: "sepolia",
         summary: `Message → ${selected}`,
         description: data.message?.body
@@ -164,6 +186,7 @@ export function Messenger({ myEnsName, getAuthToken, className }: MessengerProps
             (data.message.body.length > 80 ? "…" : "")
           : body.slice(0, 80),
         explorerUrl: data.blockExplorerUrl,
+        syncTo: { ens: myEnsName, getAuthToken },
       })
       // Optimistic append + refresh.
       if (data.message) {
@@ -171,7 +194,17 @@ export function Messenger({ myEnsName, getAuthToken, className }: MessengerProps
       }
       loadThread()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Send failed")
+      const msg = err instanceof Error ? err.message : "Send failed"
+      toast.error(msg)
+      addHistoryEntry({
+        kind: "message",
+        status: "failed",
+        chain: "sepolia",
+        summary: `Failed message → ${selected}`,
+        description: body.slice(0, 80),
+        errorMessage: msg,
+        syncTo: { ens: myEnsName, getAuthToken },
+      })
     } finally {
       setSending(false)
     }
@@ -226,18 +259,40 @@ export function Messenger({ myEnsName, getAuthToken, className }: MessengerProps
               </div>
             ) : (
               agents.map((a) => (
-                <button
+                <div
                   key={a.ens}
-                  onClick={() => selectAgent(a.ens)}
                   className={cn(
-                    "w-full rounded-md px-3 py-2 text-left font-mono text-xs transition",
+                    "group flex items-center gap-2 rounded-md transition",
                     selected === a.ens
-                      ? "bg-primary/15 text-primary"
-                      : "hover:bg-white/5 text-muted-foreground",
+                      ? "bg-primary/15"
+                      : "hover:bg-white/5",
                   )}
                 >
-                  {a.ens}
-                </button>
+                  <button
+                    onClick={() => selectAgent(a.ens)}
+                    className="flex flex-1 items-center gap-2 px-2 py-2 text-left"
+                  >
+                    <AvatarImage src={a.avatar ?? null} ens={a.ens} size={28} />
+                    <span
+                      className={cn(
+                        "truncate font-mono text-xs",
+                        selected === a.ens ? "text-primary" : "text-muted-foreground",
+                      )}
+                    >
+                      {a.ens}
+                    </span>
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setProfileEns(a.ens)
+                    }}
+                    title="View profile"
+                    className="px-2 py-2 text-[10px] text-muted-foreground opacity-0 transition group-hover:opacity-100 hover:text-primary"
+                  >
+                    info
+                  </button>
+                </div>
               ))
             )}
           </div>
@@ -247,10 +302,17 @@ export function Messenger({ myEnsName, getAuthToken, className }: MessengerProps
       {/* Main — chat view */}
       <section className="flex flex-col">
         <header className="flex items-center gap-2 border-b border-white/10 px-5 py-3">
-          <Mail className="h-4 w-4 text-muted-foreground" />
+          {!selected && <Mail className="h-4 w-4 text-muted-foreground" />}
           {selected ? (
             <>
-              <span className="font-mono text-sm">{selected}</span>
+              <button
+                onClick={() => setProfileEns(selected)}
+                className="flex items-center gap-2 rounded-md px-1 -mx-1 py-1 hover:bg-white/5"
+                title="View profile"
+              >
+                <AvatarImage src={selectedAgent?.avatar ?? null} ens={selected} size={28} />
+                <span className="font-mono text-sm">{selected}</span>
+              </button>
               <Badge variant="secondary" className="ml-auto font-mono text-[10px]">
                 ENS-native messages
               </Badge>
@@ -318,6 +380,12 @@ export function Messenger({ myEnsName, getAuthToken, className }: MessengerProps
           </form>
         ) : null}
       </section>
+
+      <AgentProfileDialog
+        ens={profileEns}
+        open={profileEns !== null}
+        onOpenChange={(open) => !open && setProfileEns(null)}
+      />
     </Card>
   )
 }

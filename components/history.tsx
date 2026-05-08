@@ -37,10 +37,11 @@ const KIND_COLOR: Record<HistoryKind, string> = {
 
 type HistoryProps = {
   className?: string
+  ensName?: string | null
 }
 
-export function History({ className }: HistoryProps) {
-  const entries = useHistory()
+export function History({ className, ensName }: HistoryProps) {
+  const entries = useHistory({ ens: ensName })
   const [filter, setFilter] = useState<FilterKind>("all")
 
   const filtered = useMemo(() => {
@@ -122,20 +123,37 @@ function Row({ entry }: { entry: HistoryEntry }) {
     hour: "2-digit",
     minute: "2-digit",
   })
+  const failed = entry.status === "failed"
   return (
-    <li className="px-5 py-3">
+    <li className={cn("px-5 py-3", failed && "bg-destructive/5")}>
       <div className="flex items-start gap-3">
         <span
           className={cn(
-            "mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full bg-white/5",
-            colorClass,
+            "mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full",
+            failed ? "bg-destructive/20 text-destructive" : "bg-white/5",
+            !failed && colorClass,
           )}
         >
           <Icon className="h-3.5 w-3.5" />
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <span className="text-sm font-medium">{entry.summary}</span>
+            <span
+              className={cn(
+                "text-sm font-medium",
+                failed && "text-destructive",
+              )}
+            >
+              {entry.summary}
+            </span>
+            {failed && (
+              <Badge
+                variant="secondary"
+                className="bg-destructive/20 font-mono text-[10px] text-destructive"
+              >
+                failed
+              </Badge>
+            )}
             {entry.chain && (
               <Badge variant="secondary" className="font-mono text-[10px]">
                 {entry.chain}
@@ -145,6 +163,11 @@ function Row({ entry }: { entry: HistoryEntry }) {
           {entry.description && (
             <p className="mt-0.5 break-words font-mono text-[11px] text-muted-foreground">
               {entry.description}
+            </p>
+          )}
+          {entry.errorMessage && (
+            <p className="mt-0.5 break-words font-mono text-[11px] text-destructive/80">
+              {entry.errorMessage}
             </p>
           )}
           <div className="mt-1 flex items-center gap-3 font-mono text-[10px] text-muted-foreground">
