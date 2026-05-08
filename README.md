@@ -2,7 +2,7 @@
 
 > AI co-pilot for your on-chain life. Voice-first. Privacy by default. Lives in ENS.
 
-Built at **ETHPrague 2026** in 48 hours.
+Built at **ETHPrague 2026** in 48 hours
 
 ## What it does
 
