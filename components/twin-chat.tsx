@@ -10,6 +10,7 @@ import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { AgentProfileDialog, AvatarImage } from "@/components/agent-profile"
+import { X402Flow } from "@/components/x402-flow"
 import { buildAvatarUrl } from "@/lib/twin-profile"
 import { cn } from "@/lib/utils"
 
@@ -121,7 +122,7 @@ export function TwinChat({ ensName, className }: TwinChatProps) {
                   exit={{ opacity: 0 }}
                   transition={{ duration: 0.2 }}
                 >
-                  <MessageBubble message={m} />
+                  <MessageBubble message={m} fromEns={ensName} />
                 </motion.li>
               ))}
             </AnimatePresence>
@@ -168,7 +169,13 @@ export function TwinChat({ ensName, className }: TwinChatProps) {
 
 type ChatMessage = ReturnType<typeof useChat>["messages"][number]
 
-function MessageBubble({ message }: { message: ChatMessage }) {
+function MessageBubble({
+  message,
+  fromEns,
+}: {
+  message: ChatMessage
+  fromEns: string
+}) {
   const isUser = message.role === "user"
   return (
     <div className={cn("flex w-full", isUser ? "justify-end" : "justify-start")}>
@@ -181,7 +188,7 @@ function MessageBubble({ message }: { message: ChatMessage }) {
         )}
       >
         {message.parts.map((part, i) => (
-          <MessagePart key={i} part={part} />
+          <MessagePart key={i} part={part} fromEns={fromEns} />
         ))}
       </div>
     </div>
@@ -190,7 +197,13 @@ function MessageBubble({ message }: { message: ChatMessage }) {
 
 type MessagePartType = ChatMessage["parts"][number]
 
-function MessagePart({ part }: { part: MessagePartType }) {
+function MessagePart({
+  part,
+  fromEns,
+}: {
+  part: MessagePartType
+  fromEns: string
+}) {
   if (part.type === "text") {
     return <p className="whitespace-pre-wrap leading-relaxed">{part.text}</p>
   }
@@ -201,6 +214,23 @@ function MessagePart({ part }: { part: MessagePartType }) {
       "output" in part && state === "output-available"
         ? (part.output as ToolOutput)
         : null
+    // While `hireAgent` is mid-flight we don't have an output yet, but we
+    // already know the target ENS from the streamed input. Pull it so the
+    // x402 flow animation can render *during* the call, not just after.
+    const inFlightInput =
+      toolName === "hireAgent" && "input" in part
+        ? (part.input as { agentEnsName?: string } | undefined)
+        : undefined
+    const hireTargetEns =
+      output?.agentEnsName ?? inFlightInput?.agentEnsName ?? null
+    const showHireFlow =
+      toolName === "hireAgent" &&
+      hireTargetEns &&
+      (state === "input-available" ||
+        state === "input-streaming" ||
+        state === "output-available")
+    const flowState: "active" | "done" =
+      state === "output-available" && output?.ok ? "done" : "active"
     return (
       <div className="my-2 space-y-1.5">
         <div className="flex flex-wrap items-center gap-2 rounded-md border border-white/10 bg-black/30 px-2.5 py-1.5 text-xs">
@@ -210,6 +240,14 @@ function MessagePart({ part }: { part: MessagePartType }) {
           <span className="text-muted-foreground">{labelForState(state)}</span>
           {output ? <AgentBadges output={output} toolName={toolName} /> : null}
         </div>
+        {showHireFlow ? (
+          <X402Flow
+            fromEns={fromEns}
+            toEns={hireTargetEns!}
+            verified={output?.verified}
+            state={flowState}
+          />
+        ) : null}
         {output ? <AgentDetail output={output} toolName={toolName} /> : null}
       </div>
     )

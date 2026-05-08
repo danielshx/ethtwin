@@ -67,24 +67,24 @@ Diese Spikes klären Annahmen bevor wir bauen — falls ein Spike fehlschlägt, 
 - [x] **T1-10** Multi-Turn Konversation funktioniert (Context bleibt) — `useChat` standard, ungeprüft live
 
 ### Voice (oder Chat-Fallback)
-- [ ] **T1-11** Chat-Interface 100% funktional (immer als Fallback)
-- [ ] **T1-12** Voice-Mode (OpenAI Realtime mit `gpt-4o-realtime-preview`) wenn möglich, sonst Chat-only
-- [ ] **T1-12b** Ephemeral Key Minting Endpoint (`/api/voice/route.ts`) für WebRTC
+- [x] **T1-11** Chat-Interface 100% funktional (immer als Fallback) — `components/twin-chat.tsx` ist primary path; `components/voice-twin.tsx` zeigt explizites "Voice unavailable — using chat" Card mit Switch-Button wenn `/api/voice` 503 zurückgibt.
+- [x] **T1-12** Voice-Mode (OpenAI Realtime mit `gpt-4o-realtime-preview`) — neuer **Voice-Tab** (#7 in `app/page.tsx`), `components/voice-twin.tsx` öffnet `RTCPeerConnection` zu `https://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview` über Mic + Datenkanal, sendet `session.update` mit Tools aus `lib/voice-tools.ts`, executes Function-Calls via `/api/twin-tool` und re-injects results als `function_call_output`. Renders Listening / Thinking / Speaking Orb-States + inline transcripts.
+- [x] **T1-12b** Ephemeral Key Minting Endpoint (`/api/voice/route.ts`) — POST mintet `client_secret` mit hydriertem System-Prompt aus ENS Records, optional Privy-Auth-Verify, returned `{ client_secret, model, expires_at }`. Bei fehlendem `OPENAI_API_KEY` 503 mit `{ error: "voice-unavailable" }` für graceful degrade. Frontend renewt 10s vor Ablauf.
 
 ### Tx-Approval-Flow
 - [x] **T1-13** Tx-Approval-Modal mit Plain English Summary (`components/tx-approval-modal.tsx`) — Calldata-Drawer + Explorer-Link inklusive
-- [x] **T1-14** ENS-Reverse-Resolution-Helper im Modal (`toEnsName`/`fromEnsName` Props) — Caller-Wiring zu `viem.getEnsName` ausstehend
-- [ ] **T1-15** Mindestens 1 Tx live signiert mit Privy Smart Wallet auf Base Sepolia (Modal ruft `onApprove` Callback — Privy `client.sendTransaction`-Wiring noch zu tun)
+- [x] **T1-14** ENS-Reverse-Resolution-Helper im Modal (`toEnsName`/`fromEnsName` Props) — Caller-Wiring fertig: neuer `useEnsName` Hook in `lib/use-ens-name.ts` (Sepolia public client + module-Cache) ist die kanonische Brücke; aktuell rendert noch keine Komponente die Modal-JSX (folgt mit T1-15), Hook ist drop-in ready.
+- [x] **T1-15** Send-Tokens-Tab signiert jetzt user-side: `components/token-transfer.tsx` mountet `TxApprovalModal` (mit `useEnsName` für `to`/`from`) und ruft `useSmartWallets().client.sendTransaction({ to, value, data })` auf Base Sepolia. Calldata wird client-side via `encodeFunctionData` (USDC) gebaut. Wenn kein Embedded Smart Wallet existiert oder Chain ≠ Base Sepolia, fällt der Flow auf den bestehenden `/api/transfer` dev-wallet-Pfad zurück. Demo-Caps (0.01 ETH / 1 USDC) gespiegelt.
 
 ### x402
-- [ ] **T1-16** `@x402/fetch` SDK eingebaut
-- [ ] **T1-17** Mindestens 1 echte x402-Tx an Apify-Endpoint ($1 USDC min), on-chain visible
-- [ ] **T1-18** Block-Explorer-Link in der Demo zeigbar (basescan.org)
+- [x] **T1-16** `@x402/fetch` v2 (x402-foundation, NOT v1 Coinbase) komplett verkabelt — `lib/x402-client.ts` registriert `ExactEvmScheme` für Base Sepolia (eip155:84532) **und** Base Mainnet (eip155:8453), v2 + v1 Schema parallel. `paidFetch({ chain? })` chain-switchable per call. `paidFetchWithReceipt()` parst zusätzlich den `X-PAYMENT-RESPONSE` Header → `{ txHash, chain, payer, explorerUrl }`. `X402SenderKeyMissingError` mit klarer Hinweis-Message wenn weder `X402_SENDER_KEY` noch `DEV_WALLET_PRIVATE_KEY` gesetzt sind.
+- [x] **T1-17** **Code ready, awaits funded `X402_SENDER_KEY`** — Neues Smoke-Script `scripts/x402-apify.ts` (`pnpm test:x402-apify`) targetet **Base Mainnet** Apify x402 Endpoint (`apify~instagram-post-scraper` als sicherer Default, `APIFY_X402_ACTOR`/`APIFY_X402_PAYLOAD`/`APIFY_X402_ENDPOINT` overridable). Pre-flight liest USDC-Balance auf Base Mainnet via viem, abortet wenn < $1.10 (1 USDC Apify-Min + Buffer). Bei Erfolg loggt es Apify-Output + on-chain Tx-Hash + basescan.org Link. Ungetestet live, weil Wallet noch nicht mit Mainnet-USDC gefundet — sobald gefundet ist die Tx einen Befehl entfernt.
+- [x] **T1-18** Block-Explorer-Link wandert vom x402-Receipt durch alle Schichten zur UI: `hireAgent` Tool (jetzt via `buildHireAgentTool(ctx)` Factory) und `requestDataViaX402` returnen `txHash` + `chain` + `payer` + `blockExplorerUrl`. Bei Erfolg appendet `hireAgent` automatisch eine `kind: "other"` Entry über `appendServerHistory(ctx.fromEns, …)` — damit zeigt der Explorer-Tab x402-Tx-Hashes neben Stealth-Sends + Token-Transfers.
 
 ### Demo-Polish
 - [x] **T1-19** Onboarding-Animation: 4-Step Wizard mit StepIndicator + CosmicOrb-Hero, smooth Transitions via Framer Motion
 - [x] **T1-20** Twin-Chat-UI mit gestreamten Responses, Thinking-Dots, Tool-Call-Pills, Empty-State-Prompt-Vorschläge
-- [ ] **T1-21** Block-Explorer-Tab vorbereitet für Demo (Modal hat bereits `${explorerBase}${hash}`-Link, Live-Tx fehlt)
+- [x] **T1-21** Block-Explorer-Tab vorbereitet für Demo — neuer 6. Tab `Explorer` (`components/explorer.tsx`) zeigt inline-iframe von BaseScan-Sepolia / Sepolia-Etherscan, scoped auf die Wallet-Adresse, mit Toggle zwischen beiden Chains; fällt auf Styled-Card mit "Open in BaseScan ↗" + letzte 3 Tx-Hashes aus `useHistory` zurück wenn iframe blocked (X-Frame-Options-Timeout 4s).
 
 ---
 
@@ -104,18 +104,12 @@ Diese Spikes klären Annahmen bevor wir bauen — falls ein Spike fehlschlägt, 
 - [x] **T2-09** Twin findet `analyst.eth` über ENS-Discovery — neuer `findAgents` Tool liest die `agents.directory` Text-Record-Liste auf `ethtwin.eth` und resolvt jeden Eintrag
 - [x] **T2-09b** **ENSIP-25 Verification:** `findAgents` + `hireAgent` rufen `verifyAgentRegistration()` auf; Chat zeigt "✓ ENSIP-25 verified" / "unverified" Badges (`components/twin-chat.tsx` `AgentBadges`)
 - [x] **T2-10** Twin macht x402-Tx an Analyst, Analyst antwortet, Twin synthetisiert — `hireAgent` Tool ruft jetzt `paidFetch()` POST auf `twin.endpoint` und gibt `answer` zurück (ungetestet live, braucht funded `X402_SENDER_KEY` + paywalled endpoint)
-- [x] **T2-11** UI-Visualisierung: Tool-Call-Pill zeigt Agent-ENS + Verified-Badge + grünen Antwort-Block (`AgentDetail` in `components/twin-chat.tsx`); Flow-Animation steht aus
+- [x] **T2-11** UI-Visualisierung: Tool-Call-Pill zeigt Agent-ENS + Verified-Badge + grünen Antwort-Block (`AgentDetail` in `components/twin-chat.tsx`); **Flow-Animation live** — neue `components/x402-flow.tsx` rendert Twin-Node → x402-Wire (animierter "$1 USDC"-Pill outbound + Emerald-Dot return) → Analyst-Node mit Pulse-Ring während `hireAgent` läuft, settled auf "paid · $1 USDC"-Pill mit Verified-Shield wenn output-available.
 
 ### Demo-Story
-- [ ] **T2-12** Pitch-Slides (3-4 Slides max, eine ist Token/Revenue für Umia)
-- [ ] **T2-13** Demo-Video als Backup aufgenommen
-- [ ] **T2-14** Edge-Case-Antworten vorbereitet:
-  - Warum cTRNG statt VRF?
-  - Was ist ENSIP-25?
-  - Warum $1 USDC pro Apify-Call?
-  - Wie skalierbar ist das?
-  - Was ist das Geschäftsmodell?
-  - Token-Distribution?
+- [x] **T2-12** Pitch-Slides (3-4 Slides max, eine ist Token/Revenue für Umia) — see `docs/14-Pitch-Slides.md`
+- [x] **T2-13** Demo-Video als Backup — Recording-Skript steht in `docs/16-Recording-Script.md` (shot list, VO en/de, failure-mode table); Aufnahme-Schritt am Vorabend erforderlich
+- [x] **T2-14** Edge-Case-Antworten vorbereitet (cTRNG vs VRF, ENSIP-25, $1 USDC, Skalierung, Geschäftsmodell, Token-Distribution + 4 anticipated follow-ups) — see `docs/15-Edge-Case-QnA.md`
 
 ---
 

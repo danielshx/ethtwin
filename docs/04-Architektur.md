@@ -2,7 +2,7 @@
 
 > **Verifiziert:** Alle Lib-Versionen + API-Patterns aus echter Recherche. Code-Beispiele in `docs/12-Code-Beispiele.md`.
 >
-> **Stand 2026-05-08, abends:** Backend-Stack komplett gestubbt, Frontend-Komponenten + Auth-gated Homepage stehen, `pnpm build` clean. Live-Wiring (Privy-Login, NameStone-Mint, x402-Tx) hängt nur noch an gesetzten API-Keys.
+> **Stand 2026-05-09:** Onboarding live (mintet Sepolia-ENS-Subname + 7 Text Records + ENSIP-25 + agents.directory in 1 multicall), 5-Tab-UI (Chat / Messenger / Send Tokens / Stealth Send / History), Cosmic-Orb-Hero im Stealth-Send-Tab, `pnpm ens:provision-analyst` für den Sample-Agent. `pnpm build` clean. Live-Wiring (Privy-Login, x402-Tx) hängt nur noch an gesetzten API-Keys + funded dev wallet.
 
 ## High-Level Diagramm
 
@@ -34,45 +34,41 @@
                      │
         ┌────────────┼────────────┬──────────┬─────────────┬──────────────┐
         ▼            ▼            ▼          ▼             ▼              ▼
-   ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌─────────┐ ┌──────────┐
-   │ Anthropic│ │  OpenAI  │ │  Apify   │ │Orbitport │ │  Privy  │ │NameStone │
-   │ Sonnet 4.6│ │(Realtime)│ │  (x402)  │ │ (cTRNG)  │ │(Wallets)│ │ (ENS)    │
-   └──────────┘ └──────────┘ └──────────┘ └──────────┘ └─────────┘ └──────────┘
+   ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌─────────┐
+   │ Anthropic│ │  OpenAI  │ │  Apify   │ │Orbitport │ │  Privy  │
+   │ Sonnet 4.6│ │(Realtime)│ │  (x402)  │ │ (cTRNG)  │ │(Wallets)│
+   └──────────┘ └──────────┘ └──────────┘ └──────────┘ └─────────┘
                      │
                      ▼
    ┌──────────────────────────────────────────────────────────┐
    │                     CHAIN LAYER                           │
-   │  Mainnet/Sepolia ENS · NameStone offchain Resolver        │
-   │  Base Sepolia Smart Wallet (Privy + Kernel/ZeroDev)       │
+   │  Sepolia ENS direct (ethtwin.eth + every twin as subname) │
+   │  Base Sepolia (USDC stealth sends + x402 settlement)      │
+   │  Privy Embedded Smart Wallet (Kernel/ZeroDev)             │
    │  ERC-8004 IdentityRegistry (0x8004A818...) on Base Sep    │
-   │  EIP-5564 Stealth Address Send (Announcer + ERC-6538)     │
+   │  EIP-5564 Stealth Address Send (cosmic-seeded ephemerals) │
    │  x402 Payment Settlement (USDC via EIP-3009)              │
    └──────────────────────────────────────────────────────────┘
 ```
 
-## ENS Strategy Decision Tree
+## ENS Strategy Decision (entschieden 2026-05-08)
 
-We need to decide in **Phase 0 (Stunde 0-3)** with workemon:
+**Gewählt: on-chain Sepolia ENS direkt.** Wir besitzen `ethtwin.eth` auf Sepolia
+mit der dev wallet als Registry-Owner und mintet jeden Twin als echten
+Sub-NFT-Subname. Das gibt uns:
 
-```
-                    ENS Subnames Strategy
-                            │
-      ┌─────────────┬───────┼───────┬─────────────┐
-      ▼             ▼       ▼       ▼             ▼
-  NameStone ⭐  Sepolia  Mainnet  Durin (Base)
-  ──────────   ──────────  ────────  ────────────
-  REST API     Free        ETH cost  30-min setup
-  Gasless      Less authentic Real ENS  L2-native
-  Fast         Easy        Real Subnames Cool narrative
-  Centralized  No tx       Mature        Solidity req
-  
-  PICK if:     PICK if:    PICK if:   PICK if:
-  Demo focus,  Backup +    >$50 ETH   ETH-Dev
-  no ETH       authentic   budget     Solidity
-                                      confident
-```
+- ✅ Echtes ENS, keine CCIP-Read-Abhängigkeit
+- ✅ Volle Multicall-Kontrolle über den Resolver (1 Tx für addr + 7 Text-Records + agents.directory)
+- ✅ Subnames sind selber wieder Parents — daher der ENS-Messenger:
+  jede Nachricht ist `msg-<ts>-<seq>.<recipient>.ethtwin.eth` mit `from/body/at` Records
+- ⚠ Kostet Sepolia-Gas (kostenlos, aber rate-limited)
 
-**Default decision:** **NameStone** for offchain subnames unless workemon strongly recommends another path. NameStone uses CCIP-Read (ERC-3668) so subnames resolve via standard ENS resolvers worldwide.
+**NameStone (`lib/namestone.ts`)** bleibt als Backup-Pfad eingecheckt, ist aber
+aktuell ungenutzt — falls Sepolia-RPCs während des Hackathons rumzicken,
+können wir notfalls dorthin pivotieren.
+
+Andere Optionen die wir verworfen haben: Mainnet (zu teuer), Durin (Solidity-Effort
+für 48h zu hoch), reine NameStone (kein on-chain Messenger möglich).
 
 ## Datenfluss-Beispiele
 
@@ -203,55 +199,67 @@ ethtwin/
 │   │   ├── page.tsx                # Main chat / voice UI
 │   │   └── settings/page.tsx
 │   ├── api/
-│   │   ├── twin/route.ts           # AI agent loop (Claude 4.6 + tools)
+│   │   ├── twin/route.ts           # AI agent loop (Claude 4.6 + buildTwinTools factory)
 │   │   ├── voice/route.ts          # OpenAI Realtime ephemeral key minter
-│   │   ├── twin-tool/route.ts      # Tool execution proxy from voice
+│   │   ├── twin-tool/route.ts      # Tool execution proxy (legacy voice path)
 │   │   ├── x402/route.ts           # x402 client wrapper for Apify
 │   │   ├── ens/route.ts            # ENS read/write helpers
-│   │   ├── stealth/route.ts        # EIP-5564 helpers
+│   │   ├── stealth/route.ts        # EIP-5564 stealth-address generator
+│   │   ├── stealth/send/route.ts   # Privy-gated USDC stealth send (1 USDC cap)
 │   │   ├── cosmic-seed/route.ts    # Orbitport proxy + caching
-│   │   ├── onboarding/route.ts     # Privy verify + NameStone subname creation
+│   │   ├── onboarding/route.ts     # Privy verify → 1 multicall (subname + 7 records + ENSIP-25 + agents.directory)
+│   │   ├── messages/route.ts       # ENS-Subname-Messenger (POST send + GET inbox)
+│   │   ├── transfer/route.ts       # Privy-gated multichain ETH/USDC transfer
+│   │   ├── wallet-summary/route.ts # Read balances + ENS reverse for an address
+│   │   ├── history/route.ts        # Server-side history per ENS
+│   │   ├── check-username/route.ts # Polled by frontend after onboarding
+│   │   ├── agent/[ens]/route.ts    # Full agent profile (avatar, persona, capabilities)
 │   │   └── agents/
-│   │       ├── route.ts            # GET on-chain agent directory (agents.directory)
-│   │       └── analyst/route.ts    # x402-enabled sample agent (withX402 + Coinbase facilitator)
+│   │       ├── route.ts            # GET on-chain agent directory (enriched with avatar/description)
+│   │       └── analyst/route.ts    # x402-paywalled sample agent (withX402 + Coinbase facilitator)
 │   ├── providers.tsx               # PrivyProvider + SmartWalletsProvider wrapper
 │   ├── layout.tsx
 │   └── globals.css
 ├── components/
-│   ├── ui/                         # shadcn components (button, card, input,
-│   │                               # dialog, badge, sonner, scroll-area,
-│   │                               # separator, label) — installed
-│   ├── twin-chat.tsx               # ✅ useChat from @ai-sdk/react v6 +
-│   │                               #    DefaultChatTransport, tool-call pills,
-│   │                               #    empty-state prompts
-│   ├── twin-voice.tsx              # ⏳ useVoice WebRTC hook usage (Phase 2)
-│   ├── cosmic-orb.tsx              # ✅ Hero animation (Framer Motion) +
-│   │                               #    useCosmicSeed() hook
-│   ├── tx-approval-modal.tsx       # ✅ Plain-English summary, ENS-aware,
-│   │                               #    calldata drawer, explorer link
-│   ├── ens-name-display.tsx        # ⏳ inline reverse-resolve helper (Phase 1)
+│   ├── ui/                         # shadcn primitives
+│   ├── twin-chat.tsx               # ✅ useChat + ENSIP-25 verified-badge + sendMessage rendering
+│   ├── messenger.tsx               # ✅ ENS-Subname-Messenger UI (one subname per message)
+│   ├── token-transfer.tsx          # ✅ Multichain ETH/USDC send w/ hard caps
+│   ├── stealth-send.tsx            # ✅ HERO TAB: CosmicOrb during EIP-5564 USDC send
+│   ├── history.tsx                 # ✅ Hybrid local + server history viewer
+│   ├── agent-profile.tsx           # ✅ Avatar + Persona + Capabilities + Stealth-Meta dialog
+│   ├── cosmic-orb.tsx              # ✅ Framer-Motion hero (idle/fetching/revealed phases)
+│   ├── tx-approval-modal.tsx       # ✅ Plain-English summary, ENS-aware
 │   └── onboarding-flow.tsx         # ✅ 4-step wizard wraps CosmicOrb hero
-├── hooks/
-│   └── useVoice.ts                 # WebRTC + ephemeral key reconnect
 ├── lib/
-│   ├── agents.ts                   # On-chain agent directory (read/add via ENS)
-│   ├── ens.ts                      # ENS read (viem)
+│   ├── agents.ts                   # On-chain agent directory (read/add via ENS text record)
+│   ├── ens.ts                      # ENS read/write (viem) — direct Sepolia
 │   ├── ensip25.ts                  # ENSIP-25 verification + ERC-7930 helper
-│   ├── namestone.ts                # NameStone API client
+│   ├── namestone.ts                # ⏸ Backup path — currently unused
+│   ├── messages.ts                 # ENS-Subname-Messenger primitives
+│   ├── transfers.ts                # Multichain ETH/USDC transfers
+│   ├── payments.ts                 # Stealth USDC on Base Sepolia
 │   ├── stealth.ts                  # EIP-5564 + cosmic seed injection
-│   ├── cosmic.ts                   # Orbitport client with cache
-│   ├── x402-client.ts              # @x402/fetch wrapper
-│   ├── twin-tools.ts               # AI SDK tool implementations
-│   ├── viem.ts                     # viem clients (Sepolia, Base Sepolia)
+│   ├── cosmic.ts                   # Orbitport client with rolling cache + mock fallback
+│   ├── x402-client.ts              # @x402/fetch (v2) wrapper + paidFetch()
+│   ├── twin-tools.ts               # AI SDK tool surface + buildTwinTools({ fromEns }) factory
+│   ├── tx-decoder.ts               # Calldata → plain English (LLM-augmented)
+│   ├── wallet-summary.ts           # Address summary helper
+│   ├── twin-profile.ts             # Default profile records (Pollinations.ai avatar)
+│   ├── history.ts                  # Client-side history (localStorage + sync)
+│   ├── history-server.ts           # File-based server history per ENS
+│   ├── viem.ts                     # viem clients (Sepolia, Base Sepolia, dev wallet)
 │   ├── privy-server.ts             # @privy-io/node token verification
-│   └── prompts.ts                  # System prompts (loaded from ENS)
-├── public/
-│   └── (sounds, satellite icons)
+│   ├── prompts.ts                  # System prompts (hydrated from ENS records)
+│   ├── api-guard.ts                # Zod request parsing + env guards
+│   └── abis.ts                     # ENS Registry / Resolver / ERC-20
 ├── scripts/
-│   ├── test-chain.ts               # Smoke test
-│   ├── test-claude.ts              # LLM test
-│   ├── test-stealth.ts             # Stealth SDK spike
-│   └── warm-cosmic-cache.ts        # Pre-demo cache fill
+│   ├── test-{chain,claude,decoder,x402,x402-mock,privy-key}.ts
+│   ├── ens:{check-parent,provision,provision-analyst,read,set-text,stealth-provision}
+│   ├── send:{token,stealth-usdc}
+│   ├── wallet:{generate,rotate}
+│   ├── twins:backfill (backfill-twin-profiles.ts)
+│   └── warm-cosmic-cache.ts
 ├── docs/
 │   └── (alle .md hier)
 ├── .claude/
@@ -285,8 +293,8 @@ ethtwin/
 
 ```
 ┌─────────────────────────────────────────┐
-│   ENS (Sepolia/Mainnet/NameStone)        │
-│   daniel.ethtwin.eth                   │
+│   ENS (Sepolia, owned by ethtwin.eth)    │
+│   daniel.ethtwin.eth                     │
 │   Text Records:                          │
 │   - agent-registration[<reg>][42] = "1"  │
 └─────────────────┬────────────────────────┘
@@ -307,7 +315,8 @@ For 48h hackathon: We can mock the ERC-8004 entry (use a known-existing Agent ID
 
 | Layer | Public | Server-only |
 |---|---|---|
-| API Keys (Anthropic, OpenAI, Apify, Orbitport, NameStone) | ❌ | ✅ Vercel env vars only |
+| API Keys (Anthropic, OpenAI, Apify, Orbitport) | ❌ | ✅ Vercel env vars only |
+| Dev wallet private key (mints subnames + signs server-side txs) | ❌ | ✅ `DEV_WALLET_PRIVATE_KEY` env only |
 | Privy App Secret | ❌ | ✅ `@privy-io/node` server validation |
 | User Wallet Private Keys | ❌ | ✅ Privy custodied (TEE + sharding) |
 | ENS Text Records | ✅ | (public chain data) |
@@ -324,8 +333,7 @@ For 48h hackathon: We can mock the ERC-8004 entry (use a known-existing Agent ID
 | Voice round-trip (speak → response start) | <2s | ⚠️ depends on user network + WebRTC negotiation |
 | x402 Tx confirmation on Base Sepolia | <5s | ✅ Base Sepolia ~2s blocks |
 | cTRNG seed delivery (with cache) | <500ms | ⚠️ to verify with Pedro |
-| ENS subname creation (NameStone) | <2s | ✅ REST API, gasless |
-| ENS subname creation (on-chain) | <30s | ✅ one-time onboarding cost |
+| ENS subname creation (Sepolia, single multicall) | <30s | ✅ live: 1 createSubname + 1 multicall (addr + 7 records + agents.directory) |
 | Stealth address generation | <2s | ✅ client-side compute |
 | OpenAI Realtime ephemeral key mint | <500ms | ✅ |
 
@@ -339,6 +347,6 @@ Cache aggressively: cTRNG samples in 60s rolling window (cache 10 fresh), ENS Te
 | Cosmic seed (Orbitport) | h30 | Cached samples + real attestations |
 | Stealth on-chain | h36 | Client-side gen only + mock visualization |
 | x402 live tx | h40 | Pre-signed tx + Block-Explorer tab |
-| ENS Durin (if chosen) | h40 | Pivot to NameStone or Sepolia ENS |
+| Sepolia RPC outage | h40 | Pivot to NameStone (`lib/namestone.ts` is wired but unused) |
 | Privy Smart Wallet | NEVER | If broken, hackathon over |
 | ENS Text Records read | NEVER | If broken, hackathon over |

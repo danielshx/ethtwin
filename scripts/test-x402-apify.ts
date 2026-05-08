@@ -120,11 +120,18 @@ async function liveCall(actor: string) {
 
   const start = Date.now()
   try {
-    const result = await callApifyX402(actor, payload)
+    const { data, receipt } = await callApifyX402(actor, payload)
     const ms = Date.now() - start
     console.log(`OK    Apify returned in ${ms}ms`)
-    const summary = JSON.stringify(result).slice(0, 400)
-    console.log(`      result: ${summary}${JSON.stringify(result).length > 400 ? "…" : ""}`)
+    const summary = JSON.stringify(data).slice(0, 400)
+    console.log(`      result: ${summary}${JSON.stringify(data).length > 400 ? "…" : ""}`)
+    if (receipt.txHash) {
+      console.log(`      tx hash: ${receipt.txHash}`)
+      console.log(`      chain:   ${receipt.chain ?? receipt.network ?? "?"}`)
+      if (receipt.explorerUrl) console.log(`      explorer: ${receipt.explorerUrl}`)
+    } else {
+      console.log(`      (no X-PAYMENT-RESPONSE header — facilitator did not return a tx hash)`)
+    }
     console.log(`\nIf you see this line, x402 paid the 402 challenge and the actor ran.`)
   } catch (err) {
     console.log(`FAIL  ${err instanceof Error ? err.message : err}`)
