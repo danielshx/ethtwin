@@ -12,11 +12,11 @@
 
 ### Parallel-Tasks pro Person
 
-#### ETH-Dev
-- [ ] Repo lokal klonen, pnpm install // done
-- [ ] viem + @ensdomains/ensjs Boilerplate testen
-- [ ] Base Sepolia RPC (Alchemy/QuickNode free) registrieren
-- [ ] Test-Wallet mit Sepolia ETH funden (faucet)  //done
+#### ETH-Dev // Done
+- [x] Repo lokal klonen, pnpm install
+- [x] viem + @ensdomains/ensjs Boilerplate testen (`pnpm test:chain` against Sepolia)
+- [x] Sepolia RPC (Alchemy) registrieren — *Sepolia, nicht Base Sepolia per Entscheidung*
+- [x] Test-Wallet mit Sepolia ETH funden (faucet) — `0x4E09…a6f5`
 
 #### Backend
 - [ ] Privy.io Account, App-ID + Secret holen
@@ -33,7 +33,7 @@
 #### Pitcher / Generalist
 - [ ] Mentor-Pings raus (alle 4)
 - [ ] Devfolio Account erstellen, Team-Submission vorbereiten
-- [ ] ENS-Domain klären: `twinpilot.eth` verfügbar? Backup-Optionen
+- [x] ENS-Domain klären: `twinpilot.eth` verfügbar? Backup-Optionen — *gewechselt zu `ethtwin.eth`, registriert auf Sepolia*
 - [ ] Notion-Doc für Pitch-Skript erstellen
 
 ### Phase 0 — Done-Definition
@@ -51,10 +51,10 @@
 
 ### Tasks
 
-#### ETH-Dev
-- [ ] ENS Subname-Erstellung on-chain testen (`daniel.twinpilot.eth`)
-- [ ] Text Records setzen: `description`, `avatar`, `url`, custom `twin.persona`
-- [ ] Reverse-Resolution-Helper (`lib/ens.ts`)
+#### ETH-Dev //Done
+- [x] ENS Subname-Erstellung on-chain testen (`daniel.ethtwin.eth`) — tx [`0xdce0…68ec`](https://sepolia.etherscan.io/tx/0xdce00e61e4a25f99280c8c8016b21109a2c137ace96f1292c898ba4ca7e868ec), `pnpm ens:provision`
+- [x] Text Records setzen: `description`, `avatar`, `url`, custom `twin.persona` — gesetzt + read-back verifiziert via `pnpm ens:read`
+- [x] Reverse-Resolution-Helper (`lib/ens.ts`) — `reverseResolve`, `withEnsName`, `shortenAddress`
 
 #### Backend
 - [ ] `/api/twin/route.ts` — Vercel AI SDK + Claude Sonnet 4.5
@@ -77,7 +77,7 @@
 - ✅ Smart Wallet hat eine Adresse, kann gefundet werden
 
 ---
-
+  
 ## Phase 2 — Core Features (Stunde 12-24)
 
 **Ziel:** Voice + Live x402 Tx + Plain English Tx-Summary funktionieren.
@@ -85,13 +85,13 @@
 ### Tasks
 
 #### ETH-Dev
-- [ ] Tx-Decoder mit `viem` + Plain-English-Layer (LLM-call mit calldata + ABI hint)
-- [ ] EIP-5564 Stealth Address Helper (`lib/stealth.ts`) mit `@scopelift/stealth-address-sdk`
-- [ ] Stealth-Meta-Key in ENS Text Record speichern + lesen
+- [x] Tx-Decoder mit `viem` + Plain-English-Layer — `lib/tx-decoder.ts` + `lib/abis.ts`, `pnpm test:decoder` gegen reale Sepolia-Txs grün; LLM-Layer als `setPlainEnglishProvider(fn)` Hook (Stub heute, LLM später drop-in)
+- [x] EIP-5564 Stealth Address Helper (`lib/stealth.ts`) mit `@scopelift/stealth-address-sdk` — typed-safe rewrite, sender + recipient flow, `viewTag`-Bug gefixt
+- [x] Stealth-Meta-Key in ENS Text Record speichern + lesen — published auf `daniel.ethtwin.eth` (tx [`0xbf9f…2a7e`](https://sepolia.etherscan.io/tx/0xbf9fffbedd589176c70c9fbac43a20f7cb2b10770afc33c547fd72c932782a7e)), end-to-end verifiziert via `pnpm ens:stealth-provision`
 
 #### Backend
 - [ ] OpenAI Realtime API integration (`/api/voice/route.ts`)
-- [ ] x402-fetch SDK eingebaut, erste Apify x402 Test-Request
+- [~] x402-fetch SDK eingebaut, erste Apify x402 Test-Request — *SDK eingebaut + Mock-Test grün (`pnpm test:x402-mock`); `lib/x402-client.ts` v1+v2 dispatch fixed (ExactEvmSchemeV1, CAIP-2 slugs); echte Apify-Tx noch ausstehend*
 - [ ] Twin's Tool-Calling: `request_data_via_x402`, `decode_transaction`
 - [ ] Orbitport cTRNG Wrapper (`lib/cosmic.ts`) mit Caching
 
@@ -111,7 +111,7 @@
 - ✅ Voice-Conversation läuft (oder explizit Chat-Fallback locked-in)
 - ✅ Twin macht echte x402-Tx an Apify, Result kommt zurück
 - ✅ Tx-Summary liest sich für Laien verständlich
-- ✅ Stealth Address kann generiert werden (CLI/test ok)
+- ✅ Stealth Address kann generiert werden (CLI/test ok) — *erfüllt: `pnpm ens:stealth-provision` derives stealth address + recipient verifies via checkStealthAddress + privateKeyToAddress(derivedKey) === stealthAddress*
 
 ### ⚠️ Drop-Decision Punkt 1 (Stunde 24)
 
