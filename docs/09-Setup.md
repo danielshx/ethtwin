@@ -18,7 +18,7 @@ Die "Initial Setup" + "Init-Script"-Schritte unten sind **bereits ausgeführt**,
 Was schon installiert ist (siehe `pnpm-lock.yaml`):
 `next 15.5`, `react 19`, `tailwindcss 4`, `ai 6.0.176`, `@ai-sdk/{anthropic@3.0.76, openai@3.0.63, react@3.0.178}`,
 `viem 2.48.11`, `@ensdomains/ensjs 4.2.2`, `@scopelift/stealth-address-sdk 1.0.0-beta.5`,
-`@x402/{fetch,next,evm}@2.11.0`, `@coinbase/x402 2.1.0`,
+`@x402/{fetch,next,evm,core}@2.11.0`, `@coinbase/x402 2.1.0`,
 `@privy-io/react-auth 3.23.1`, `@privy-io/node 0.18.0`, `permissionless` (Privy SmartWallets peer dep — extra installed),
 `framer-motion 11.18.2`, `zod`, `sonner`, `lucide-react`, `clsx`, `tailwind-merge`, `class-variance-authority`, `tsx`.
 
@@ -150,6 +150,7 @@ pnpm add zod
 pnpm add @x402/fetch@2.11.0
 pnpm add @x402/next@2.11.0
 pnpm add @x402/evm@2.11.0
+pnpm add @x402/core@2.11.0   # for HTTPFacilitatorClient (used by withX402 paywall)
 pnpm add @coinbase/x402@2.1.0
 
 # Privy server-side (NOT server-auth — that's deprecated!)
@@ -391,6 +392,7 @@ Stealth          @scopelift/stealth-address-sdk      1.0.0-beta.5  EIP-5564 ⚠�
 x402 Client      @x402/fetch                         2.11.0        x402 client
 x402 Server      @x402/next                          2.11.0        Next.js middleware
 x402 EVM         @x402/evm                           2.11.0        EVM scheme
+x402 Core        @x402/core                          2.11.0        HTTPFacilitatorClient + ResourceServer
 x402 Facilitator @coinbase/x402                      2.1.0         Settlement
 Hosting          Vercel                              -             Frontend + APIs
 ```

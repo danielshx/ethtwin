@@ -45,8 +45,10 @@ pnpm test:claude              # Claude Sonnet 4.6 reachability
 ```
 
 What ships with the scaffold:
-- `app/api/{twin,voice,twin-tool,x402,ens,stealth,cosmic-seed,onboarding,agents/analyst}/route.ts`
-- `lib/{viem,ens,ensip25,namestone,cosmic,stealth,x402-client,twin-tools,privy-server,prompts,utils}.ts`
+- `app/api/{twin,voice,twin-tool,x402,ens,stealth,cosmic-seed,onboarding,messages,wallet-summary,transfer,check-username}/route.ts`
+- `app/api/agents/{route.ts (directory),analyst/route.ts (x402-paywalled sample agent via withX402 + Coinbase facilitator)}`
+- `lib/{viem,ens,ensip25,namestone,cosmic,stealth,x402-client,twin-tools,agents,privy-server,prompts,messages,history,api-guard,wallet-summary,transfers,tx-decoder,abis,payments,utils}.ts`
+- Twin tool surface (AI SDK v6): `getWalletSummary`, `requestDataViaX402`, `decodeTransaction`, `sendToken`, `getBalance`, `sendStealthUsdc`, `generatePrivatePaymentAddress`, `findAgents`, `hireAgent`
 - `app/{layout,providers,page,globals.css}` — auth-gated state machine (landing → onboarding → twin chat) on Base Sepolia
 - `components/ui/` — shadcn primitives (button, card, input, dialog, badge, sonner, scroll-area, separator, label)
 - `components/{cosmic-orb,twin-chat,tx-approval-modal,onboarding-flow}.tsx` — Tier-1 feature components, all wired

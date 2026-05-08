@@ -113,76 +113,54 @@ export async function verifyAuthToken(token: string) {
 
 ### `app/api/twin/route.ts`
 
+Tatsächliche Implementation in `app/api/twin/route.ts` + `lib/twin-tools.ts` —
+das `tools`-Object ist ein Re-Export aus `lib/twin-tools.ts`.
+
 ```typescript
-import { streamText, tool } from 'ai'
+// app/api/twin/route.ts
+import { streamText, convertToModelMessages, type UIMessage } from 'ai'
 import { anthropic } from '@ai-sdk/anthropic'
-import { z } from 'zod'
+import { twinTools } from '@/lib/twin-tools'
 import { buildSystemPrompt } from '@/lib/prompts'
-import { 
-  callApifyViaX402, 
-  decodeTxToPlainEnglish,
-  generateStealthAddressForRecipient,
-  hireAgentViaX402 
-} from '@/lib/twin-tools'
+import { readTwinRecords } from '@/lib/ens'
 
 export async function POST(req: Request) {
-  const { messages, ensName } = await req.json()
-  
+  const { messages, ensName } = await req.json() as {
+    messages: UIMessage[], ensName: string
+  }
+  const records = await readTwinRecords(ensName).catch(() => null)
   const result = streamText({
     model: anthropic('claude-sonnet-4-6'),
-    system: await buildSystemPrompt(ensName),
-    messages,
-    tools: {
-      requestDataViaX402: tool({
-        description: 'Pay for and fetch real-time data via x402 (~$1 USDC per call)',
-        inputSchema: z.object({
-          source: z.enum(['apify_twitter', 'apify_news']),
-          query: z.string(),
-        }),
-        execute: async ({ source, query }) => {
-          return await callApifyViaX402(source, query)
-        },
-      }),
-      
-      decodeTransaction: tool({
-        description: 'Translate transaction calldata into plain English',
-        inputSchema: z.object({
-          to: z.string(),
-          data: z.string(),
-          value: z.string().optional(),
-        }),
-        execute: async ({ to, data, value }) => {
-          return await decodeTxToPlainEnglish({ to, data, value })
-        },
-      }),
-      
-      generatePrivatePaymentAddress: tool({
-        description: 'Generate a stealth address for private receive',
-        inputSchema: z.object({
-          recipientEnsName: z.string(),
-        }),
-        execute: async ({ recipientEnsName }) => {
-          return await generateStealthAddressForRecipient(recipientEnsName)
-        },
-      }),
-      
-      hireAgent: tool({
-        description: 'Hire another ENSIP-25-verified AI agent via x402',
-        inputSchema: z.object({
-          agentEnsName: z.string(),
-          task: z.string(),
-        }),
-        execute: async ({ agentEnsName, task }) => {
-          return await hireAgentViaX402(agentEnsName, task)
-        },
-      }),
-    },
-    maxSteps: 5,
+    system: buildSystemPrompt(records, ensName),
+    messages: await convertToModelMessages(messages),
+    tools: twinTools,
   })
-  
-  return result.toDataStreamResponse()
+  return result.toUIMessageStreamResponse()
 }
 ```
+
+```typescript
+// lib/twin-tools.ts (Auszug — alle Tools mit AI-SDK v6 inputSchema)
+export const twinTools = {
+  getWalletSummary,            // balances + ENS reverse
+  requestDataViaX402,          // Apify via paidFetch()
+  decodeTransaction,           // calldata → plain English
+  sendToken, getBalance,       // ETH/USDC transfers + reads
+  sendStealthUsdc,             // EIP-5564 USDC on Base Sepolia
+  generatePrivatePaymentAddress,
+  findAgents,                  // on-chain agent directory + ENSIP-25 status
+  hireAgent,                   // verify + paidFetch() POST to twin.endpoint
+} as const
+```
+
+**`hireAgent`**-Pfad: ENSIP-25 verify → `readTwinRecords` → `paidFetch()`
+POST `{ task }` an `twin.endpoint`. Auto-pays 402-challenges via
+`X402_SENDER_KEY`/`DEV_WALLET_PRIVATE_KEY`. Output enthält `verified`,
+`endpoint`, `status`, `answer` (oder `error`).
+
+**`findAgents`**-Pfad: `readAgentDirectory()` → für jeden Eintrag
+`readTwinRecords` + `verifyAgentRegistration` parallel — UI zeigt eine Liste
+mit Shield-Icons (verified/unverified).
 
 ### Frontend useChat Hook
 
@@ -778,11 +756,11 @@ Core principles:
 - Never blind sign: if you can't decode it, warn the user
 - Cosmic randomness: use cosmic-seeded entropy for stealth addresses
 - Verify before paying: ENSIP-25 verify other agents (use hireAgent which auto-verifies)
-- Hire when needed: if a question needs specialized data, hire another agent via x402
+- Hire when needed: if a question needs specialized data, discover via findAgents and hire another agent via x402
 
 Be concise. Voice mode is the default — speak conversationally, max 2-3 sentences per response.
 
-Available tools: requestDataViaX402, decodeTransaction, generatePrivatePaymentAddress, hireAgent.`
+Available tools: getWalletSummary, requestDataViaX402, decodeTransaction, sendToken, getBalance, sendStealthUsdc, generatePrivatePaymentAddress, findAgents, hireAgent.`
 }
 ```
 
@@ -798,6 +776,7 @@ Siehe `.env.example` für Master-Liste. Critical für jeden Code-Snippet hier:
 | Twin Agent | `ANTHROPIC_API_KEY` |
 | Voice | `OPENAI_API_KEY` |
 | x402 client | `X402_SENDER_KEY` (oder via Privy Smart Wallet) |
+| x402 paywall (analyst) | `X402_ANALYST_PAY_TO`, `X402_ANALYST_PRICE`, `X402_ANALYST_NETWORK`, `NEXT_PUBLIC_ANALYST_ENS` |
 | Apify | `APIFY_API_KEY`, `APIFY_X402_ENDPOINT` |
 | Cosmic | `ORBITPORT_API_URL`, `ORBITPORT_API_KEY` |
 | NameStone | `NAMESTONE_API_KEY` |

@@ -67,7 +67,7 @@
 - [ ] Loading-States + erste Polish-Animation
 
 #### Pitcher
-- [ ] `analyst.ethtwin.eth` Sample-Agent vorbereitet (Endpoint-Stub)
+- [x] `analyst.ethtwin.eth` Sample-Agent vorbereitet — `app/api/agents/analyst/route.ts` mit `withX402` paywall + Coinbase-Facilitator (env-gated; ENS-Subname-Provisioning steht noch aus)
 - [ ] Pitch-Skript v1 (Rohfassung, 3 Min)
 
 ### Phase 1 — Done-Definition
@@ -102,7 +102,7 @@
 - [ ] ENS-Reverse-Resolution überall: nie 0x... zeigen
 
 #### Pitcher
-- [ ] `analyst.ethtwin.eth` deployed: Endpoint reagiert auf x402-Payment, gibt LLM-Response zurück
+- [x] `analyst.ethtwin.eth` Endpoint reagiert auf x402-Payment, gibt LLM-Response zurück — Code-seitig fertig (`withX402` + `generateText(claude-sonnet-4-6)`); live tx-Test gegen funded `X402_SENDER_KEY` ausstehend
 - [ ] Pitch-Skript v2 mit konkreten Beats
 - [ ] Edge-Case-Antworten geschrieben (siehe Backlog)
 
@@ -129,17 +129,17 @@ Voice-Sample wird im Demo-Video aufgenommen als Backup.
 #### ETH-Dev
 - [ ] Live-On-Chain Stealth-Send mit cTRNG-Seed
 - [ ] Test-Tx auf Base Sepolia: Sender → Stealth Address → Recipient sieht Funds
-- [ ] Agent-Discovery: Twin queried `analyst.ethtwin.eth`, liest Capabilities, schickt x402
+- [x] Agent-Discovery: Twin queried Directory + ENS-Records — `findAgents` Tool nutzt `lib/agents.ts` `readAgentDirectory()` und resolved jeden Eintrag inkl. ENSIP-25-Status. `hireAgent` schickt anschließend x402 via `paidFetch()`.
 
 #### Backend
 - [ ] Cosmic Seed Endpoint mit echter Orbitport-Attestation (oder Cache-Fallback)
-- [ ] Agent-Hire-Tool für Twin: gegebenes Intent, finde + bezahle passenden Agent
+- [x] Agent-Hire-Tool für Twin: gegebenes Intent, finde + bezahle passenden Agent — `findAgents` + `hireAgent` Tools in `lib/twin-tools.ts`
 - [ ] Telemetry/Logging für Demo (nichts Privates, nur on-chain visible Stuff)
 
 #### Frontend (Hero-Phase)
 - [ ] **Cosmic-Orb-Animation** beim Stealth-Generate (Framer Motion + Particles)
 - [ ] Satellit-Hash live anzeigbar mit Click-to-Explorer
-- [ ] Agent-Hire-Animation: "Twin asks analyst.eth..." mit visualisiertem x402-Flow
+- [x] Agent-Hire-Visualisierung: ENSIP-25 Verified/Unverified Badge + grüner "agent replied" Block in `components/twin-chat.tsx` (Flow-Animation als Stretch übrig)
 - [ ] Sound-Design (subtil, nicht cringe): hmm-sound für Twin-Thinking, ping für Tx-Confirmed
 
 #### Pitcher

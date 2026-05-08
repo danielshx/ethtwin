@@ -1,7 +1,7 @@
 import { tool } from "ai"
 import { z } from "zod"
 import { type Address, type Hex } from "viem"
-import { callApifyX402 } from "./x402-client"
+import { callApifyX402, paidFetch } from "./x402-client"
 import { generatePrivateAddress } from "./stealth"
 import {
   ERC8004_REGISTRY,
@@ -13,6 +13,7 @@ import { describeTx } from "./tx-decoder"
 import { sendStealthUSDC } from "./payments"
 import { getWalletSummary } from "./wallet-summary"
 import { sendToken, getTokenBalance, parseRecipient } from "./transfers"
+import { readAgentDirectory } from "./agents"
 
 export const twinTools = {
   getWalletSummary: tool({
@@ -183,12 +184,52 @@ export const twinTools = {
     },
   }),
 
+  findAgents: tool({
+    description:
+      "Discover hireable peer agents from the on-chain ethtwin.eth directory. Returns each agent's ENS name, twin.endpoint, twin.persona, and ENSIP-25 verification status. Use before hireAgent to pick the right peer.",
+    inputSchema: z.object({
+      agentId: z
+        .union([z.string(), z.number()])
+        .optional()
+        .describe(
+          "ERC-8004 agent id used to verify ENSIP-25 registration (defaults to '1' for the sample analyst).",
+        ),
+    }),
+    execute: async ({ agentId = 1 }) => {
+      const directory = await readAgentDirectory()
+      const agents = await Promise.all(
+        directory.map(async (entry) => {
+          const records = await readTwinRecords(entry.ens).catch(
+            () => ({}) as Record<string, string | undefined>,
+          )
+          const verified = await verifyAgentRegistration(
+            entry.ens,
+            ERC8004_REGISTRY.baseSepolia,
+            CHAIN_REFERENCE.baseSepolia,
+            agentId,
+          ).catch(() => false)
+          return {
+            ens: entry.ens,
+            addedAt: entry.addedAt,
+            endpoint: records["twin.endpoint"],
+            persona: records["twin.persona"] ?? records["description"],
+            ensip25Verified: verified,
+          }
+        }),
+      )
+      return { ok: true, agents }
+    },
+  }),
+
   hireAgent: tool({
     description:
-      "Discover, verify (ENSIP-25), and pay another agent via x402 to perform a sub-task.",
+      "Discover, verify (ENSIP-25), and pay another agent via x402 to perform a sub-task. Posts the task to the agent's twin.endpoint via paidFetch (auto-pays HTTP 402 challenges).",
     inputSchema: z.object({
       agentEnsName: z.string(),
-      agentId: z.union([z.string(), z.number()]),
+      agentId: z
+        .union([z.string(), z.number()])
+        .default(1)
+        .describe("ERC-8004 agent id (defaults to 1 for the sample analyst)"),
       task: z.string(),
     }),
     execute: async ({ agentEnsName, agentId, task }) => {
@@ -197,18 +238,66 @@ export const twinTools = {
         ERC8004_REGISTRY.baseSepolia,
         CHAIN_REFERENCE.baseSepolia,
         agentId,
-      )
+      ).catch(() => false)
       const records = await readTwinRecords(agentEnsName)
       const endpoint = records["twin.endpoint"]
       if (!endpoint) {
-        return { ok: false, verified, error: "agent has no twin.endpoint record" }
+        return {
+          ok: false,
+          verified,
+          agentEnsName,
+          error: "agent has no twin.endpoint record",
+        }
       }
-      // Phase 2 wires this through paidFetch(); stub returns the call plan.
-      return {
-        ok: true,
-        verified,
-        endpoint,
-        task,
+      try {
+        const f = paidFetch()
+        const res = await f(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ task }),
+        })
+        const text = await res.text()
+        let body: unknown = text
+        try {
+          body = JSON.parse(text)
+        } catch {
+          // keep raw text — agent may stream plain text
+        }
+        if (!res.ok) {
+          return {
+            ok: false,
+            verified,
+            agentEnsName,
+            endpoint,
+            status: res.status,
+            error:
+              typeof body === "object" && body && "error" in body
+                ? (body as { error: string }).error
+                : `agent responded ${res.status}`,
+          }
+        }
+        const answer =
+          typeof body === "object" && body && "answer" in body
+            ? (body as { answer: string }).answer
+            : typeof body === "string"
+              ? body
+              : JSON.stringify(body)
+        return {
+          ok: true,
+          verified,
+          agentEnsName,
+          endpoint,
+          status: res.status,
+          answer,
+        }
+      } catch (err) {
+        return {
+          ok: false,
+          verified,
+          agentEnsName,
+          endpoint,
+          error: err instanceof Error ? err.message : String(err),
+        }
       }
     },
   }),

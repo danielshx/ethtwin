@@ -14,7 +14,7 @@ Vor den Tier-Tasks: das Repo ist gescaffolded, Deps installed, Routen + lib/ ges
 
 - [x] Next.js 15 + Turbopack + Tailwind 4 + TS strict scaffold (`pnpm dev`, `pnpm build`, `pnpm typecheck` alle clean)
 - [x] Alle verifizierten Deps installed (siehe `docs/11-Tech-Verifikation.md`) inkl. `permissionless` (Privy SmartWallets peer)
-- [x] `lib/` komplett gestubbt: `viem`, `ens`, `ensip25` (ERC-7930 + agent-registration verify), `namestone`, `cosmic` (mit Mock-Fallback), `stealth` (Beta-SDK in try/catch), `x402-client` (`x402Client` + `ExactEvmScheme`), `twin-tools` (4 AI-SDK-v6 tools), `privy-server`, `prompts`, `utils`
+- [x] `lib/` komplett gestubbt: `viem`, `ens`, `ensip25` (ERC-7930 + agent-registration verify), `namestone`, `cosmic` (mit Mock-Fallback), `stealth` (Beta-SDK in try/catch), `x402-client` (`x402Client` + `ExactEvmScheme`), `twin-tools` (9 AI-SDK-v6 tools inkl. `findAgents`, `hireAgent`), `agents` (on-chain directory), `privy-server`, `prompts`, `utils`
 - [x] API-Routen gestubbt: `/api/{twin,voice,twin-tool,x402,ens,stealth,cosmic-seed,onboarding,agents/analyst}` — `/api/cosmic-seed` live getestet
 - [x] App-Shell: `layout.tsx`, `providers.tsx` (Privy + SmartWallets, Base Sepolia), `page.tsx` (auth-gated state machine), `globals.css` (cosmic dark theme)
 - [x] `.env.example`, `.gitignore`, `tsconfig.json`, `next.config.ts`, `postcss.config.mjs`
@@ -57,8 +57,8 @@ Diese Spikes klären Annahmen bevor wir bauen — falls ein Spike fehlschlägt, 
 ### Twin Agent
 - [x] **T1-06** `/api/twin/route.ts` mit Vercel AI SDK v6 + Claude Sonnet 4.6 (`claude-sonnet-4-6`) — Stub-Code steht, braucht ANTHROPIC_API_KEY für Live
 - [x] **T1-07** System Prompt aus ENS Text Records hydriert (`lib/prompts.ts` + `readTwinRecords`)
-- [x] **T1-08** 4 Tools verfügbar (AI SDK v6 `inputSchema`):
-  - `requestDataViaX402`, `decodeTransaction`, `generatePrivatePaymentAddress`, `hireAgent`
+- [x] **T1-08** Tools verfügbar (AI SDK v6 `inputSchema`):
+  - `getWalletSummary`, `requestDataViaX402`, `decodeTransaction`, `sendToken`, `getBalance`, `sendStealthUsdc`, `generatePrivatePaymentAddress`, `findAgents`, `hireAgent`
 - [x] **T1-09** Streaming-Responses ans Frontend (`useChat` + `DefaultChatTransport` in `components/twin-chat.tsx`)
 - [x] **T1-10** Multi-Turn Konversation funktioniert (Context bleibt) — `useChat` standard, ungeprüft live
 
@@ -95,12 +95,12 @@ Diese Spikes klären Annahmen bevor wir bauen — falls ein Spike fehlschlägt, 
 - [ ] **T2-06** Attestation-Hash anklickbar → Block-Explorer
 
 ### Agent-zu-Agent x402 mit ENSIP-25
-- [ ] **T2-07** `analyst.ethtwin.eth` als Sample-Agent deployed
-- [ ] **T2-08** `analyst.ethtwin.eth` Capabilities + ENSIP-25 Record + endpoint in Text Records
-- [ ] **T2-09** Twin findet `analyst.eth` über ENS-Discovery
-- [ ] **T2-09b** **ENSIP-25 Verification:** Twin liest `agent-registration[...]` → zeigt "✓ Verified Agent" Badge
-- [ ] **T2-10** Twin macht x402-Tx an Analyst, Analyst antwortet, Twin synthetisiert
-- [ ] **T2-11** UI-Visualisierung: "Twin asks analyst.eth ✓ ENSIP-25" mit Flow-Animation
+- [x] **T2-07** `analyst.ethtwin.eth` als Sample-Agent deployed — Route `/api/agents/analyst` mit `@x402/next` `withX402` paywall (env-driven via `X402_ANALYST_PAY_TO`; unset = free in dev). ENS-Subname-Provisioning via NameStone steht aus.
+- [ ] **T2-08** `analyst.ethtwin.eth` Capabilities + ENSIP-25 Record + endpoint in Text Records (Records noch nicht gesetzt — Code liest sie via `readTwinRecords` sobald NameStone provisioned)
+- [x] **T2-09** Twin findet `analyst.eth` über ENS-Discovery — neuer `findAgents` Tool liest die `agents.directory` Text-Record-Liste auf `ethtwin.eth` und resolvt jeden Eintrag
+- [x] **T2-09b** **ENSIP-25 Verification:** `findAgents` + `hireAgent` rufen `verifyAgentRegistration()` auf; Chat zeigt "✓ ENSIP-25 verified" / "unverified" Badges (`components/twin-chat.tsx` `AgentBadges`)
+- [x] **T2-10** Twin macht x402-Tx an Analyst, Analyst antwortet, Twin synthetisiert — `hireAgent` Tool ruft jetzt `paidFetch()` POST auf `twin.endpoint` und gibt `answer` zurück (ungetestet live, braucht funded `X402_SENDER_KEY` + paywalled endpoint)
+- [x] **T2-11** UI-Visualisierung: Tool-Call-Pill zeigt Agent-ENS + Verified-Badge + grünen Antwort-Block (`AgentDetail` in `components/twin-chat.tsx`); Flow-Animation steht aus
 
 ### Demo-Story
 - [ ] **T2-12** Pitch-Slides (3-4 Slides max, eine ist Token/Revenue für Umia)

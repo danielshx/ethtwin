@@ -146,30 +146,48 @@ We need to decide in **Phase 0 (Stunde 0-3)** with workemon:
 
 ### Flow 4: Agent-to-Agent x402 with ENSIP-25 Verification
 
+Implementiert als zwei zusammenarbeitende AI-SDK-v6-Tools (`lib/twin-tools.ts`)
+plus paywalled Sample-Agent (`app/api/agents/analyst/route.ts`).
+
 ```
-1. User: "Twin, ask analyst.eth for DeFi yields"
-2. Twin tool: hireAgent({ agentEnsName: "analyst.ethtwin.eth", task: "..." })
-3. Backend:
-   a. ENSIP-25 verification:
-      - Build interopAddr = ERC-7930(ERC-8004 IdentityRegistry, Base Sepolia)
-      - viem.getEnsText({ 
-          name: "analyst.ethtwin.eth", 
-          key: `agent-registration[${interopAddr}][${analystId}]` 
-        })
-      - If non-empty → ✓ ENSIP-25 verified
-   b. Read endpoint from twin.endpoint Text Record
-   c. @x402/fetch POST to analyst's endpoint
-      - Pay >$1 USDC via x402 protocol
-4. Analyst.eth endpoint:
-   - @x402/next paymentMiddleware validates payment
-   - Runs its own logic (Apify x402 sub-call possible!)
-   - Returns response
-5. Twin synthesizes answer with own context
-6. UI shows:
-   - "Twin → analyst.eth ✓ ENSIP-25 verified"
-   - "x402 payment: $1.00 USDC" (with tx link)
-   - Streamed response
+1. User: "Twin, find an analyst that can summarise this address"
+2. Twin tool: findAgents({ agentId: 1 })
+   - lib/agents.ts → readAgentDirectory() liest agents.directory text record
+     auf ethtwin.eth (JSON-Liste { ens, addedAt }, max 100 Einträge)
+   - Pro Eintrag: readTwinRecords(ens) + verifyAgentRegistration(...)
+   - UI: Tool-Call-Pill zeigt "N agents · K verified" + Liste mit Shield-Icons
+3. User pickt einen — Twin tool: hireAgent({ agentEnsName, agentId, task })
+   a. ENSIP-25 verify:
+      - encodeInteropAddress(ERC-8004 IdentityRegistry, Base Sepolia 84532)
+      - readTextRecord(name, `agent-registration[${interopAddr}][${agentId}]`)
+      - "1" → ✓ verified, sonst unverified-Badge
+   b. Read twin.endpoint Text Record
+   c. paidFetch() POST { task } an endpoint (auto-pays HTTP 402 challenge,
+      X402_SENDER_KEY/DEV_WALLET_PRIVATE_KEY signs)
+4. /api/agents/analyst:
+   - withX402(handler, routeConfig, x402ResourceServer) wenn
+     X402_ANALYST_PAY_TO gesetzt — sonst free in dev
+   - facilitator: Coinbase x402 facilitator (@coinbase/x402)
+   - Nach erfolgreicher Settlement: Claude Sonnet 4.6 generiert Antwort
+   - Response: { agent, answer }
+5. UI rendert:
+   - Tool-Call-Pill mit Agent-ENS + ✓ ENSIP-25 verified Badge
+   - Grünen "agent replied" Block mit der Antwort (AgentDetail in twin-chat.tsx)
+6. Twin synthesisiert eigene Antwort im weiteren Verlauf
 ```
+
+### Tool-Surface (`lib/twin-tools.ts`)
+
+| Tool | Zweck |
+|---|---|
+| `getWalletSummary` | Balances + ENS-Reverse für eine Adresse |
+| `requestDataViaX402` | Apify-Actor via `paidFetch()` aufrufen |
+| `decodeTransaction` | Calldata → Plain-English |
+| `sendToken` / `getBalance` | Native ETH / USDC senden bzw. lesen |
+| `sendStealthUsdc` | EIP-5564-USDC-Transfer auf Base Sepolia |
+| `generatePrivatePaymentAddress` | One-time Stealth-Adresse aus Recipient-Meta-Key |
+| **`findAgents`** | On-chain Agent-Directory + ENSIP-25-Status |
+| **`hireAgent`** | ENSIP-25 verify → `paidFetch()` an `twin.endpoint` |
 
 ## Datei-Struktur
 
@@ -192,7 +210,8 @@ ethtwin/
 │   │   ├── cosmic-seed/route.ts    # Orbitport proxy + caching
 │   │   ├── onboarding/route.ts     # Privy verify + NameStone subname creation
 │   │   └── agents/
-│   │       └── analyst/route.ts    # x402-enabled sample agent (with @x402/next)
+│   │       ├── route.ts            # GET on-chain agent directory (agents.directory)
+│   │       └── analyst/route.ts    # x402-enabled sample agent (withX402 + Coinbase facilitator)
 │   ├── providers.tsx               # PrivyProvider + SmartWalletsProvider wrapper
 │   ├── layout.tsx
 │   └── globals.css
@@ -213,6 +232,7 @@ ethtwin/
 ├── hooks/
 │   └── useVoice.ts                 # WebRTC + ephemeral key reconnect
 ├── lib/
+│   ├── agents.ts                   # On-chain agent directory (read/add via ENS)
 │   ├── ens.ts                      # ENS read (viem)
 │   ├── ensip25.ts                  # ENSIP-25 verification + ERC-7930 helper
 │   ├── namestone.ts                # NameStone API client

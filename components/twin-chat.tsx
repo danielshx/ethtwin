@@ -4,7 +4,7 @@ import { useChat } from "@ai-sdk/react"
 import { DefaultChatTransport } from "ai"
 import { useMemo, useRef, useState, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { Send, Sparkles, Wand2 } from "lucide-react"
+import { Send, Sparkles, Wand2, ShieldCheck, ShieldAlert } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -182,12 +182,125 @@ function MessagePart({ part }: { part: MessagePartType }) {
   if (part.type.startsWith("tool-")) {
     const toolName = part.type.replace(/^tool-/, "")
     const state = "state" in part ? (part.state as string) : "input-streaming"
+    const output =
+      "output" in part && state === "output-available"
+        ? (part.output as ToolOutput)
+        : null
     return (
-      <div className="my-2 flex items-center gap-2 rounded-md border border-white/10 bg-black/30 px-2.5 py-1.5 text-xs">
-        <Wand2 className="h-3.5 w-3.5 text-primary" />
-        <span className="font-mono text-primary/90">{toolName}</span>
-        <span className="text-muted-foreground">·</span>
-        <span className="text-muted-foreground">{labelForState(state)}</span>
+      <div className="my-2 space-y-1.5">
+        <div className="flex flex-wrap items-center gap-2 rounded-md border border-white/10 bg-black/30 px-2.5 py-1.5 text-xs">
+          <Wand2 className="h-3.5 w-3.5 text-primary" />
+          <span className="font-mono text-primary/90">{toolName}</span>
+          <span className="text-muted-foreground">·</span>
+          <span className="text-muted-foreground">{labelForState(state)}</span>
+          {output ? <AgentBadges output={output} toolName={toolName} /> : null}
+        </div>
+        {output ? <AgentDetail output={output} toolName={toolName} /> : null}
+      </div>
+    )
+  }
+  return null
+}
+
+type ToolOutput = {
+  ok?: boolean
+  verified?: boolean
+  agentEnsName?: string
+  endpoint?: string
+  status?: number
+  answer?: string
+  error?: string
+  agents?: Array<{
+    ens: string
+    endpoint?: string
+    persona?: string
+    ensip25Verified?: boolean
+  }>
+}
+
+function AgentBadges({
+  output,
+  toolName,
+}: {
+  output: ToolOutput
+  toolName: string
+}) {
+  if (toolName === "hireAgent") {
+    return (
+      <>
+        {output.agentEnsName ? (
+          <span className="font-mono text-[10px] text-primary/80">
+            {output.agentEnsName}
+          </span>
+        ) : null}
+        {output.verified ? (
+          <span className="inline-flex items-center gap-1 rounded-sm bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-medium text-emerald-300">
+            <ShieldCheck className="h-3 w-3" />
+            ENSIP-25 verified
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-1 rounded-sm bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-300">
+            <ShieldAlert className="h-3 w-3" />
+            unverified
+          </span>
+        )}
+      </>
+    )
+  }
+  if (toolName === "findAgents" && output.agents) {
+    const verifiedCount = output.agents.filter((a) => a.ensip25Verified).length
+    return (
+      <span className="text-[10px] text-muted-foreground">
+        {output.agents.length} agent{output.agents.length === 1 ? "" : "s"} ·{" "}
+        <span className="text-emerald-300">{verifiedCount} verified</span>
+      </span>
+    )
+  }
+  return null
+}
+
+function AgentDetail({
+  output,
+  toolName,
+}: {
+  output: ToolOutput
+  toolName: string
+}) {
+  if (toolName === "findAgents" && output.agents?.length) {
+    return (
+      <ul className="ml-5 space-y-1 text-[11px] text-muted-foreground">
+        {output.agents.map((a) => (
+          <li key={a.ens} className="flex items-center gap-1.5">
+            {a.ensip25Verified ? (
+              <ShieldCheck className="h-3 w-3 text-emerald-400" />
+            ) : (
+              <ShieldAlert className="h-3 w-3 text-amber-400" />
+            )}
+            <span className="font-mono text-primary/80">{a.ens}</span>
+            {a.persona ? (
+              <span className="truncate text-muted-foreground/80">
+                — {a.persona}
+              </span>
+            ) : null}
+          </li>
+        ))}
+      </ul>
+    )
+  }
+  if (toolName === "hireAgent" && output.ok && output.answer) {
+    return (
+      <div className="ml-5 rounded-md border border-emerald-500/20 bg-emerald-500/5 px-2.5 py-1.5 text-[11px] text-emerald-100/90">
+        <span className="font-mono text-[10px] text-emerald-300/80">
+          {output.agentEnsName ?? "agent"} replied
+        </span>
+        <p className="mt-1 whitespace-pre-wrap leading-relaxed">{output.answer}</p>
+      </div>
+    )
+  }
+  if (toolName === "hireAgent" && output.ok === false && output.error) {
+    return (
+      <div className="ml-5 text-[11px] text-amber-300/80">
+        {output.error}
       </div>
     )
   }

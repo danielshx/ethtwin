@@ -26,6 +26,7 @@
 | `@x402/fetch` | 2.11.0 | ✅ stable | x402 client (USE THIS) |
 | `@x402/next` | 2.11.0 | ✅ stable | x402 server middleware |
 | `@x402/evm` | 2.11.0 | ✅ stable | EVM scheme |
+| `@x402/core` | 2.11.0 | ✅ stable | direct dep — `HTTPFacilitatorClient` for `withX402` paywalls |
 | `x402-fetch` | 1.2.0 | ❌ **DON'T USE** | Older Coinbase v1 |
 | `x402-next` | 1.2.0 | ❌ **DON'T USE** | Older Coinbase v1 |
 | `openai` | latest | ✅ stable | Realtime API |
