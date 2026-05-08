@@ -6,6 +6,24 @@
 
 ---
 
+## ✅ Status (2026-05-08)
+
+Die "Initial Setup" + "Init-Script"-Schritte unten sind **bereits ausgeführt**. Was noch zu tun ist:
+
+1. `cp .env.example .env.local` und Keys eintragen.
+2. shadcn/ui CLI init (`pnpm dlx shadcn@latest init -d`) + Komponenten holen.
+3. Vercel-Link + Env-Vars setzen (Schritte unten gelten unverändert).
+4. Privy-Dashboard konfigurieren (Login-Methods, Smart Wallets, Domains) — siehe Privy-Abschnitt.
+
+Was schon installiert ist (siehe `pnpm-lock.yaml`):
+`next 15.5`, `react 19`, `tailwindcss 4`, `ai 6.0.176`, `@ai-sdk/{anthropic@3.0.76, openai@3.0.63, react@3.0.178}`,
+`viem 2.48.11`, `@ensdomains/ensjs 4.2.2`, `@scopelift/stealth-address-sdk 1.0.0-beta.5`,
+`@x402/{fetch,next,evm}@2.11.0`, `@coinbase/x402 2.1.0`,
+`@privy-io/react-auth 3.23.1`, `@privy-io/node 0.18.0`, `permissionless` (Privy SmartWallets peer dep — extra installed),
+`framer-motion 11.18.2`, `zod`, `sonner`, `lucide-react`, `clsx`, `tailwind-merge`, `class-variance-authority`, `tsx`.
+
+---
+
 ## Voraussetzungen
 
 - **Node.js** ≥ 20 (LTS, ideally 22)
@@ -15,16 +33,19 @@
 
 ---
 
-## Initial Setup (einmal pro Repo)
+## Initial Setup (einmal pro Repo) — ✅ bereits ausgeführt am 2026-05-08
 
 ```bash
 # Clone
 git clone https://github.com/[org]/twinpilot.git
 cd twinpilot
 
-# Initialize Next.js if empty
-pnpm create next-app@latest . --ts --tailwind --app --use-pnpm --no-eslint
-# (Or use existing repo if pre-initialized)
+# Scaffold wurde manuell angelegt (NICHT via create-next-app, da
+# bestehende CLAUDE.md/README.md im Repo waren). Resultat ist äquivalent
+# zu `pnpm create next-app@latest . --ts --tailwind --app --no-eslint`.
+
+# Restore deps
+pnpm install
 
 # Env vars
 cp .env.example .env.local
@@ -48,6 +69,7 @@ NEXT_PUBLIC_PARENT_DOMAIN=twinpilot.eth                 # workemon checken!
 # === PRIVY ===
 NEXT_PUBLIC_PRIVY_APP_ID=clxxxxx
 PRIVY_APP_SECRET=xxx                                    # Server only
+PRIVY_VERIFICATION_KEY=                                 # Public key from Privy Dashboard → API Keys (used by @privy-io/node verifyAuthToken)
 
 # === LLM ===
 ANTHROPIC_API_KEY=sk-ant-xxx                            # Claude Sonnet 4.6
@@ -107,6 +129,8 @@ pnpm tsx scripts/test-chain.ts
 
 ### Backend (TS) — AI + APIs + x402
 
+> ✅ Bereits installiert. Befehle hier für Doku-Vollständigkeit.
+
 ```bash
 # AI SDK v6 + Anthropic + OpenAI
 pnpm add ai@6.0.176
@@ -144,12 +168,18 @@ pnpm tsx scripts/test-claude.ts
 
 ### Frontend — UI Stack
 
-```bash
-# Privy client + Smart Wallets
-pnpm add @privy-io/react-auth@3.23.1
+> ✅ Privy + Framer Motion + lucide-react + sonner sind installiert.
+> ⚠️ shadcn CLI init ist **noch nicht gelaufen** — der nächste Frontend-Schritt.
+> ⚠️ `permissionless` ist als Privy-SmartWallets-peer extra installiert.
 
-# UI
-pnpm add framer-motion@11.18.2 lucide-react sonner
+```bash
+# Privy client + Smart Wallets (+ permissionless peer)
+pnpm add @privy-io/react-auth@3.23.1 permissionless
+
+# UI deps (installed)
+pnpm add framer-motion@11.18.2 lucide-react sonner clsx tailwind-merge class-variance-authority
+
+# shadcn init + components — TODO
 pnpm dlx shadcn@latest init -d
 pnpm dlx shadcn@latest add button card dialog input toast tabs avatar form
 
@@ -290,13 +320,14 @@ Workemon (`@workemon`) entscheidet mit uns in den ersten 2h welcher Pfad:
 
 Vor Phase 1 sollte das funktionieren:
 
-- [ ] `pnpm dev` startet ohne Fehler
-- [ ] Privy Login funktioniert (Email-Magic-Link minimal)
+- [x] `pnpm dev` startet ohne Fehler (✅ HTTP 200 auf `/`, 2026-05-08)
+- [x] `pnpm typecheck` clean (✅ tsc --noEmit, 2026-05-08)
+- [x] `/api/cosmic-seed` liefert JSON (✅ HTTP 200 mit Mock-Bytes ohne Orbitport-Key)
+- [ ] Privy Login funktioniert (Email-Magic-Link minimal) — braucht `NEXT_PUBLIC_PRIVY_APP_ID`
 - [ ] Privy Smart Wallet wird erstellt (Address sichtbar in UI)
-- [ ] Claude 4.6 API-Call gibt Response zurück (`pnpm tsx scripts/test-claude.ts`)
-- [ ] OpenAI API-Call (text completion test) funktioniert
-- [ ] Base Sepolia + Sepolia RPC erreichbar (`pnpm tsx scripts/test-chain.ts`)
-- [ ] viem ENS-Resolution für `vitalik.eth` klappt (Sepolia)
+- [ ] Claude 4.6 API-Call gibt Response zurück (`pnpm test:claude`)
+- [ ] Base Sepolia + Sepolia RPC erreichbar (`pnpm test:chain`)
+- [ ] viem ENS-Resolution für `vitalik.eth` klappt (Sepolia/Mainnet)
 - [ ] Vercel Deploy ist live (auch wenn Inhalt nur "Coming Soon" ist)
 
 Wenn alles ✅ → Phase 1 starten.

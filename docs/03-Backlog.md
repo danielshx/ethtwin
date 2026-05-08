@@ -8,6 +8,22 @@
 
 ---
 
+## ✅ Infra-Status (2026-05-08)
+
+Vor den Tier-Tasks: das Repo ist gescaffolded, Deps installed, Routen + lib/ gestubbt.
+
+- [x] Next.js 15 + Turbopack + Tailwind 4 + TS strict scaffold (`pnpm dev` HTTP 200, `pnpm typecheck` clean)
+- [x] Alle verifizierten Deps installed (siehe `docs/11-Tech-Verifikation.md`) inkl. `permissionless` (Privy SmartWallets peer)
+- [x] `lib/` komplett gestubbt: `viem`, `ens`, `ensip25` (ERC-7930 + agent-registration verify), `namestone`, `cosmic` (mit Mock-Fallback), `stealth` (Beta-SDK in try/catch), `x402-client` (`x402Client` + `ExactEvmScheme`), `twin-tools` (4 AI-SDK-v6 tools), `privy-server`, `prompts`, `utils`
+- [x] API-Routen gestubbt: `/api/{twin,voice,twin-tool,x402,ens,stealth,cosmic-seed,onboarding,agents/analyst}` — `/api/cosmic-seed` live getestet
+- [x] App-Shell: `layout.tsx`, `providers.tsx` (Privy + SmartWallets, Base Sepolia), `page.tsx`, `globals.css`
+- [x] `.env.example`, `.gitignore`, `tsconfig.json`, `next.config.ts`, `postcss.config.mjs`
+- [x] Smoke-Test-Scripts: `pnpm test:chain`, `pnpm test:claude`, `scripts/warm-cosmic-cache.ts`
+- [ ] Frontend-Komponenten (`components/twin-chat.tsx`, `cosmic-orb.tsx`, `tx-approval-modal.tsx`, `onboarding-flow.tsx`) — **noch nicht angelegt**
+- [ ] shadcn/ui CLI init (`pnpm dlx shadcn@latest init`) — **noch ausstehend**
+
+---
+
 ## 🟦 Tier 0 — PHASE 0 SPIKE-TESTS (Stunde 0-3, vor Tier 1)
 
 Diese Spikes klären Annahmen bevor wir bauen — falls ein Spike fehlschlägt, scope cutten:

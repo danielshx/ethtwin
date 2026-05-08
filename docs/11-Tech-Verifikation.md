@@ -30,6 +30,7 @@
 | `x402-next` | 1.2.0 | ❌ **DON'T USE** | Older Coinbase v1 |
 | `openai` | latest | ✅ stable | Realtime API |
 | `shadcn` (CLI) | 4.7.0 | ✅ stable | Component installer |
+| `permissionless` | latest | ⚠️ extra peer dep | Privy SmartWallets braucht es (sonst Module-not-found beim `pnpm dev`) |
 
 ### Verified Model IDs
 
@@ -172,6 +173,33 @@ Nach Recherche ist **NameStone** die beste Option für 48h-Hackathon:
 - workemon direkt fragen wenn Format unklar
 - ERC-7930 Format encoding ist komplex — Hilfsfunktion in `lib/ensip25.ts`
 - Implementation conservative — nur was Spec sagt
+
+### 11. ERC-7930-Encoder in `lib/ensip25.ts` ist Best-Effort
+**Risiko:** `encodeInteropAddress()` ist mein eigener Pack-Layout (`uint16+uint16+uint8+bytes4+uint8+address`). Die Bytes-Reihenfolge wurde **nicht** gegen die ENSIP-25-Reference-Impl validiert.
+
+**Workaround:**
+- Vor Bounty-Submission: Output gegen ENSIP-25-Reference oder workemon's eigene Encoder-Funktion vergleichen.
+- Bei Mismatch: Layout in `lib/ensip25.ts` anpassen — alle Aufrufer (`onboarding`, `twin-tools.hireAgent`) nutzen die Funktion zentral.
+
+### 12. Privy v3 Embedded-Wallet-Config ist nested
+**Risiko:** Privy v3 hat das Config-Schema umgebaut: `embeddedWallets.createOnLogin` (v2) heißt jetzt `embeddedWallets.ethereum.createOnLogin`. Stille Type-Errors wenn man v2-Snippets pasted.
+
+**Workaround:** `app/providers.tsx` zeigt das v3-Pattern. Beim Hinzufügen weiterer Chains: gleicher Block unter `embeddedWallets.solana` etc.
+
+### 13. `@privy-io/node` v0.18 hat keine `PrivyClient`-Klasse mehr
+**Risiko:** v0.18 exportiert freie Funktionen (`verifyAuthToken`, `verifyAccessToken`) statt `new PrivyClient()`. Tutorials für ältere Versionen schlagen fehl.
+
+**Workaround:** `lib/privy-server.ts` nutzt das neue Pattern. Setze `PRIVY_VERIFICATION_KEY` (aus Privy-Dashboard → API Keys) — die Lib akzeptiert PEM-String, `CryptoKey` oder `JWTVerifyGetKey`.
+
+### 14. `permissionless` ist Privy-SmartWallets-peer und muss extra installiert werden
+**Risiko:** `@privy-io/react-auth/smart-wallets` importiert `permissionless`, `permissionless/accounts`, `permissionless/clients/pimlico` — fehlt in deren `dependencies`, daher beim `pnpm dev` "Module not found".
+
+**Workaround:** `pnpm add permissionless` (bereits gemacht). Falls Privy in einer späteren Version es als hard dependency listet, kann es entfernt werden.
+
+### 15. `@x402/next` Peer-Warning für `next@^16`
+**Risiko:** Das Paket warnt `unmet peer next@^16.0.10: found 15.5.18` beim Install. Bisher kein Runtime-Bruch.
+
+**Workaround:** Ignorieren bis Build/Dev tatsächlich kaputt geht. Falls ja: entweder Next 16 upgrade oder `@x402/next` durch direkten Aufruf der Facilitator-API ersetzen.
 
 ---
 

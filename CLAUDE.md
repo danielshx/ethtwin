@@ -159,5 +159,11 @@ Use them via the Agent tool when their specialty applies.
 - Privy Smart Wallets are React-only — server logic via `@privy-io/node` (verify auth tokens, never run wallet logic server-side)
 - OpenAI Realtime ephemeral keys expire in 60s — implement reconnect logic
 - `@privy-io/server-auth` is deprecated — use `@privy-io/node`
+- `@privy-io/node` v0.18 exports free functions (no `PrivyClient` class). Needs `PRIVY_VERIFICATION_KEY` from Privy Dashboard
+- Privy v3 nested embedded-wallets config: `embeddedWallets.ethereum.createOnLogin` (NOT v2's `embeddedWallets.createOnLogin`)
+- `@privy-io/react-auth/smart-wallets` needs `permissionless` peer dep (already installed)
 - AI SDK v6 changed `parameters` → `inputSchema` (silent breaking change in tool definitions)
-- `x402-fetch` (unscoped, v1.x) is older — use `@x402/fetch` (scoped, v2.x)
+- AI SDK v6 `convertToModelMessages` returns `Promise<ModelMessage[]>` — must `await`
+- `x402-fetch` (unscoped, v1.x) is older — use `@x402/fetch` (scoped, v2.x) with `x402Client` + `ExactEvmScheme`
+- `@x402/next` peer-warns `next@^16`; works on 15.5 for now
+- ERC-7930 byte layout in `lib/ensip25.ts` is best-effort — validate against reference impl before submission

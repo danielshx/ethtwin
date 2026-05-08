@@ -28,13 +28,29 @@ You spawn your AI Twin in 60 seconds (email + passkey, no seed phrase). The Twin
 
 ## Quick start
 
+The Next.js scaffold + all verified deps are already installed (state of 2026-05-08). To boot:
+
 ```bash
-pnpm install
-cp .env.example .env.local   # fill in keys
-pnpm dev
+pnpm install                  # restore deps from pnpm-lock.yaml
+cp .env.example .env.local    # fill in API keys (Privy, Anthropic, OpenAI, NameStone, Orbitport, Apify)
+pnpm dev                      # → http://localhost:3000
 ```
 
-See [docs/09-Setup.md](./docs/09-Setup.md) for the full setup guide and [docs/02-Phasen.md](./docs/02-Phasen.md) for the 48h plan.
+Smoke tests:
+
+```bash
+pnpm typecheck                # tsc --noEmit
+pnpm test:chain               # viem + Sepolia/Base Sepolia + ENS resolve
+pnpm test:claude              # Claude Sonnet 4.6 reachability
+```
+
+What ships with the scaffold:
+- `app/api/{twin,voice,twin-tool,x402,ens,stealth,cosmic-seed,onboarding,agents/analyst}/route.ts`
+- `lib/{viem,ens,ensip25,namestone,cosmic,stealth,x402-client,twin-tools,privy-server,prompts,utils}.ts`
+- `app/{layout,providers,page,globals.css}` with PrivyProvider + SmartWalletsProvider on Base Sepolia
+- `scripts/{test-chain,test-claude,warm-cosmic-cache}.ts`
+
+See [docs/09-Setup.md](./docs/09-Setup.md) for the full setup guide, [docs/03-Backlog.md](./docs/03-Backlog.md#-infra-status-2026-05-08) for the current Infra-Status, and [docs/02-Phasen.md](./docs/02-Phasen.md) for the 48h plan.
 
 ## Documentation
 
