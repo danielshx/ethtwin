@@ -26,7 +26,8 @@ const PROTECTED_URL = `http://${HOST}:${PORT}/protected`
 
 // Base Sepolia USDC.
 const ASSET = "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
-const NETWORK = "eip155:84532"
+// v1 uses CAIP-2 slug ("base-sepolia"), v2 uses "eip155:84532". Mock speaks v1.
+const NETWORK = "base-sepolia"
 const PAY_TO = "0x4E09c220BD556396Bc255A4DD24F858Bafeba6f5" // dev wallet
 const MAX_AMOUNT = "1000" // 0.001 USDC at 6 decimals
 

@@ -3,11 +3,14 @@
 
 import { wrapFetchWithPayment, x402Client } from "@x402/fetch"
 import { ExactEvmScheme } from "@x402/evm"
+import { ExactEvmSchemeV1 } from "@x402/evm/v1"
 import { privateKeyToAccount } from "viem/accounts"
 
 // Base Sepolia (84532) primary; we also register Base Mainnet (8453) for
 // real-Apify fallback when 'demo on testnet' is unavailable.
-const CHAIN_NAMESPACES = ["eip155:84532", "eip155:8453"] as const
+// v2 uses CAIP-2 EIP-155 namespaces; v1 uses the older slug names.
+const V2_NAMESPACES = ["eip155:84532", "eip155:8453"] as const
+const V1_NAMESPACES = ["base-sepolia", "base"] as const
 
 let cachedFetch: typeof fetch | null = null
 
@@ -24,12 +27,13 @@ export function paidFetch(): typeof fetch {
   const senderKey = (raw.startsWith("0x") ? raw : `0x${raw}`) as `0x${string}`
   const signer = privateKeyToAccount(senderKey)
   const client = new x402Client()
-  for (const ns of CHAIN_NAMESPACES) {
-    // ExactEvmScheme accepts a viem signer; the type is loose so we cast.
-    // Register for both v2 (default) and v1 — different facilitators / servers
-    // emit different x402Version fields and the client must dispatch to the right scheme.
+  // v2 (default) — uses CAIP-2 EIP-155 namespaces.
+  for (const ns of V2_NAMESPACES) {
     client.register(ns, new ExactEvmScheme(signer as never))
-    client.registerV1(ns, new ExactEvmScheme(signer as never))
+  }
+  // v1 — uses chain slugs (base-sepolia, base, sepolia, ...) and the v1 scheme class.
+  for (const ns of V1_NAMESPACES) {
+    client.registerV1(ns, new ExactEvmSchemeV1(signer as never))
   }
   cachedFetch = wrapFetchWithPayment(fetch, client) as typeof fetch
   return cachedFetch
