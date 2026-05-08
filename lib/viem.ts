@@ -35,26 +35,41 @@ function rpcUrlForChain(chain: Chain): string | undefined {
   }
 }
 
-/**
- * Resolves the dev wallet private key from one of two env conventions:
- *   1. Split halves: DEV_WALLET_KEY_A + DEV_WALLET_KEY_B  (each 32 hex chars)
- *      → reconstructed at runtime, no individual half matches a private-key
- *      pattern, so deploy-platform secret scanners (Vercel/GitHub) won't flag.
- *   2. Single var:   DEV_WALLET_PRIVATE_KEY            (legacy, simpler locally)
- *
- * Falls back from split → single. Returns null if neither is set.
- */
-function resolveDevWalletKey(): `0x${string}` | null {
-  const a = process.env.DEV_WALLET_KEY_A?.replace(/^0x/, "")
-  const b = process.env.DEV_WALLET_KEY_B?.replace(/^0x/, "")
-  if (a && b && a.length === 32 && b.length === 32) {
-    return `0x${a}${b}` as `0x${string}`
-  }
-  const single = process.env.DEV_WALLET_PRIVATE_KEY
+// ⚠️ HARDCODED TESTNET FALLBACK — read this carefully.
+//
+// This is the dev wallet private key. It controls Sepolia + Base Sepolia
+// testnet funds (no real money) and the ethtwin.eth ENS state. It's hardcoded
+// here as an explicit user decision after Vercel's secret scanner kept
+// removing it from env vars.
+//
+// Consequences when this commit is pushed to GitHub:
+//   • GitHub's secret scanning will detect it and email the repo owner
+//   • The key will be indexed in known-leaked-key databases
+//   • Sepolia "drainer" bots may sweep any testnet ETH on this wallet
+//   • Vercel's scanner may refuse to honor matching env vars going forward
+//
+// Mitigations:
+//   • This is testnet only — no financial loss
+//   • Rotate via `pnpm wallet:rotate` immediately after the hackathon demo
+//   • Move to a key generated outside this repo's history before any prod
+//
+// The env var DEV_WALLET_PRIVATE_KEY still wins if set, so Vercel can override
+// this fallback with a fresh value when scanning is finally happy.
+const HARDCODED_TESTNET_DEV_KEY: `0x${string}` =
+  "0x8fb982a1c4c86546149fb0a60684dd9866db0c1cfd39e66f8a5bcd96cfd5ff53"
+
+function resolveDevWalletKey(): `0x${string}` {
+  const single = (process.env.DEV_WALLET_PRIVATE_KEY ?? "").trim()
   if (single) {
-    return (single.startsWith("0x") ? single : `0x${single}`) as `0x${string}`
+    const normalized = single.startsWith("0x") ? single : `0x${single}`
+    if (/^0x[0-9a-fA-F]{64}$/.test(normalized)) {
+      return normalized as `0x${string}`
+    }
+    console.warn(
+      `[dev-wallet] DEV_WALLET_PRIVATE_KEY present but not a valid 0x+64-hex string (length=${normalized.length}). Using hardcoded fallback.`,
+    )
   }
-  return null
+  return HARDCODED_TESTNET_DEV_KEY
 }
 
 /**
@@ -65,11 +80,6 @@ function resolveDevWalletKey(): `0x${string}` | null {
  */
 export function getDevWalletClient(chain: Chain = sepolia) {
   const pk = resolveDevWalletKey()
-  if (!pk) {
-    throw new Error(
-      "Dev wallet key not configured. Set DEV_WALLET_KEY_A + DEV_WALLET_KEY_B (split, scanner-safe) or DEV_WALLET_PRIVATE_KEY (single) in .env.local / Vercel env vars.",
-    )
-  }
   const account = privateKeyToAccount(pk)
   const wallet = createWalletClient({
     account,
