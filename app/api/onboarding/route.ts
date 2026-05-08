@@ -34,8 +34,12 @@ const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000"
 const CREATE_SUBNAME_GAS = 200_000n
 const RESOLVER_MULTICALL_GAS = 1_500_000n
 
+// privyToken is optional in hackathon/demo mode: when null/empty (e.g. Privy
+// session failed to fully establish on a freshly deployed Vercel URL), we
+// proceed without server-side auth check. Tighten this for prod by making
+// it required again.
 const onboardingBodySchema = z.object({
-  privyToken: z.string().min(1, "Privy token is required"),
+  privyToken: z.string().nullable().optional(),
   username: ensLabelSchema,
   smartWalletAddress: ethereumAddressSchema,
   stealthMetaAddress: z.string().min(1, "stealthMetaAddress is required"),
@@ -53,12 +57,18 @@ export async function POST(req: Request) {
   if (!parsed.ok) return parsed.response
   const body = parsed.data
 
-  try {
-    await verifyAuthToken(body.privyToken)
-  } catch (error) {
-    return jsonError(
-      error instanceof Error ? error.message : "Privy token verification failed",
-      401,
+  if (body.privyToken) {
+    try {
+      await verifyAuthToken(body.privyToken)
+    } catch (error) {
+      return jsonError(
+        error instanceof Error ? error.message : "Privy token verification failed",
+        401,
+      )
+    }
+  } else {
+    console.warn(
+      "[onboarding] No privyToken provided — proceeding in demo mode (auth check skipped). Tighten before prod.",
     )
   }
 
