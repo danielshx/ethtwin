@@ -76,10 +76,11 @@ async function readSingleMessage(messageEns: string, label: string): Promise<Mes
   }
 }
 
-// Vercel Hobby caps function execution at 10s. Each message = 3 RPC calls,
-// so an unbounded inbox can timeout under load. Cap to the most recent N labels;
-// the index is already in chronological-ish order (append-only).
-const DEFAULT_INBOX_LIMIT = 30
+// Each message = 3 ENS text-record reads, each going through the universal
+// resolver = ~3-6 RPC roundtrips per record. Even with parallelism, a 30-msg
+// inbox can blow past Vercel timeouts when Sepolia ENS reads are slow.
+// Capping at 10 keeps the worst-case fan-out tolerable.
+const DEFAULT_INBOX_LIMIT = 10
 
 /** Full inbox read for a recipient ENS, sorted newest-first. */
 export async function readInbox(

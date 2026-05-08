@@ -4,7 +4,9 @@ import { readInbox, sendMessage } from "@/lib/messages"
 import { jsonError, parseJsonBody } from "@/lib/api-guard"
 
 export const runtime = "nodejs"
-export const maxDuration = 60
+// Read path has bounded fan-out (cap of 10 messages × 3 reads via universal
+// resolver). 15s leaves headroom on Vercel without freezing the UI.
+export const maxDuration = 15
 
 // GET /api/messages?for=alice.ethtwin.eth[&limit=10]
 export async function GET(req: Request) {

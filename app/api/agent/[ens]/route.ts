@@ -8,6 +8,7 @@ import { readTwinRecords, resolveEnsAddress } from "@/lib/ens"
 import { buildAvatarUrl } from "@/lib/twin-profile"
 
 export const runtime = "nodejs"
+export const maxDuration = 15
 
 export async function GET(
   _req: Request,
