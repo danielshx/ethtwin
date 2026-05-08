@@ -11,10 +11,10 @@
 ### Parallel-Tasks pro Person
 
 #### ETH-Dev
-- [ ] Repo lokal klonen, pnpm install
+- [ ] Repo lokal klonen, pnpm install // done
 - [ ] viem + @ensdomains/ensjs Boilerplate testen
 - [ ] Base Sepolia RPC (Alchemy/QuickNode free) registrieren
-- [ ] Test-Wallet mit Sepolia ETH funden (faucet)
+- [ ] Test-Wallet mit Sepolia ETH funden (faucet)  //done
 
 #### Backend
 - [ ] Privy.io Account, App-ID + Secret holen
