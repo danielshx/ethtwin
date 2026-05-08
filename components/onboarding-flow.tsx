@@ -151,6 +151,17 @@ export function OnboardingFlow({
         smartWalletAddress: walletAddr,
         cosmicAttestation: cosmic.sample?.attestation ?? "mock-attestation",
       })
+      // Server returned within seconds after broadcasting. Poll until the addr
+      // record actually lands on-chain (~24-30s on Sepolia).
+      const ready = await pollUntilTwinReady(username, walletAddr, {
+        timeoutMs: 90_000,
+        intervalMs: 3_000,
+      })
+      if (!ready) {
+        throw new Error(
+          "Mint is taking longer than expected. Sepolia might be congested — try again in a minute.",
+        )
+      }
       setStep("done")
       setTimeout(() => {
         onComplete({
@@ -301,13 +312,17 @@ export function OnboardingFlow({
                 >
                   {step === "minting" ? (
                     <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Minting{" "}
-                      {username}.{parentDomain}
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Confirming on Sepolia…
                     </>
                   ) : (
                     <>Mint {username}.{parentDomain}</>
                   )}
                 </Button>
+                {step === "minting" && (
+                  <p className="text-center font-mono text-[10px] text-muted-foreground">
+                    txs broadcast — waiting for the next Sepolia block (~12-30s)…
+                  </p>
+                )}
               </div>
             </StepShell>
           )}
@@ -402,4 +417,40 @@ function shortAddr(addr: string) {
   if (!addr) return ""
   if (addr.length < 14) return addr
   return `${addr.slice(0, 6)}…${addr.slice(-4)}`
+}
+
+/**
+ * Polls /api/check-username until the new twin's addr record on-chain matches
+ * the user's wallet (= both createSubname and the resolver multicall mined).
+ * Returns true once ready, false on timeout.
+ */
+async function pollUntilTwinReady(
+  username: string,
+  walletAddr: string,
+  opts: { timeoutMs: number; intervalMs: number },
+): Promise<boolean> {
+  const deadline = Date.now() + opts.timeoutMs
+  const targetLower = walletAddr.toLowerCase()
+  while (Date.now() < deadline) {
+    try {
+      const res = await fetch(`/api/check-username?u=${encodeURIComponent(username)}`)
+      const data = (await res.json()) as {
+        ok: boolean
+        taken: boolean
+        ownerAddr: string | null
+      }
+      if (
+        data.ok &&
+        data.taken &&
+        data.ownerAddr &&
+        data.ownerAddr.toLowerCase() === targetLower
+      ) {
+        return true
+      }
+    } catch {
+      // network blip — retry on the next interval
+    }
+    await new Promise((r) => setTimeout(r, opts.intervalMs))
+  }
+  return false
 }

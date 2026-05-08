@@ -1,18 +1,18 @@
-import { getAddress, type Address } from "viem"
+import { getAddress, type Address, type Hash } from "viem"
 import { z } from "zod"
 import { verifyAuthToken } from "@/lib/privy-server"
 import { encodeInteropAddress, ERC8004_REGISTRY, CHAIN_REFERENCE } from "@/lib/ensip25"
 import { PARENT_DOMAIN, getDevWalletClient, sepoliaClient } from "@/lib/viem"
 import {
-  createSubname,
+  ENS_REGISTRY,
   readResolver,
   readSubnameOwner,
   resolveEnsAddress,
-  setAddressRecord,
-  setTextRecord,
 } from "@/lib/ens"
-import { addAgentToDirectory } from "@/lib/agents"
+import { ensRegistryAbi, ensResolverAbi } from "@/lib/abis"
+import { readAgentDirectory } from "@/lib/agents"
 import { buildDefaultProfileRecords } from "@/lib/twin-profile"
+import { encodeFunctionData, keccak256, namehash, toBytes } from "viem"
 import {
   ensLabelSchema,
   ethereumAddressSchema,
@@ -23,8 +23,16 @@ import {
 } from "@/lib/api-guard"
 
 export const runtime = "nodejs"
+// Fire-and-forget: broadcast both txs back-to-back with manual nonces and
+// fixed gas (skipping per-tx simulation). Server returns within ~3 s; the
+// frontend polls until the new twin is fully on-chain. Fits Vercel Hobby.
+export const maxDuration = 30
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000"
+
+// Conservative gas budgets — both fit comfortably for the operations we do.
+const CREATE_SUBNAME_GAS = 200_000n
+const RESOLVER_MULTICALL_GAS = 1_500_000n
 
 const onboardingBodySchema = z.object({
   privyToken: z.string().min(1, "Privy token is required"),
@@ -33,10 +41,6 @@ const onboardingBodySchema = z.object({
   stealthMetaAddress: z.string().min(1, "stealthMetaAddress is required"),
   twinAgentId: z.string().min(1, "twinAgentId is required"),
 })
-
-async function waitForTx(hash: `0x${string}`) {
-  return sepoliaClient.waitForTransactionReceipt({ hash })
-}
 
 export async function POST(req: Request) {
   const appUrl = resolveAppUrl()
@@ -78,34 +82,26 @@ export async function POST(req: Request) {
 
     // Architecture: dev wallet retains registry ownership of every subname so
     // it can write records + create message sub-subnames on the user's behalf.
-    // The user's wallet appears in the `addr` record (forward resolution still
-    // points at them). Hijacking check uses the existing addr record, since
-    // the registry owner is always the dev wallet.
-    const { account: devAccount } = getDevWalletClient()
+    // The user's wallet appears in the `addr` record. Hijacking check uses
+    // the existing addr record.
+    const { wallet, account: devAccount } = getDevWalletClient()
     const existingOwner = await readSubnameOwner(ensName)
     const existingAddr = await resolveEnsAddress(ensName)
 
-    if (existingOwner === ZERO_ADDRESS) {
-      // Fresh subname — mint with dev wallet as registry owner.
-      const createTx = await createSubname({
-        parent: PARENT_DOMAIN,
-        label: body.username,
-        owner: devAccount.address,
-        resolver: parentResolver,
-      })
-      await waitForTx(createTx)
-    } else if (existingAddr && getAddress(existingAddr) !== walletAddress) {
-      // Subname already taken by a different user (different addr record).
+    const needsCreate = existingOwner === ZERO_ADDRESS
+    if (
+      !needsCreate &&
+      existingAddr &&
+      getAddress(existingAddr) !== walletAddress
+    ) {
+      // Already owned by a different user.
       return jsonError(
         `${ensName} is already taken by ${existingAddr}. Pick a different username.`,
         409,
       )
     }
-    // else: fresh OR same user re-registering (existingAddr matches) — fall through.
 
-    const addrTx = await setAddressRecord(ensName, walletAddress)
-    await waitForTx(addrTx)
-
+    // ── Build the resolver multicall payload (addr + all text records + directory append) ──
     const profile = buildDefaultProfileRecords(body.username)
     const textRecords: Record<string, string> = {
       ...profile,
@@ -124,23 +120,94 @@ export async function POST(req: Request) {
       [ensipKey]: "1",
     }
 
-    for (const [key, value] of Object.entries(textRecords)) {
-      const tx = await setTextRecord(ensName, key, value)
-      await waitForTx(tx)
+    const ensNode = namehash(ensName)
+    const calls: `0x${string}`[] = [
+      encodeFunctionData({
+        abi: ensResolverAbi,
+        functionName: "setAddr",
+        args: [ensNode, walletAddress],
+      }),
+      ...Object.entries(textRecords).map(([key, value]) =>
+        encodeFunctionData({
+          abi: ensResolverAbi,
+          functionName: "setText",
+          args: [ensNode, key, value],
+        }),
+      ),
+    ]
+
+    const currentDirectory = await readAgentDirectory()
+    const alreadyListed = currentDirectory.some(
+      (e) => e.ens.toLowerCase() === ensName.toLowerCase(),
+    )
+    if (!alreadyListed) {
+      const nextDirectory = [
+        ...currentDirectory,
+        { ens: ensName, addedAt: Math.floor(Date.now() / 1000) },
+      ].slice(-100)
+      const parentNode = namehash(PARENT_DOMAIN)
+      calls.push(
+        encodeFunctionData({
+          abi: ensResolverAbi,
+          functionName: "setText",
+          args: [parentNode, "agents.directory", JSON.stringify(nextDirectory)],
+        }),
+      )
     }
 
-    // Register agent in the on-chain directory (idempotent — skipped if already present).
-    const directoryTx = await addAgentToDirectory(ensName)
-    if (directoryTx) await waitForTx(directoryTx)
+    // ── Broadcast back-to-back with sequential nonces, no waits ──
+    // Fetching nonce once and assigning manually means viem doesn't need to
+    // re-fetch. Passing `gas` lets viem skip the eth_estimateGas simulation
+    // (which would revert for the multicall since the subname doesn't exist
+    // in the current state if we're creating it).
+    const startingNonce = await sepoliaClient.getTransactionCount({
+      address: devAccount.address,
+      blockTag: "pending",
+    })
+
+    let createTx: Hash | null = null
+    let recordsNonce = startingNonce
+
+    if (needsCreate) {
+      const labelHash = keccak256(toBytes(body.username))
+      const parentNode = namehash(PARENT_DOMAIN)
+      createTx = await wallet.writeContract({
+        account: devAccount,
+        chain: wallet.chain,
+        address: ENS_REGISTRY,
+        abi: ensRegistryAbi,
+        functionName: "setSubnodeRecord",
+        args: [parentNode, labelHash, devAccount.address, parentResolver, 0n],
+        nonce: startingNonce,
+        gas: CREATE_SUBNAME_GAS,
+      })
+      recordsNonce = startingNonce + 1
+    }
+
+    const recordsTx = await wallet.writeContract({
+      account: devAccount,
+      chain: wallet.chain,
+      address: parentResolver,
+      abi: ensResolverAbi,
+      functionName: "multicall",
+      args: [calls],
+      nonce: recordsNonce,
+      gas: RESOLVER_MULTICALL_GAS,
+    })
+
+    return Response.json({
+      ok: true,
+      ensName,
+      status: "pending",
+      createTx,
+      recordsTx,
+      // Frontend can poll /api/check-username?u=<username> until ownerAddr === walletAddress.
+      pollUrl: `/api/check-username?u=${encodeURIComponent(body.username)}`,
+    })
   } catch (error) {
     return jsonError(
       error instanceof Error ? error.message : "Sepolia ENS onboarding failed",
       502,
     )
   }
-
-  return Response.json({
-    ok: true,
-    ensName,
-  })
 }
