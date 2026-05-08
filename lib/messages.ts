@@ -55,7 +55,9 @@ export async function readMessageList(recipientEns: string): Promise<string[]> {
   }
 }
 
-/** Read a single message by its full subname. */
+// (single-message read via individual fast calls — kept for completeness;
+// readInbox below uses a single multicall3 batch instead, which is the path
+// that actually fits Vercel's function timeout.)
 async function readSingleMessage(messageEns: string, label: string): Promise<Message | null> {
   try {
     const [from, body, at] = await Promise.all([
@@ -64,17 +66,27 @@ async function readSingleMessage(messageEns: string, label: string): Promise<Mes
       readTextRecordFast(messageEns, "at"),
     ])
     if (!from || !body || !at) return null
-    return {
-      label,
-      ens: messageEns,
-      from,
-      body,
-      at: Number(at),
-    }
+    return { label, ens: messageEns, from, body, at: Number(at) }
   } catch {
     return null
   }
 }
+
+// Multicall3 + the fast resolver = the entire inbox in ONE RPC roundtrip.
+const MULTICALL3_ADDRESS: `0x${string}` = "0xcA11bde05977b3631167028862bE2a173976CA11"
+const PARENT_RESOLVER: `0x${string}` = "0xE99638b40E4Fff0129D56f03b55b6bbC4BBE49b5"
+const RESOLVER_TEXT_VIEW_ABI = [
+  {
+    name: "text",
+    type: "function",
+    stateMutability: "view",
+    inputs: [
+      { name: "node", type: "bytes32" },
+      { name: "key", type: "string" },
+    ],
+    outputs: [{ name: "", type: "string" }],
+  },
+] as const
 
 // Each message = 3 ENS text-record reads, each going through the universal
 // resolver = ~3-6 RPC roundtrips per record. Even with parallelism, a 30-msg
@@ -82,19 +94,55 @@ async function readSingleMessage(messageEns: string, label: string): Promise<Mes
 // Capping at 10 keeps the worst-case fan-out tolerable.
 const DEFAULT_INBOX_LIMIT = 10
 
-/** Full inbox read for a recipient ENS, sorted newest-first. */
+/**
+ * Full inbox read for a recipient ENS, sorted newest-first.
+ *
+ * Strategy: ONE multicall3 RPC call hydrates the entire inbox. Without
+ * multicall this fans out to 1 + 3N calls (label list + per-message
+ * from/body/at), which is too slow on Vercel due to round-trip latency.
+ */
 export async function readInbox(
   recipientEns: string,
   limit: number = DEFAULT_INBOX_LIMIT,
 ): Promise<Message[]> {
   const labels = await readMessageList(recipientEns)
-  // The list is append-only; newest entries are at the tail. Take the tail and
-  // hydrate only that slice — keeps RPC fan-out bounded.
+  // Append-only list — newest at the tail.
   const recent = labels.slice(-Math.max(1, limit))
-  const messages = await Promise.all(
-    recent.map((label) => readSingleMessage(`${label}.${recipientEns}`, label)),
-  )
-  return messages.filter((m): m is Message => m !== null).sort((a, b) => b.at - a.at)
+  if (recent.length === 0) return []
+
+  // Build all 3·N text() calls and execute them in a single multicall3 batch.
+  const contracts = recent.flatMap((label) => {
+    const node = namehash(`${label}.${recipientEns}`)
+    return (["from", "body", "at"] as const).map((key) => ({
+      address: PARENT_RESOLVER,
+      abi: RESOLVER_TEXT_VIEW_ABI,
+      functionName: "text" as const,
+      args: [node, key] as const,
+    }))
+  })
+
+  const results = await sepoliaClient.multicall({
+    contracts,
+    multicallAddress: MULTICALL3_ADDRESS,
+    allowFailure: true,
+  })
+
+  const messages: Message[] = []
+  for (let i = 0; i < recent.length; i++) {
+    const label = recent[i]!
+    const from = results[i * 3]?.status === "success" ? (results[i * 3]!.result as string) : ""
+    const body = results[i * 3 + 1]?.status === "success" ? (results[i * 3 + 1]!.result as string) : ""
+    const at = results[i * 3 + 2]?.status === "success" ? (results[i * 3 + 2]!.result as string) : ""
+    if (!from || !body || !at) continue
+    messages.push({
+      label,
+      ens: `${label}.${recipientEns}`,
+      from,
+      body,
+      at: Number(at),
+    })
+  }
+  return messages.sort((a, b) => b.at - a.at)
 }
 
 // ── Send side ────────────────────────────────────────────────────────────────
@@ -112,9 +160,7 @@ export type SendMessageResult = {
  *   1. createSubname → msg-<seq>.<toEns>
  *   2. Resolver.multicall: set msg.from/body/at + recipient's messages.list
  */
-// All ethtwin.eth subnames share this resolver, hardcoded so the hot path
-// doesn't need a pre-flight RPC read.
-const PARENT_RESOLVER: Address = "0xE99638b40E4Fff0129D56f03b55b6bbC4BBE49b5"
+// (PARENT_RESOLVER hoisted above for the read path; reused here for sends.)
 const SEPOLIA_MAX_FEE_PER_GAS = 5_000_000_000n
 const SEPOLIA_MAX_PRIORITY_FEE_PER_GAS = 1_500_000_000n
 const CREATE_SUBNAME_GAS = 200_000n

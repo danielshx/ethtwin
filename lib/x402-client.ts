@@ -17,8 +17,28 @@
 //   callApifyX402(actor, body)     → typed Apify wrapper (mainnet by default)
 
 import { wrapFetchWithPayment, x402Client } from "@x402/fetch"
-import { decodePaymentResponseHeader } from "@x402/core/http"
 import { ExactEvmScheme } from "@x402/evm"
+
+// Inlined: @x402/core/http exports decodePaymentResponseHeader which decodes
+// base64(JSON) of the SettleResponse. We replicate it here because the
+// package's subpath types don't resolve under TS's bundler resolution.
+type SettleResponseShape = {
+  success?: boolean
+  transaction?: string
+  network?: string
+  payer?: string
+}
+function decodePaymentResponseHeader(raw: string): SettleResponseShape {
+  try {
+    const decoded =
+      typeof atob === "function"
+        ? atob(raw)
+        : Buffer.from(raw, "base64").toString("utf8")
+    return JSON.parse(decoded) as SettleResponseShape
+  } catch {
+    return {}
+  }
+}
 import { ExactEvmSchemeV1 } from "@x402/evm/v1"
 import { privateKeyToAccount, type PrivateKeyAccount } from "viem/accounts"
 
