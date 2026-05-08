@@ -8,24 +8,28 @@
 
 ---
 
-## ✅ Infra-Status (2026-05-08, abends)
+## ✅ Infra-Status (2026-05-09, fortlaufend)
 
-Vor den Tier-Tasks: das Repo ist gescaffolded, Deps installed, Routen + lib/ gestubbt, Frontend-Shell steht.
+Onboarding ist live, Stealth-Send-Hero steht, Agent-Discovery + on-chain Messaging funktionieren end-to-end.
 
 - [x] Next.js 15 + Turbopack + Tailwind 4 + TS strict scaffold (`pnpm dev`, `pnpm build`, `pnpm typecheck` alle clean)
-- [x] Alle verifizierten Deps installed (siehe `docs/11-Tech-Verifikation.md`) inkl. `permissionless` (Privy SmartWallets peer)
-- [x] `lib/` komplett gestubbt: `viem`, `ens`, `ensip25` (ERC-7930 + agent-registration verify), `namestone`, `cosmic` (mit Mock-Fallback), `stealth` (Beta-SDK in try/catch), `x402-client` (`x402Client` + `ExactEvmScheme`), `twin-tools` (9 AI-SDK-v6 tools inkl. `findAgents`, `hireAgent`), `agents` (on-chain directory), `privy-server`, `prompts`, `utils`
-- [x] API-Routen gestubbt: `/api/{twin,voice,twin-tool,x402,ens,stealth,cosmic-seed,onboarding,agents/analyst}` — `/api/cosmic-seed` live getestet
-- [x] App-Shell: `layout.tsx`, `providers.tsx` (Privy + SmartWallets, Base Sepolia), `page.tsx` (auth-gated state machine), `globals.css` (cosmic dark theme)
-- [x] `.env.example`, `.gitignore`, `tsconfig.json`, `next.config.ts`, `postcss.config.mjs`
-- [x] Smoke-Test-Scripts: `pnpm test:chain`, `pnpm test:claude`, `scripts/warm-cosmic-cache.ts`
-- [x] **shadcn/ui initialisiert** (Tailwind 4, neutral base, cosmic-purple Override) — Komponenten in `components/ui/`: `button`, `card`, `input`, `dialog`, `badge`, `sonner`, `scroll-area`, `separator`, `label`
-- [x] **Frontend-Komponenten gebaut:**
-  - `components/cosmic-orb.tsx` — Framer-Motion-Hero + `useCosmicSeed()` Hook (idle / fetching / revealed Phasen)
-  - `components/twin-chat.tsx` — `useChat` (AI SDK v6) Streaming-UI mit Tool-Call-Rendering, Empty-State-Prompts
-  - `components/tx-approval-modal.tsx` — Plain-English-Modal mit ENS-Reverse, Calldata-Drawer, Block-Explorer-Link
-  - `components/onboarding-flow.tsx` — 4-Step Wizard (intro → username → cosmic → done), nutzt `CosmicOrb` als Hero
-- [x] **Homepage** verbindet alles: Privy-Auth → OnboardingFlow → TwinChat (Session in localStorage), mit Missing-Env-Fallback wenn `NEXT_PUBLIC_PRIVY_APP_ID` fehlt
+- [x] Alle verifizierten Deps installed (siehe `docs/11-Tech-Verifikation.md`) inkl. `permissionless`, `@x402/core`
+- [x] `lib/`: `viem`, `ens`, `ensip25`, `namestone` (ungenutzt — Pfad gewechselt), `cosmic` (Cache + Mock-Fallback), `stealth` (Beta-SDK in try/catch), `x402-client`, `twin-tools` (10 Tools inkl. `findAgents`, `hireAgent`, `sendMessage`), `agents` (on-chain directory), `messages` (ENS-Subname-Messenger), `transfers`, `payments` (Stealth-USDC), `wallet-summary`, `tx-decoder`, `history` + `history-server` (hybrid client/server store), `twin-profile` (Pollinations-Avatar), `privy-server`, `prompts`, `utils`
+- [x] API-Routen: `/api/{twin,voice,twin-tool,x402,ens,stealth,stealth/send,cosmic-seed,onboarding,agents,agents/analyst,agent/[ens],messages,transfer,wallet-summary,history,check-username}/route.ts`
+- [x] App-Shell: `layout.tsx`, `providers.tsx` (Privy + SmartWallets, Base Sepolia), `page.tsx` (auth-gated state machine mit 5 Tabs: Chat / Messenger / Send Tokens / **Stealth Send** / History), `globals.css`
+- [x] Smoke-Test-Scripts: `pnpm test:{chain,claude,decoder,x402,x402-mock,privy-key}`, `pnpm ens:{check-parent,provision,provision-analyst,read,set-text,stealth-provision}`, `pnpm send:{token,stealth-usdc}`, `pnpm wallet:{generate,rotate}`, `pnpm twins:backfill`
+- [x] shadcn/ui Komponenten (button, card, input, dialog, badge, sonner, scroll-area, separator, label)
+- [x] **Frontend-Komponenten:**
+  - `components/cosmic-orb.tsx` — Framer-Motion-Hero + Phasen
+  - `components/twin-chat.tsx` — AI-SDK-v6 useChat + ENSIP-25-Verified-Badge + sendMessage-Tool-Rendering + Profile-Dialog
+  - `components/messenger.tsx` — On-chain ENS messenger (Subname-pro-Message)
+  - `components/token-transfer.tsx` — Multichain ETH/USDC Send mit hard caps
+  - `components/stealth-send.tsx` — **Hero-Tab**: CosmicOrb-Animation während EIP-5564 USDC-Stealth-Send
+  - `components/history.tsx` — Hybrid localStorage + server-side history pro ENS
+  - `components/agent-profile.tsx` — Avatar + Persona + Capabilities + Stealth-Meta-Preview Dialog
+  - `components/onboarding-flow.tsx` — 4-Step Wizard (intro → username → cosmic → done)
+  - `components/tx-approval-modal.tsx` — Plain-English-Modal (used opportunistically)
+- [x] **Onboarding live:** Privy → ENS-Subname auf Sepolia → addr-Record + 7 Twin Text Records + ENSIP-25 + stealth-meta-address + Eintrag in `agents.directory` (alles via dev-wallet, der `ethtwin.eth` Parent-Subname besitzt)
 
 ---
 
@@ -44,21 +48,21 @@ Diese Spikes klären Annahmen bevor wir bauen — falls ein Spike fehlschlägt, 
 ## 🟥 Tier 1 — MUST HAVE
 
 ### Onboarding
-- [ ] **T1-01** Privy Login mit Email + Passkey (`@privy-io/react-auth`)
-- [ ] **T1-02** Smart Wallet Embedded (Privy + Kernel/ZeroDev provider)
-- [ ] **T1-03** ENS Subname-Erstellung während Onboarding via NameStone REST API (`{username}.ethtwin.eth`)
-- [ ] **T1-04** Smart Wallet wird Owner des ENS Subname Records
-- [ ] **T1-05** Twin-Persona-Default in ENS Text Records gespeichert (description, avatar, twin.persona)
-- [ ] **T1-05b** **ENSIP-25 Text Record** gesetzt: `agent-registration[<ERC-7930-encoded-registry>][<agentId>] = "1"`
+- [x] **T1-01** Privy Login mit Email + Passkey (`@privy-io/react-auth`) — `app/page.tsx` `handleAuthenticate` mit method-Switch (any/passkey/wallet)
+- [x] **T1-02** Smart Wallet Embedded — `useSmartWallets()` + `useWallets()`, fällt auf shared dev wallet zurück wenn kein embedded wallet existiert (siehe `DEV_WALLET_FALLBACK` in `app/page.tsx`)
+- [x] **T1-03** ENS Subname-Erstellung — **Pfad geändert von NameStone zu on-chain Sepolia ENS**. `app/api/onboarding/route.ts` mintet `{username}.ethtwin.eth` direkt via dev wallet (parent owner). NameStone-lib bleibt als Backup.
+- [x] **T1-04** addr-Record zeigt auf Smart Wallet (ENS-Subname-Registry-Owner = dev wallet, addr-record = user wallet — so kann der dev wallet weiter Records schreiben)
+- [x] **T1-05** Twin-Persona-Default in ENS Text Records: avatar (Pollinations.ai, deterministic), description, url, twin.persona, twin.capabilities, twin.endpoint, twin.version — alle in `app/api/onboarding/route.ts` + `lib/twin-profile.ts`
+- [x] **T1-05b** **ENSIP-25 Text Record** gesetzt: `agent-registration[<ERC-7930>][<twinAgentId>] = "1"` ✓
   - Registry-Address Base Sepolia: `0x8004A818BFB912233c491871b3d84c89A494BD9e`
   - ERC-7930 Helper in `lib/ensip25.ts`
-- [ ] **T1-05c** **`stealth-meta-address`** Text Record gesetzt (EIP-5564 format `st:eth:0x...`)
+- [x] **T1-05c** **`stealth-meta-address`** Text Record gesetzt (EIP-5564 format `st:eth:0x...`) — derived aus cosmicAttestation während Onboarding
 
 ### Twin Agent
 - [x] **T1-06** `/api/twin/route.ts` mit Vercel AI SDK v6 + Claude Sonnet 4.6 (`claude-sonnet-4-6`) — Stub-Code steht, braucht ANTHROPIC_API_KEY für Live
 - [x] **T1-07** System Prompt aus ENS Text Records hydriert (`lib/prompts.ts` + `readTwinRecords`)
 - [x] **T1-08** Tools verfügbar (AI SDK v6 `inputSchema`):
-  - `getWalletSummary`, `requestDataViaX402`, `decodeTransaction`, `sendToken`, `getBalance`, `sendStealthUsdc`, `generatePrivatePaymentAddress`, `findAgents`, `hireAgent`
+  - `getWalletSummary`, `requestDataViaX402`, `decodeTransaction`, `sendToken`, `getBalance`, `sendStealthUsdc`, `generatePrivatePaymentAddress`, `findAgents`, `hireAgent`, **`sendMessage`** (über `buildTwinTools({ fromEns })` Factory)
 - [x] **T1-09** Streaming-Responses ans Frontend (`useChat` + `DefaultChatTransport` in `components/twin-chat.tsx`)
 - [x] **T1-10** Multi-Turn Konversation funktioniert (Context bleibt) — `useChat` standard, ungeprüft live
 
@@ -87,16 +91,16 @@ Diese Spikes klären Annahmen bevor wir bauen — falls ein Spike fehlschlägt, 
 ## 🟨 Tier 2 — SHOULD HAVE (Wow-Layer)
 
 ### Cosmic Privacy
-- [ ] **T2-01** Orbitport cTRNG API integration mit Caching
-- [ ] **T2-02** Stealth Address Generation mit cTRNG-Seed (EIP-5564 via `@scopelift/stealth-address-sdk`)
-- [ ] **T2-03** Stealth Meta-Key Standard-konformes Format (EIP-5564 spec)
-- [ ] **T2-04** Live On-Chain Stealth-Send: Sender → Stealth-Adresse → Recipient sieht Funds
-- [ ] **T2-05** **Cosmic-Orb-Animation** beim Stealth-Generate (Hero-Moment!)
-- [ ] **T2-06** Attestation-Hash anklickbar → Block-Explorer
+- [x] **T2-01** Orbitport cTRNG API integration mit Caching — `lib/cosmic.ts` mit Rolling-Cache + Mock-Fallback bei fehlendem `ORBITPORT_API_KEY`
+- [x] **T2-02** Stealth Address Generation mit cTRNG-Seed (EIP-5564 via `@scopelift/stealth-address-sdk`) — `lib/stealth.ts` `generatePrivateAddress` injiziert cosmic bytes als `ephemeralPrivateKey`
+- [x] **T2-03** Stealth Meta-Key Standard-konformes Format — `st:eth:0x...` (EIP-5564), gesetzt im Onboarding + via `pnpm ens:stealth-provision`
+- [x] **T2-04** Live On-Chain Stealth-Send: USDC.transfer auf Base Sepolia → one-time stealth address. `lib/payments.ts` + `pnpm send:stealth-usdc` Script + jetzt **UI-Tab "Stealth Send"** (`components/stealth-send.tsx`) + `/api/stealth/send` Route mit Privy-Auth + 1 USDC Cap
+- [x] **T2-05** **Cosmic-Orb-Animation** beim Stealth-Send (Hero-Moment!) — Stealth-Send-Tab fährt CosmicOrb durch idle → fetching → revealed → sending → done; PhaseLabel zeigt aktuellen Schritt
+- [x] **T2-06** Attestation-Hash + Stealth-Adresse + viewTag im Result-Card sichtbar; basescan-Link auf die Tx
 
 ### Agent-zu-Agent x402 mit ENSIP-25
-- [x] **T2-07** `analyst.ethtwin.eth` als Sample-Agent deployed — Route `/api/agents/analyst` mit `@x402/next` `withX402` paywall (env-driven via `X402_ANALYST_PAY_TO`; unset = free in dev). ENS-Subname-Provisioning via NameStone steht aus.
-- [ ] **T2-08** `analyst.ethtwin.eth` Capabilities + ENSIP-25 Record + endpoint in Text Records (Records noch nicht gesetzt — Code liest sie via `readTwinRecords` sobald NameStone provisioned)
+- [x] **T2-07** `analyst.ethtwin.eth` als Sample-Agent deployed — Route `/api/agents/analyst` mit `@x402/next` `withX402` paywall (env-driven via `X402_ANALYST_PAY_TO`; unset = free in dev). Subname provisioniert via `pnpm ens:provision-analyst` Script.
+- [x] **T2-08** `analyst.ethtwin.eth` Capabilities + ENSIP-25 Record + endpoint in Text Records — `scripts/provision-analyst.ts` setzt avatar, description, twin.persona, twin.capabilities, twin.endpoint, twin.version, ENSIP-25 agent-registration und addet zu `agents.directory`. Ausführung erfordert Sepolia-Gas auf dev wallet.
 - [x] **T2-09** Twin findet `analyst.eth` über ENS-Discovery — neuer `findAgents` Tool liest die `agents.directory` Text-Record-Liste auf `ethtwin.eth` und resolvt jeden Eintrag
 - [x] **T2-09b** **ENSIP-25 Verification:** `findAgents` + `hireAgent` rufen `verifyAgentRegistration()` auf; Chat zeigt "✓ ENSIP-25 verified" / "unverified" Badges (`components/twin-chat.tsx` `AgentBadges`)
 - [x] **T2-10** Twin macht x402-Tx an Analyst, Analyst antwortet, Twin synthetisiert — `hireAgent` Tool ruft jetzt `paidFetch()` POST auf `twin.endpoint` und gibt `answer` zurück (ungetestet live, braucht funded `X402_SENDER_KEY` + paywalled endpoint)

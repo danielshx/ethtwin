@@ -84,16 +84,18 @@ We need to decide in **Phase 0 (Stunde 0-3)** with workemon:
 3. @privy-io/react-auth: Passkey creation prompt (FaceID/TouchID)
 4. Privy creates Embedded Smart Wallet on Base Sepolia
    (Kernel/ZeroDev provider via SmartWalletsProvider)
-5. /api/onboarding (server):
+5. /api/onboarding (server, maxDuration=60s):
    - Verify Privy token via @privy-io/node
-   - Call NameStone API: POST /set-name
-     - Domain: ethtwin.eth
-     - Name: daniel
-     - Address: <smartWalletAddress>
-     - Text records:
-       - description, twin.persona, twin.capabilities, twin.endpoint
+   - createSubname on Sepolia ENS Registry (1 tx, dev wallet = registry owner)
+   - setRecordsMulticall on PublicResolver — batches addr + all text records
+     into ONE multicall tx instead of 9 sequential calls (critical for fitting
+     under Vercel Hobby's 60s function timeout):
+       - addr → smartWalletAddress
+       - description, twin.persona, twin.capabilities, twin.endpoint, twin.version
        - stealth-meta-address (EIP-5564 format) ← our innovation
        - agent-registration[<registry>][<agentId>] = "1" ← ENSIP-25
+   - addAgentToDirectory (1 tx, idempotent)
+   Total: 3 txs on Sepolia (~30–40s) instead of ~10 (~1–2 min).
 6. Frontend: Welcome animation, "Welcome, daniel.ethtwin.eth"
 ```
 

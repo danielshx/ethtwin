@@ -2,7 +2,7 @@ import { z } from "zod"
 import { anthropic } from "@ai-sdk/anthropic"
 import { openai } from "@ai-sdk/openai"
 import { convertToModelMessages, streamText, type UIMessage } from "ai"
-import { twinTools } from "@/lib/twin-tools"
+import { buildTwinTools } from "@/lib/twin-tools"
 import { buildSystemPrompt } from "@/lib/prompts"
 import { readTwinRecords } from "@/lib/ens"
 import { jsonError, parseJsonBody } from "@/lib/api-guard"
@@ -66,7 +66,7 @@ export async function POST(req: Request) {
       model,
       system: buildSystemPrompt(records, ensName),
       messages,
-      tools: twinTools,
+      tools: buildTwinTools({ fromEns: ensName }),
     })
 
     return result.toUIMessageStreamResponse()

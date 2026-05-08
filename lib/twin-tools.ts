@@ -14,6 +14,7 @@ import { sendStealthUSDC } from "./payments"
 import { getWalletSummary } from "./wallet-summary"
 import { sendToken, getTokenBalance, parseRecipient } from "./transfers"
 import { readAgentDirectory } from "./agents"
+import { sendMessage as sendEnsMessage } from "./messages"
 
 export const twinTools = {
   getWalletSummary: tool({
@@ -302,3 +303,66 @@ export const twinTools = {
     },
   }),
 } as const
+
+export type TwinToolContext = {
+  /** ENS name of the Twin running this conversation. Used as `from` for messenger sends. */
+  fromEns?: string
+}
+
+/**
+ * Context-aware Twin tool surface.
+ * Returns the static `twinTools` plus tools that need request-scoped context
+ * (e.g. `sendMessage` needs to know which Twin is sending).
+ */
+export function buildTwinTools(ctx: TwinToolContext = {}) {
+  return {
+    ...twinTools,
+    sendMessage: tool({
+      description:
+        "Send an on-chain ENS message to another twin. Each message becomes a child subname (msg-<ts>-<seq>.<recipient>) carrying from/body/at text records on Sepolia ENS. Use when the user asks the Twin to message, ping, or write to another agent.",
+      inputSchema: z.object({
+        toEns: z
+          .string()
+          .describe("Recipient ENS name, e.g. 'analyst.ethtwin.eth'"),
+        body: z
+          .string()
+          .min(1)
+          .max(1000)
+          .describe("Message body (max 1000 chars)"),
+      }),
+      execute: async ({ toEns, body }) => {
+        if (!ctx.fromEns) {
+          return {
+            ok: false,
+            error:
+              "Twin has no ENS identity in this session — cannot send messages.",
+          }
+        }
+        try {
+          const result = await sendEnsMessage({
+            fromEns: ctx.fromEns,
+            toEns,
+            body,
+          })
+          return {
+            ok: true,
+            fromEns: ctx.fromEns,
+            toEns,
+            messageEns: result.message.ens,
+            label: result.message.label,
+            at: result.message.at,
+            txHash: result.recordsMulticallTx,
+            blockExplorerUrl: result.blockExplorerUrl,
+          }
+        } catch (err) {
+          return {
+            ok: false,
+            fromEns: ctx.fromEns,
+            toEns,
+            error: err instanceof Error ? err.message : String(err),
+          }
+        }
+      },
+    }),
+  } as const
+}

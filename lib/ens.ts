@@ -1,4 +1,4 @@
-import { keccak256, namehash, toBytes, type Address, type Hash } from "viem"
+import { encodeFunctionData, keccak256, namehash, toBytes, type Address, type Hash } from "viem"
 import { mainnetClient, sepoliaClient, getDevWalletClient } from "./viem"
 
 export type TwinTextRecords = {
@@ -80,6 +80,13 @@ const RESOLVER_ABI = [
       { name: "a", type: "address" },
     ],
     outputs: [],
+  },
+  {
+    name: "multicall",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "data", type: "bytes[]" }],
+    outputs: [{ name: "results", type: "bytes[]" }],
   },
 ] as const
 
@@ -193,6 +200,57 @@ export async function setAddressRecord(name: string, addr: Address): Promise<Has
     abi: RESOLVER_ABI,
     functionName: "setAddr",
     args: [namehash(name), addr],
+  })
+}
+
+/**
+ * Batches setAddr + multiple setText calls into a single multicall transaction
+ * on the resolver. Cuts onboarding from ~10 sequential txs (1–2 min on Sepolia)
+ * down to one. The dev wallet must be the owner of `name`.
+ */
+export async function setRecordsMulticall(
+  name: string,
+  records: { addr?: Address; texts?: Record<string, string> },
+): Promise<Hash> {
+  const { wallet, account } = getDevWalletClient()
+  const resolverAddr = await readResolver(name)
+  if (resolverAddr === "0x0000000000000000000000000000000000000000") {
+    throw new Error(`No resolver set for ${name}. Set one before writing records.`)
+  }
+  const node = namehash(name)
+  const calls: `0x${string}`[] = []
+
+  if (records.addr) {
+    calls.push(
+      encodeFunctionData({
+        abi: RESOLVER_ABI,
+        functionName: "setAddr",
+        args: [node, records.addr],
+      }),
+    )
+  }
+
+  for (const [key, value] of Object.entries(records.texts ?? {})) {
+    calls.push(
+      encodeFunctionData({
+        abi: RESOLVER_ABI,
+        functionName: "setText",
+        args: [node, key, value],
+      }),
+    )
+  }
+
+  if (calls.length === 0) {
+    throw new Error("setRecordsMulticall called with no records")
+  }
+
+  return wallet.writeContract({
+    account,
+    chain: wallet.chain,
+    address: resolverAddr,
+    abi: RESOLVER_ABI,
+    functionName: "multicall",
+    args: [calls],
   })
 }
 

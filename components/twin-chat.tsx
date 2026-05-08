@@ -231,6 +231,15 @@ type ToolOutput = {
     persona?: string
     ensip25Verified?: boolean
   }>
+  // sendMessage
+  fromEns?: string
+  toEns?: string
+  messageEns?: string
+  txHash?: string
+  blockExplorerUrl?: string
+  // sendStealthUsdc / sendToken
+  stealthAddress?: string
+  amount?: string
 }
 
 function AgentBadges({
@@ -268,6 +277,13 @@ function AgentBadges({
       <span className="text-[10px] text-muted-foreground">
         {output.agents.length} agent{output.agents.length === 1 ? "" : "s"} ·{" "}
         <span className="text-emerald-300">{verifiedCount} verified</span>
+      </span>
+    )
+  }
+  if (toolName === "sendMessage" && output.toEns) {
+    return (
+      <span className="font-mono text-[10px] text-primary/80">
+        → {output.toEns}
       </span>
     )
   }
@@ -317,6 +333,27 @@ function AgentDetail({
       <div className="ml-5 text-[11px] text-amber-300/80">
         {output.error}
       </div>
+    )
+  }
+  if (toolName === "sendMessage" && output.ok && output.blockExplorerUrl) {
+    return (
+      <div className="ml-5 text-[11px] text-muted-foreground">
+        Message minted as <span className="font-mono text-primary/80">{output.messageEns ?? "subname"}</span>{" "}
+        ·{" "}
+        <a
+          href={output.blockExplorerUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="text-primary hover:underline"
+        >
+          on-chain ↗
+        </a>
+      </div>
+    )
+  }
+  if (toolName === "sendMessage" && output.ok === false && output.error) {
+    return (
+      <div className="ml-5 text-[11px] text-amber-300/80">{output.error}</div>
     )
   }
   return null

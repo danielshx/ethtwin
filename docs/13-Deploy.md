@@ -151,3 +151,4 @@ Storing a hot wallet key in any env-var system, including Vercel's, has these pr
 | Mint reverts with `subname is owned by a different wallet` | Local + Vercel using different dev wallets | Use the same rotated key in both, or rotate again so a single wallet controls all subnames |
 | Twin Chat returns mock reply | `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` not set on Vercel | Add the key |
 | OpenAI returns `insufficient_quota` | OpenAI account out of credits | Top up at https://platform.openai.com/account/billing |
+| `/api/onboarding` times out (504 / `FUNCTION_INVOCATION_TIMEOUT`) on Vercel Hobby | Onboarding waits for multiple Sepolia tx receipts; Hobby caps `maxDuration` at 60s | Already mitigated: route declares `maxDuration = 60` and uses `setRecordsMulticall` to collapse 9 record-write txs into one. If you still hit the timeout, the Sepolia RPC is slow — switch to a paid Alchemy/Infura key or upgrade to Vercel Pro (300s default). |

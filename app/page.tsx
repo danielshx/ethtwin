@@ -12,6 +12,7 @@ import { OnboardingFlow, type AuthMethod, type OnboardingResult } from "@/compon
 import { TwinChat } from "@/components/twin-chat"
 import { Messenger } from "@/components/messenger"
 import { TokenTransfer } from "@/components/token-transfer"
+import { StealthSend } from "@/components/stealth-send"
 import { History } from "@/components/history"
 import { addHistoryEntry } from "@/lib/history"
 import { Toaster } from "@/components/ui/sonner"
@@ -207,7 +208,9 @@ function SignedInTabs({
   session: SessionState
   privy: ReturnType<typeof usePrivy>
 }) {
-  const [tab, setTab] = useState<"chat" | "messenger" | "transfer" | "history">("chat")
+  const [tab, setTab] = useState<
+    "chat" | "messenger" | "transfer" | "stealth" | "history"
+  >("chat")
   const getAuthToken = () => privy.getAccessToken().catch(() => null)
   return (
     <div className="flex w-full max-w-3xl flex-col gap-4">
@@ -237,6 +240,14 @@ function SignedInTabs({
           Send Tokens
         </Button>
         <Button
+          variant={tab === "stealth" ? "default" : "ghost"}
+          size="sm"
+          className="rounded-full"
+          onClick={() => setTab("stealth")}
+        >
+          Stealth Send
+        </Button>
+        <Button
           variant={tab === "history" ? "default" : "ghost"}
           size="sm"
           className="rounded-full"
@@ -258,6 +269,12 @@ function SignedInTabs({
         />
       ) : tab === "transfer" ? (
         <TokenTransfer
+          myEnsName={session.ensName}
+          getAuthToken={getAuthToken}
+          className="w-full border-white/10 bg-card/80 backdrop-blur"
+        />
+      ) : tab === "stealth" ? (
+        <StealthSend
           myEnsName={session.ensName}
           getAuthToken={getAuthToken}
           className="w-full border-white/10 bg-card/80 backdrop-blur"

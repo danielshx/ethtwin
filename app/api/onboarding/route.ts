@@ -8,8 +8,7 @@ import {
   readResolver,
   readSubnameOwner,
   resolveEnsAddress,
-  setAddressRecord,
-  setTextRecord,
+  setRecordsMulticall,
 } from "@/lib/ens"
 import { addAgentToDirectory } from "@/lib/agents"
 import { buildDefaultProfileRecords } from "@/lib/twin-profile"
@@ -23,6 +22,7 @@ import {
 } from "@/lib/api-guard"
 
 export const runtime = "nodejs"
+export const maxDuration = 60
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000"
 
@@ -103,9 +103,6 @@ export async function POST(req: Request) {
     }
     // else: fresh OR same user re-registering (existingAddr matches) — fall through.
 
-    const addrTx = await setAddressRecord(ensName, walletAddress)
-    await waitForTx(addrTx)
-
     const profile = buildDefaultProfileRecords(body.username)
     const textRecords: Record<string, string> = {
       ...profile,
@@ -124,10 +121,13 @@ export async function POST(req: Request) {
       [ensipKey]: "1",
     }
 
-    for (const [key, value] of Object.entries(textRecords)) {
-      const tx = await setTextRecord(ensName, key, value)
-      await waitForTx(tx)
-    }
+    // Batch addr + all text records into a single resolver multicall tx,
+    // collapsing ~9 sequential Sepolia txs down to one.
+    const recordsTx = await setRecordsMulticall(ensName, {
+      addr: walletAddress,
+      texts: textRecords,
+    })
+    await waitForTx(recordsTx)
 
     // Register agent in the on-chain directory (idempotent — skipped if already present).
     const directoryTx = await addAgentToDirectory(ensName)

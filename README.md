@@ -45,14 +45,12 @@ pnpm test:claude              # Claude Sonnet 4.6 reachability
 ```
 
 What ships with the scaffold:
-- `app/api/{twin,voice,twin-tool,x402,ens,stealth,cosmic-seed,onboarding,messages,wallet-summary,transfer,check-username}/route.ts`
-- `app/api/agents/{route.ts (directory),analyst/route.ts (x402-paywalled sample agent via withX402 + Coinbase facilitator)}`
-- `lib/{viem,ens,ensip25,namestone,cosmic,stealth,x402-client,twin-tools,agents,privy-server,prompts,messages,history,api-guard,wallet-summary,transfers,tx-decoder,abis,payments,utils}.ts`
-- Twin tool surface (AI SDK v6): `getWalletSummary`, `requestDataViaX402`, `decodeTransaction`, `sendToken`, `getBalance`, `sendStealthUsdc`, `generatePrivatePaymentAddress`, `findAgents`, `hireAgent`
-- `app/{layout,providers,page,globals.css}` — auth-gated state machine (landing → onboarding → twin chat) on Base Sepolia
-- `components/ui/` — shadcn primitives (button, card, input, dialog, badge, sonner, scroll-area, separator, label)
-- `components/{cosmic-orb,twin-chat,tx-approval-modal,onboarding-flow}.tsx` — Tier-1 feature components, all wired
-- `scripts/{test-chain,test-claude,warm-cosmic-cache}.ts`
+- API: `/api/{twin,voice,twin-tool,x402,ens,stealth,stealth/send,cosmic-seed,onboarding,messages,history,wallet-summary,transfer,check-username}` and `/api/agents{,/analyst}` + `/api/agent/[ens]`
+- `lib/{viem,ens,ensip25,namestone,cosmic,stealth,x402-client,twin-tools,agents,messages,transfers,payments,tx-decoder,wallet-summary,history,history-server,twin-profile,privy-server,prompts,abis,api-guard,utils}.ts`
+- **Twin tool surface (AI SDK v6, factory-built)**: `getWalletSummary`, `requestDataViaX402`, `decodeTransaction`, `sendToken`, `getBalance`, `sendStealthUsdc`, `generatePrivatePaymentAddress`, `findAgents`, `hireAgent`, `sendMessage`
+- 5-tab signed-in UI: **Twin Chat / ENS Messenger / Send Tokens / Stealth Send / History**
+- `components/{cosmic-orb,twin-chat,onboarding-flow,messenger,token-transfer,stealth-send,history,agent-profile,tx-approval-modal}.tsx`
+- Provisioning scripts: `pnpm ens:{provision,provision-analyst,stealth-provision,read,set-text,check-parent}`, `pnpm send:{token,stealth-usdc}`, `pnpm test:{chain,claude,decoder,x402,x402-mock,privy-key}`
 
 Set `NEXT_PUBLIC_PRIVY_APP_ID` in `.env.local` to unlock the Privy login flow — without it the homepage renders a friendly missing-env screen instead of the auth UI.
 

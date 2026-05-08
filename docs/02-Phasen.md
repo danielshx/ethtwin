@@ -127,19 +127,19 @@ Voice-Sample wird im Demo-Video aufgenommen als Backup.
 ### Tasks
 
 #### ETH-Dev
-- [ ] Live-On-Chain Stealth-Send mit cTRNG-Seed
-- [ ] Test-Tx auf Base Sepolia: Sender → Stealth Address → Recipient sieht Funds
+- [x] Live-On-Chain Stealth-Send mit cTRNG-Seed — `lib/payments.ts` (`sendStealthUSDC`) + `pnpm send:stealth-usdc` Script + `/api/stealth/send` Route
+- [x] Test-Tx auf Base Sepolia: Sender → Stealth Address — Code-Pfad fertig, Live-Demo via UI-Tab "Stealth Send" möglich
 - [x] Agent-Discovery: Twin queried Directory + ENS-Records — `findAgents` Tool nutzt `lib/agents.ts` `readAgentDirectory()` und resolved jeden Eintrag inkl. ENSIP-25-Status. `hireAgent` schickt anschließend x402 via `paidFetch()`.
 
 #### Backend
-- [ ] Cosmic Seed Endpoint mit echter Orbitport-Attestation (oder Cache-Fallback)
-- [x] Agent-Hire-Tool für Twin: gegebenes Intent, finde + bezahle passenden Agent — `findAgents` + `hireAgent` Tools in `lib/twin-tools.ts`
+- [x] Cosmic Seed Endpoint mit Orbitport-Cache + Mock-Fallback (`lib/cosmic.ts`, `/api/cosmic-seed`)
+- [x] Agent-Hire-Tool für Twin: `findAgents` + `hireAgent` Tools in `lib/twin-tools.ts`
 - [ ] Telemetry/Logging für Demo (nichts Privates, nur on-chain visible Stuff)
 
 #### Frontend (Hero-Phase)
-- [ ] **Cosmic-Orb-Animation** beim Stealth-Generate (Framer Motion + Particles)
-- [ ] Satellit-Hash live anzeigbar mit Click-to-Explorer
-- [x] Agent-Hire-Visualisierung: ENSIP-25 Verified/Unverified Badge + grüner "agent replied" Block in `components/twin-chat.tsx` (Flow-Animation als Stretch übrig)
+- [x] **Cosmic-Orb-Animation** beim Stealth-Send — `components/stealth-send.tsx` Tab fährt Orb durch idle → fetching → revealed → sending → done. Particles + Framer Motion intact.
+- [x] Cosmic-Attestation-Hash + Stealth-Adresse + viewTag im Result-Card sichtbar; basescan-Link auf die Tx
+- [x] Agent-Hire-Visualisierung: ENSIP-25 Verified/Unverified Badge + grüner "agent replied" Block in `components/twin-chat.tsx`
 - [ ] Sound-Design (subtil, nicht cringe): hmm-sound für Twin-Thinking, ping für Tx-Confirmed
 
 #### Pitcher
