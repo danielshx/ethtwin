@@ -81,12 +81,15 @@ export async function POST(req: Request) {
   )
   const ensipKey = `agent-registration[${interop}][${body.twinAgentId}]`
 
+  const t0 = Date.now()
+  const log = (label: string) =>
+    console.log(`[onboarding] +${Date.now() - t0}ms ${label}`)
   try {
     // Architecture: dev wallet retains registry ownership of every subname so
     // it can write records + create message sub-subnames on the user's behalf.
-    // The user's wallet appears in the `addr` record. Hijacking check uses
-    // the existing addr record.
+    log("start")
     const { wallet, account: devAccount } = getDevWalletClient()
+    log("got dev wallet client")
 
     // Parallelize all ENS reads + nonce fetch — saves ~2-3s vs sequential.
     const [parentResolver, existingOwner, existingAddr, currentDirectory, startingNonce] =
@@ -100,6 +103,7 @@ export async function POST(req: Request) {
           blockTag: "pending",
         }),
       ])
+    log("parallel reads done")
 
     if (parentResolver === ZERO_ADDRESS) {
       return jsonError(
@@ -189,6 +193,7 @@ export async function POST(req: Request) {
         functionName: "setSubnodeRecord",
         args: [parentNode, labelHash, devAccount.address, parentResolver, 0n],
       })
+      log("createTx broadcasting...")
       createTx = await wallet.sendTransaction({
         account: devAccount,
         chain: wallet.chain,
@@ -197,6 +202,7 @@ export async function POST(req: Request) {
         nonce: startingNonce,
         gas: CREATE_SUBNAME_GAS,
       })
+      log(`createTx broadcast: ${createTx}`)
       recordsNonce = startingNonce + 1
     }
 
@@ -205,6 +211,7 @@ export async function POST(req: Request) {
       functionName: "multicall",
       args: [calls],
     })
+    log(`recordsTx broadcasting (${calls.length} sub-calls)...`)
     const recordsTx = await wallet.sendTransaction({
       account: devAccount,
       chain: wallet.chain,
@@ -213,6 +220,7 @@ export async function POST(req: Request) {
       nonce: recordsNonce,
       gas: RESOLVER_MULTICALL_GAS,
     })
+    log(`recordsTx broadcast: ${recordsTx}`)
 
     return Response.json({
       ok: true,
