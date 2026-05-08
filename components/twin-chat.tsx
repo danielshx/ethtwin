@@ -16,6 +16,35 @@ type TwinChatProps = {
   className?: string
 }
 
+// Reads the env var Next.js inlines at build time so the badge auto-adapts
+// when the project switches networks (mainnet / sepolia / base-sepolia / etc.).
+function chainLabel(): string {
+  const network = process.env.NEXT_PUBLIC_ENS_NETWORK
+  switch (network) {
+    case "mainnet":
+      return "Ethereum"
+    case "sepolia":
+      return "Sepolia"
+    case "base":
+      return "Base"
+    case "base-sepolia":
+      return "Base Sepolia"
+  }
+  // Fall back to chain ID if ENS network env var isn't set.
+  const chainId = process.env.NEXT_PUBLIC_CHAIN_ID
+  switch (chainId) {
+    case "1":
+      return "Ethereum"
+    case "11155111":
+      return "Sepolia"
+    case "8453":
+      return "Base"
+    case "84532":
+      return "Base Sepolia"
+  }
+  return network ?? "the chain"
+}
+
 export function TwinChat({ ensName, className }: TwinChatProps) {
   const transport = useMemo(
     () =>
@@ -61,7 +90,8 @@ export function TwinChat({ ensName, className }: TwinChatProps) {
           </div>
         </div>
         <Badge variant="secondary" className="font-mono text-[10px]">
-          claude-sonnet-4-6
+          <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-emerald-400" />
+          live on {chainLabel()}
         </Badge>
       </header>
 

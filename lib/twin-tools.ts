@@ -12,6 +12,7 @@ import { readTwinRecords } from "./ens"
 import { describeTx } from "./tx-decoder"
 import { sendStealthUSDC } from "./payments"
 import { getWalletSummary } from "./wallet-summary"
+import { sendToken, getTokenBalance, parseRecipient } from "./transfers"
 
 export const twinTools = {
   getWalletSummary: tool({
@@ -66,6 +67,68 @@ export const twinTools = {
           value: typeof a.value === "bigint" ? a.value.toString() : a.value,
         })),
         matched: result.decoded.matched,
+      }
+    },
+  }),
+
+  sendToken: tool({
+    description:
+      "Send native ETH or USDC on Sepolia or Base Sepolia. Recipient can be an ENS name (e.g. alice.ethtwin.eth) or a 0x address. Returns the on-chain tx hash + block-explorer link.",
+    inputSchema: z.object({
+      chain: z
+        .enum(["sepolia", "base-sepolia"])
+        .describe("Which chain to send on. Pick base-sepolia for fast cheap transfers, sepolia for ENS-aligned demos."),
+      token: z.enum(["ETH", "USDC"]).describe("Native ETH or USDC ERC-20"),
+      to: z
+        .string()
+        .describe("Recipient ENS name (resolved on Sepolia) or 0x... address"),
+      amount: z
+        .union([z.string(), z.number()])
+        .describe("Human-readable amount, e.g. 0.001 (ETH) or 0.5 (USDC)"),
+    }),
+    execute: async (input) => {
+      try {
+        const result = await sendToken(input)
+        return {
+          ok: true,
+          chain: result.chain,
+          token: result.token,
+          from: result.from,
+          to: result.to,
+          recipientInput: result.recipientInput,
+          amount: `${result.amountHuman} ${result.token}`,
+          txHash: result.txHash,
+          blockNumber: result.blockNumber.toString(),
+          blockExplorerUrl: result.blockExplorerUrl,
+        }
+      } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : String(err) }
+      }
+    },
+  }),
+
+  getBalance: tool({
+    description:
+      "Read an address's native ETH or USDC balance on Sepolia or Base Sepolia. Use before proposing a transfer.",
+    inputSchema: z.object({
+      chain: z.enum(["sepolia", "base-sepolia"]),
+      token: z.enum(["ETH", "USDC"]),
+      address: z.string().describe("0x... address or ENS name"),
+    }),
+    execute: async ({ chain, token, address }) => {
+      try {
+        const resolved = await parseRecipient(address)
+        const balance = await getTokenBalance({ chain, token, address: resolved })
+        return {
+          ok: true,
+          chain,
+          token,
+          address: resolved,
+          balance: `${balance.human} ${token}`,
+          raw: balance.raw.toString(),
+        }
+      } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : String(err) }
       }
     },
   }),

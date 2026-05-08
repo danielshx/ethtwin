@@ -18,6 +18,7 @@
     "test:x402": "tsx --env-file=.env.local scripts/test-x402-apify.ts",
     "test:x402-mock": "tsx --env-file=.env.local scripts/test-x402-mock.ts",
     "send:stealth-usdc": "tsx --env-file=.env.local scripts/send-stealth-usdc.ts",
+    "send:token": "tsx --env-file=.env.local scripts/send-token.ts",
     "test:privy-key": "tsx --env-file=.env.local scripts/test-privy-key.ts"
   },
   "dependencies": {
