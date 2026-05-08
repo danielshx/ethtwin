@@ -47,8 +47,12 @@ pnpm test:claude              # Claude Sonnet 4.6 reachability
 What ships with the scaffold:
 - `app/api/{twin,voice,twin-tool,x402,ens,stealth,cosmic-seed,onboarding,agents/analyst}/route.ts`
 - `lib/{viem,ens,ensip25,namestone,cosmic,stealth,x402-client,twin-tools,privy-server,prompts,utils}.ts`
-- `app/{layout,providers,page,globals.css}` with PrivyProvider + SmartWalletsProvider on Base Sepolia
+- `app/{layout,providers,page,globals.css}` — auth-gated state machine (landing → onboarding → twin chat) on Base Sepolia
+- `components/ui/` — shadcn primitives (button, card, input, dialog, badge, sonner, scroll-area, separator, label)
+- `components/{cosmic-orb,twin-chat,tx-approval-modal,onboarding-flow}.tsx` — Tier-1 feature components, all wired
 - `scripts/{test-chain,test-claude,warm-cosmic-cache}.ts`
+
+Set `NEXT_PUBLIC_PRIVY_APP_ID` in `.env.local` to unlock the Privy login flow — without it the homepage renders a friendly missing-env screen instead of the auth UI.
 
 See [docs/09-Setup.md](./docs/09-Setup.md) for the full setup guide, [docs/03-Backlog.md](./docs/03-Backlog.md#-infra-status-2026-05-08) for the current Infra-Status, and [docs/02-Phasen.md](./docs/02-Phasen.md) for the 48h plan.
 

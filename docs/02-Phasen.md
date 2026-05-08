@@ -2,6 +2,8 @@
 
 > Strikt zeitlich. Jede Phase hat eindeutige Deliverables. Wenn Phase X nicht abgeschlossen ist, wird Phase X+1 nicht gestartet — wir scopen lieber Tier 2/3 raus.
 
+> **Aktueller Vorlauf (2026-05-08, Pre-Hackathon):** Repo, Stack, Backend-Stubs, Frontend-Komponenten und Auth-gated Homepage sind fertig. Phase 0 reduziert sich am Hackathon-Tag auf API-Keys eintragen + Spike-Tests gegen echte Services. Phase 1 ist halb erledigt — Twin-Chat, Onboarding-UI und Tx-Modal stehen, fehlt Live-Verdrahtung.
+
 ---
 
 ## Phase 0 — Setup-Sprint (Stunde 0-3)

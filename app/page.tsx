@@ -1,16 +1,234 @@
+"use client"
+
+import { useEffect, useMemo, useState } from "react"
+import { usePrivy, useWallets } from "@privy-io/react-auth"
+import { useSmartWallets } from "@privy-io/react-auth/smart-wallets"
+import { motion } from "framer-motion"
+import { LogOut, Sparkles } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import { Card } from "@/components/ui/card"
+import { OnboardingFlow, type OnboardingResult } from "@/components/onboarding-flow"
+import { TwinChat } from "@/components/twin-chat"
+import { Toaster } from "@/components/ui/sonner"
+import { toast } from "sonner"
+
+const PARENT_DOMAIN = process.env.NEXT_PUBLIC_PARENT_DOMAIN ?? "twinpilot.eth"
+const PRIVY_CONFIGURED = !!process.env.NEXT_PUBLIC_PRIVY_APP_ID
+const STORAGE_KEY = "twinpilot.session.v1"
+
+type SessionState = {
+  ensName: string
+  username: string
+  smartWalletAddress: string
+  cosmicAttestation: string
+}
+
 export default function HomePage() {
   return (
-    <main className="flex min-h-dvh flex-col items-center justify-center gap-6 p-8 text-center">
-      <h1 className="text-5xl font-bold tracking-tight">
-        Twinpilot
-      </h1>
-      <p className="max-w-xl text-lg text-white/70">
-        AI co-pilot for your on-chain life. Voice-first. Privacy by default.
-        Lives in ENS.
-      </p>
-      <div className="rounded-full border border-white/10 px-4 py-2 text-sm text-white/50">
-        Coming soon — ETHPrague 2026
-      </div>
+    <main className="relative min-h-dvh overflow-hidden bg-background">
+      <BackgroundGlow />
+      {PRIVY_CONFIGURED ? <App /> : <MissingEnv />}
+      <Toaster theme="dark" />
     </main>
+  )
+}
+
+function App() {
+  const privy = usePrivy()
+  const { wallets } = useWallets()
+  const smart = useSmartWallets()
+  const [session, setSession] = useState<SessionState | null>(null)
+  const [hydrated, setHydrated] = useState(false)
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY)
+      if (raw) setSession(JSON.parse(raw) as SessionState)
+    } catch {}
+    setHydrated(true)
+  }, [])
+
+  const smartWalletAddress = useMemo(() => {
+    const smartAccount = smart.client?.account?.address
+    if (smartAccount) return smartAccount
+    const embedded = wallets.find((w) => w.walletClientType === "privy")
+    return embedded?.address ?? null
+  }, [smart.client?.account?.address, wallets])
+
+  async function handleAuthenticate() {
+    if (!privy.authenticated) {
+      await privy.login()
+    }
+    return { smartWalletAddress: smartWalletAddress ?? "0x0" }
+  }
+
+  async function handleMint(input: {
+    username: string
+    smartWalletAddress: string
+    cosmicAttestation: string
+  }) {
+    const token = await privy.getAccessToken().catch(() => null)
+    const res = await fetch("/api/onboarding", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        privyToken: token,
+        username: input.username,
+        smartWalletAddress: input.smartWalletAddress,
+        stealthMetaAddress: `st:eth:0x${input.cosmicAttestation
+          .replace(/[^a-f0-9]/gi, "")
+          .padEnd(128, "0")
+          .slice(0, 128)}`,
+        twinAgentId: input.username,
+      }),
+    })
+    if (!res.ok) {
+      const text = await res.text()
+      throw new Error(text || `mint failed (${res.status})`)
+    }
+    const data = (await res.json()) as { ensName: string }
+    return { ensName: data.ensName }
+  }
+
+  function handleComplete(result: OnboardingResult) {
+    const next: SessionState = {
+      ensName: result.ensName,
+      username: result.username,
+      smartWalletAddress: String(result.smartWalletAddress),
+      cosmicAttestation: result.cosmicAttestation,
+    }
+    setSession(next)
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
+    } catch {}
+    toast.success(`${next.ensName} is live`)
+  }
+
+  function handleSignOut() {
+    privy.logout?.()
+    setSession(null)
+    try {
+      localStorage.removeItem(STORAGE_KEY)
+    } catch {}
+  }
+
+  if (!hydrated) return null
+
+  return (
+    <>
+      <header className="relative z-10 flex items-center justify-between px-6 py-5 sm:px-10">
+        <div className="flex items-center gap-2">
+          <span className="grid h-8 w-8 place-items-center rounded-full bg-primary/20 text-primary">
+            <Sparkles className="h-4 w-4" />
+          </span>
+          <span className="text-lg font-semibold tracking-tight">Twinpilot</span>
+          <Badge
+            variant="secondary"
+            className="hidden font-mono text-[10px] sm:inline-flex"
+          >
+            ETHPrague 2026
+          </Badge>
+        </div>
+        {session ? (
+          <div className="flex items-center gap-3 text-sm">
+            <span className="font-mono text-xs text-muted-foreground">
+              {session.ensName}
+            </span>
+            <Button variant="ghost" size="sm" onClick={handleSignOut}>
+              <LogOut className="h-4 w-4" />
+            </Button>
+          </div>
+        ) : null}
+      </header>
+
+      <section className="relative z-10 mx-auto flex w-full max-w-5xl flex-col items-center gap-10 px-6 pb-16 pt-4 sm:px-10">
+        {!session ? (
+          <>
+            <Hero />
+            <OnboardingFlow
+              parentDomain={PARENT_DOMAIN}
+              isAuthenticated={privy.authenticated}
+              smartWalletAddress={smartWalletAddress}
+              onAuthenticate={handleAuthenticate}
+              onMint={handleMint}
+              onComplete={handleComplete}
+            />
+          </>
+        ) : (
+          <TwinChat
+            ensName={session.ensName}
+            className="h-[70dvh] w-full max-w-2xl border-white/10 bg-card/80 backdrop-blur"
+          />
+        )}
+      </section>
+    </>
+  )
+}
+
+function MissingEnv() {
+  return (
+    <section className="relative z-10 mx-auto flex min-h-dvh w-full max-w-3xl flex-col items-center justify-center gap-6 px-6 text-center">
+      <Hero />
+      <Card className="max-w-md border-white/10 bg-card/80 p-6 text-left text-sm">
+        <p className="font-medium text-foreground">Privy not configured</p>
+        <p className="mt-1 text-muted-foreground">
+          Set <code className="font-mono text-xs">NEXT_PUBLIC_PRIVY_APP_ID</code> in
+          <code className="ml-1 font-mono text-xs">.env.local</code> to enable login,
+          smart wallet, and onboarding. See{" "}
+          <code className="font-mono text-xs">.env.example</code> and{" "}
+          <code className="font-mono text-xs">docs/09-Setup.md</code>.
+        </p>
+      </Card>
+    </section>
+  )
+}
+
+function Hero() {
+  return (
+    <div className="flex flex-col items-center gap-3 text-center">
+      <motion.h1
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+        className="text-4xl font-semibold tracking-tight sm:text-5xl"
+      >
+        The AI co-pilot for your{" "}
+        <span className="bg-gradient-to-r from-primary to-fuchsia-400 bg-clip-text text-transparent">
+          on-chain life
+        </span>
+      </motion.h1>
+      <motion.p
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.1 }}
+        className="max-w-xl text-base text-muted-foreground sm:text-lg"
+      >
+        Voice-first. Privacy by default. Lives in ENS. Hires other agents via x402.
+      </motion.p>
+    </div>
+  )
+}
+
+function BackgroundGlow() {
+  return (
+    <>
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -top-40 left-1/2 h-[40rem] w-[40rem] -translate-x-1/2 rounded-full opacity-50 blur-3xl"
+        style={{
+          background:
+            "radial-gradient(circle, oklch(0.6 0.2 290 / 0.5), transparent 65%)",
+        }}
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute bottom-[-20rem] right-[-10rem] h-[30rem] w-[30rem] rounded-full opacity-40 blur-3xl"
+        style={{
+          background:
+            "radial-gradient(circle, oklch(0.6 0.18 320 / 0.4), transparent 70%)",
+        }}
+      />
+    </>
   )
 }
