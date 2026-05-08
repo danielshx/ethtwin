@@ -8,7 +8,11 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "test:chain": "tsx --env-file=.env.local scripts/test-chain.ts",
-    "test:claude": "tsx --env-file=.env.local scripts/test-claude.ts"
+    "test:claude": "tsx --env-file=.env.local scripts/test-claude.ts",
+    "ens:check-parent": "tsx --env-file=.env.local scripts/check-parent-ownership.ts",
+    "ens:provision": "tsx --env-file=.env.local scripts/provision-twin-subname.ts",
+    "ens:read": "tsx --env-file=.env.local scripts/read-twin.ts",
+    "ens:set-text": "tsx --env-file=.env.local scripts/set-twin-text.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "3.0.76",

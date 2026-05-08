@@ -49,11 +49,11 @@ async function main() {
   console.log(`  expected owner:    ${EXPECTED_OWNER}`)
 
   if (owner === "0x0000000000000000000000000000000000000000") {
-    console.log("\nFAIL  twinpilot.eth is NOT registered on Sepolia ENS.")
+    console.log(`\nFAIL  ${name} is NOT registered on Sepolia ENS.`)
   } else if (getAddress(owner) === EXPECTED_OWNER) {
-    console.log("\nOK    Sepolia twinpilot.eth is owned by the dev wallet.")
+    console.log(`\nOK    Sepolia ${name} is owned by the dev wallet.`)
   } else {
-    console.log("\nWARN  Sepolia twinpilot.eth is registered, but NOT to the expected wallet.")
+    console.log(`\nWARN  Sepolia ${name} is registered, but NOT to the expected wallet.`)
   }
 }
 
