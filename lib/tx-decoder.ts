@@ -1,0 +1,193 @@
+// Tx decoder — pure viem, no LLM dependency.
+// The "plain English" layer is a stub interface today; an LLM provider can replace it later
+// without touching call sites.
+
+import {
+  decodeFunctionData,
+  formatUnits,
+  getAddress,
+  type Abi,
+  type Address,
+  type Hex,
+} from "viem"
+import { FALLBACK_ABIS, KNOWN_CONTRACTS, lookupContract } from "./abis"
+
+export type TxInput = {
+  to: Address
+  data?: Hex
+  value?: bigint
+  chainId?: number
+}
+
+export type DecodedArg = {
+  name: string
+  type: string
+  value: unknown
+}
+
+export type DecodedTx = {
+  to: Address
+  contractName: string
+  functionName: string
+  args: DecodedArg[]
+  value: bigint
+  selector: Hex
+  /** True if we found a typed ABI match; false if we fell back to selector-only. */
+  matched: boolean
+  /** Human-readable summary built from the structured decode. Becomes the LLM input. */
+  summary: string
+}
+
+const EMPTY_DATA: Hex = "0x"
+
+export function decodeTx(tx: TxInput): DecodedTx {
+  const to = getAddress(tx.to)
+  const data = (tx.data ?? EMPTY_DATA) as Hex
+  const value = tx.value ?? 0n
+  const selector = (data.length >= 10 ? data.slice(0, 10) : EMPTY_DATA) as Hex
+
+  // Pure ETH transfer — no calldata.
+  if (data === EMPTY_DATA || data === "0x" || data.length < 10) {
+    return {
+      to,
+      contractName: "EOA / contract",
+      functionName: "transfer",
+      args: [{ name: "value", type: "uint256", value }],
+      value,
+      selector,
+      matched: true,
+      summary: `Send ${formatEth(value)} ETH to ${to}.`,
+    }
+  }
+
+  // Try the known contract's ABI first, then fall back to common ABIs.
+  const known = lookupContract(to)
+  const abisToTry: { name: string; abi: Abi }[] = []
+  if (known) abisToTry.push({ name: known.name, abi: known.abi })
+  for (const abi of FALLBACK_ABIS) {
+    if (!known || abi !== known.abi) abisToTry.push({ name: "(unknown contract)", abi })
+  }
+
+  for (const { name: contractName, abi } of abisToTry) {
+    try {
+      const decoded = decodeFunctionData({ abi, data })
+      const fnDef = abi.find(
+        (item) => item.type === "function" && item.name === decoded.functionName,
+      )
+      const inputs =
+        fnDef && fnDef.type === "function" && Array.isArray(fnDef.inputs) ? fnDef.inputs : []
+      const args: DecodedArg[] = (decoded.args ?? []).map((value, i) => ({
+        name: inputs[i]?.name ?? `arg${i}`,
+        type: inputs[i]?.type ?? "unknown",
+        value,
+      }))
+      return {
+        to,
+        contractName,
+        functionName: decoded.functionName,
+        args,
+        value,
+        selector,
+        matched: true,
+        summary: buildSummary({ to, contractName, functionName: decoded.functionName, args, value }),
+      }
+    } catch {
+      // Try next ABI.
+    }
+  }
+
+  // No ABI matched — selector-only fallback.
+  return {
+    to,
+    contractName: known?.name ?? "(unknown contract)",
+    functionName: `unknown(${selector})`,
+    args: [],
+    value,
+    selector,
+    matched: false,
+    summary: `Call ${selector} on ${to}${value > 0n ? ` with ${formatEth(value)} ETH` : ""}. (Calldata not recognized.)`,
+  }
+}
+
+// ── Plain-English layer ──────────────────────────────────────────────────────
+// Today: deterministic, template-based. Tomorrow: pluggable LLM provider.
+
+export type PlainEnglishProvider = (decoded: DecodedTx) => Promise<string> | string
+
+let provider: PlainEnglishProvider = (d) => d.summary
+
+export function setPlainEnglishProvider(fn: PlainEnglishProvider) {
+  provider = fn
+}
+
+export async function describeTx(tx: TxInput): Promise<{ decoded: DecodedTx; english: string }> {
+  const decoded = decodeTx(tx)
+  const english = await provider(decoded)
+  return { decoded, english }
+}
+
+// ── Internal helpers ─────────────────────────────────────────────────────────
+
+function buildSummary(args: {
+  to: Address
+  contractName: string
+  functionName: string
+  args: DecodedArg[]
+  value: bigint
+}): string {
+  const argMap = Object.fromEntries(args.args.map((a) => [a.name, a.value]))
+  const known = lookupContract(args.to)
+
+  switch (args.functionName) {
+    case "transfer": {
+      const amount = formatTokenAmount(argMap.amount as bigint, known)
+      return `Transfer ${amount} to ${argMap.to as string}.`
+    }
+    case "approve": {
+      const amount = formatTokenAmount(argMap.amount as bigint, known)
+      return `Approve ${argMap.spender as string} to spend ${amount}.`
+    }
+    case "transferFrom": {
+      const amount = formatTokenAmount(argMap.amount as bigint, known)
+      return `Move ${amount} from ${argMap.from as string} to ${argMap.to as string}.`
+    }
+    case "setSubnodeRecord":
+      return `Create ENS subname under node ${shortHash(argMap.node as string)}, owner ${argMap.owner as string}.`
+    case "setText":
+      return `Set ENS text record "${argMap.key as string}" = "${argMap.value as string}" on node ${shortHash(argMap.node as string)}.`
+    case "setAddr":
+      return `Set ENS forward address to ${argMap.a as string} on node ${shortHash(argMap.node as string)}.`
+    case "setResolver":
+      return `Point ENS node ${shortHash(argMap.node as string)} at resolver ${argMap.resolver as string}.`
+    case "setOwner":
+      return `Transfer ENS node ${shortHash(argMap.node as string)} to ${argMap.owner as string}.`
+    default: {
+      const pretty = args.args.map((a) => `${a.name}=${formatArg(a)}`).join(", ")
+      return `Call ${args.contractName}.${args.functionName}(${pretty}).`
+    }
+  }
+}
+
+function formatTokenAmount(amount: bigint, known: ReturnType<typeof lookupContract>): string {
+  if (known?.decimals !== undefined) {
+    return `${formatUnits(amount, known.decimals)} ${known.symbol ?? ""}`.trim()
+  }
+  return amount.toString()
+}
+
+function formatEth(wei: bigint): string {
+  return formatUnits(wei, 18)
+}
+
+function formatArg(arg: DecodedArg): string {
+  if (typeof arg.value === "bigint") return arg.value.toString()
+  if (typeof arg.value === "string" && arg.value.startsWith("0x") && arg.value.length === 66) {
+    return shortHash(arg.value)
+  }
+  return JSON.stringify(arg.value, (_k, v) => (typeof v === "bigint" ? v.toString() : v))
+}
+
+function shortHash(hash: string, head = 10, tail = 6): string {
+  if (hash.length <= head + tail + 2) return hash
+  return `${hash.slice(0, head)}…${hash.slice(-tail)}`
+}

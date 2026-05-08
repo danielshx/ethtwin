@@ -12,7 +12,9 @@
     "ens:check-parent": "tsx --env-file=.env.local scripts/check-parent-ownership.ts",
     "ens:provision": "tsx --env-file=.env.local scripts/provision-twin-subname.ts",
     "ens:read": "tsx --env-file=.env.local scripts/read-twin.ts",
-    "ens:set-text": "tsx --env-file=.env.local scripts/set-twin-text.ts"
+    "ens:set-text": "tsx --env-file=.env.local scripts/set-twin-text.ts",
+    "test:decoder": "tsx --env-file=.env.local scripts/test-tx-decoder.ts",
+    "ens:stealth-provision": "tsx --env-file=.env.local scripts/provision-stealth-meta.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "3.0.76",

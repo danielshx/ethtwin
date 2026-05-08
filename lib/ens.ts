@@ -196,6 +196,20 @@ export async function setAddressRecord(name: string, addr: Address): Promise<Has
   })
 }
 
+// ── Stealth meta-address (EIP-5564) ──────────────────────────────────────────
+
+const STEALTH_META_KEY = "stealth-meta-address"
+
+/** Read the stealth meta-address URI stored in the ENS text record. */
+export async function readStealthMetaAddress(name: string): Promise<string | null> {
+  return readTextRecord(name, STEALTH_META_KEY)
+}
+
+/** Write a stealth meta-address URI to the ENS text record. Requires owner key. */
+export async function setStealthMetaAddress(name: string, uri: string): Promise<Hash> {
+  return setTextRecord(name, STEALTH_META_KEY, uri)
+}
+
 // ── UI helpers ───────────────────────────────────────────────────────────────
 
 /**
