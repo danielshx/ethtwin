@@ -1,0 +1,12 @@
+@import "tailwindcss";
+
+@theme {
+  --color-cosmic-bg: #05060a;
+  --color-cosmic-accent: #7c5cff;
+  --color-cosmic-glow: #b39bff;
+}
+
+html,
+body {
+  height: 100%;
+}
