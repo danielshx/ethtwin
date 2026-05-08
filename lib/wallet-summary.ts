@@ -31,7 +31,7 @@ export async function getWalletSummary(address: string): Promise<WalletSummary> 
     sepoliaEth,
     reverseEnsName,
     plainEnglish: [
-      `Wallet ${reverseEnsName ?? shortAddress} is ready for Twinpilot.`,
+      `Wallet ${reverseEnsName ?? shortAddress} is ready for EthTwin.`,
       `It currently holds ${baseSepoliaEth} ETH on Base Sepolia and ${sepoliaEth} ETH on Ethereum Sepolia.`,
       "Base Sepolia is used for the smart-wallet app flow; Ethereum Sepolia is used for ENS identity records.",
     ].join(" "),

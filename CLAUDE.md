@@ -1,12 +1,12 @@
-# Twinpilot — Project Context for Claude Code
+# EthTwin — Project Context for Claude Code
 
 > **North Star:** Build a 3-minute demo that wins ETHPrague 2026. Every decision answers: "Does this make the demo better?" If no → out.
 
 ## What we're building
 
-**Twinpilot** is an AI co-pilot for your on-chain life. Each user spawns an AI Twin that lives at their ENS subname (`daniel.twinpilot.eth`), is voice-controlled, can hire other agents via x402 micropayments, and uses cosmic randomness from satellites for stealth-address privacy.
+**EthTwin** is an AI co-pilot for your on-chain life. Each user spawns an AI Twin that lives at their ENS subname (`daniel.ethtwin.eth`), is voice-controlled, can hire other agents via x402 micropayments, and uses cosmic randomness from satellites for stealth-address privacy.
 
-**One-line pitch:** *"Twinpilot is the AI co-pilot for your on-chain life. Voice-first. Privacy by default. Lives in ENS."*
+**One-line pitch:** *"EthTwin is the AI co-pilot for your on-chain life. Voice-first. Privacy by default. Lives in ENS."*
 
 ## ⚠️ Critical Verified Facts (May 2026 — verified via web search + npm)
 

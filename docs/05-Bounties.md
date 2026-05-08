@@ -21,7 +21,7 @@ Project must classify as Agentic Venture suitable to launch on Umia. Must incorp
 | Crowdfunding-Palatable | Klar definiertes Produkt, demoable, zugänglicher Markt |
 
 ### Pitch-Slide für Umia
-- **Slide 1:** "Twinpilot — AI co-pilot for on-chain life"
+- **Slide 1:** "EthTwin — AI co-pilot for on-chain life"
 - **Slide 2:** Demo (live)
 - **Slide 3:** Revenue: Subscription + x402 fees + B2B
 - **Slide 4:** Token: $TWIN for credits, governance, premium tier
@@ -65,7 +65,7 @@ const interopAddr = buildERC7930(registry, 84532) // Base Sepolia chain id
 const recordKey = `agent-registration[${interopAddr}][${agentId}]`
 
 await setEnsText({
-  name: "daniel.twinpilot.eth",
+  name: "daniel.ethtwin.eth",
   key: recordKey,
   value: "1"
 })
@@ -75,7 +75,7 @@ await setEnsText({
 ```typescript
 // Twin verifies analyst.eth before paying
 const value = await getEnsText({ 
-  name: "analyst.twinpilot.eth", 
+  name: "analyst.ethtwin.eth", 
   key: `agent-registration[${interopAddr}][${analystId}]` 
 })
 const isVerified = value !== null && value !== ''
@@ -86,17 +86,17 @@ if (isVerified) showBadge("✓ ENSIP-25 Verified Agent")
 
 | Anforderung | Status | Wo bei uns |
 |---|---|---|
-| Naming individual agents with ENS | ✅ | Jeder Twin = `{name}.twinpilot.eth` |
-| Subname registry for fleet | ✅ | `*.twinpilot.eth` Tree (NameStone) |
+| Naming individual agents with ENS | ✅ | Jeder Twin = `{name}.ethtwin.eth` |
+| Subname registry for fleet | ✅ | `*.ethtwin.eth` Tree (NameStone) |
 | Capabilities, endpoints in text records | ✅ | `twin.capabilities`, `twin.endpoint` |
-| Agent-to-agent discovery via ENS | ✅ | Twin findet `analyst.twinpilot.eth` live |
+| Agent-to-agent discovery via ENS | ✅ | Twin findet `analyst.ethtwin.eth` live |
 | **ENS + verifiable credentials/attestations** | ✅✅ | **ENSIP-25 + ERC-8004 implementation** |
 | Delegation: agent acts on behalf of human | ✅ | Twin handelt für User (Smart Wallet delegation) |
 
 **ENS-Removal-Test: 6 von 6 Demo-Momenten brechen ohne ENS. ENSIP-25 macht uns zum Showcase.**
 
 ### Pitch-Sentence
-> *"Twin lebt nicht 'irgendwo deployed' — Twin IST ENS. Persönlichkeit, Capabilities, Stealth-Schlüssel, Reputation — alles in Text Records von daniel.twinpilot.eth. Plus: wir implementieren ENSIP-25 mit ERC-8004 IdentityRegistry für verifizierbare Agent-Identity. Wenn du ENS killst, killst du Twin."*
+> *"Twin lebt nicht 'irgendwo deployed' — Twin IST ENS. Persönlichkeit, Capabilities, Stealth-Schlüssel, Reputation — alles in Text Records von daniel.ethtwin.eth. Plus: wir implementieren ENSIP-25 mit ERC-8004 IdentityRegistry für verifizierbare Agent-Identity. Wenn du ENS killst, killst du Twin."*
 
 ### Mentor: workemon (`@workemon`)
 
@@ -110,7 +110,7 @@ if (isVerified) showBadge("✓ ENSIP-25 Verified Agent")
 
 ```typescript
 await setEnsText({
-  name: "daniel.twinpilot.eth",
+  name: "daniel.ethtwin.eth",
   key: "stealth-meta-address",  // ← Unser proposed pattern
   value: "st:eth:0x..."  // EIP-5564 standard format
 })
@@ -194,7 +194,7 @@ await setEnsText({
 - **Cosmic Randomness als Trust-Anchor** — niemand kann Stealth-Source vorhersagen
 - **Zero Metadata Leak** — Tx-History on-chain ist Noise auf Empfänger-Seite
 
-> *"Privacy ist nicht Feature in Twinpilot. Privacy IST das Default."*
+> *"Privacy ist nicht Feature in EthTwin. Privacy IST das Default."*
 
 ---
 

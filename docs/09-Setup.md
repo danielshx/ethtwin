@@ -44,8 +44,8 @@ Frontend-Komponenten (alle in `components/`):
 
 ```bash
 # Clone
-git clone https://github.com/[org]/twinpilot.git
-cd twinpilot
+git clone https://github.com/[org]/ethtwin.git
+cd ethtwin
 
 # Scaffold wurde manuell angelegt (NICHT via create-next-app, da
 # bestehende CLAUDE.md/README.md im Repo waren). Resultat ist äquivalent
@@ -71,7 +71,7 @@ pnpm dev
 # === CHAIN ===
 NEXT_PUBLIC_CHAIN_ID=84532                              # Base Sepolia
 NEXT_PUBLIC_BASE_RPC=https://sepolia.base.org
-NEXT_PUBLIC_PARENT_DOMAIN=twinpilot.eth                 # workemon checken!
+NEXT_PUBLIC_PARENT_DOMAIN=ethtwin.eth                 # workemon checken!
 
 # === PRIVY ===
 NEXT_PUBLIC_PRIVY_APP_ID=clxxxxx
@@ -244,7 +244,7 @@ pnpm dlx vercel --prod
 ## Privy Setup (privy.io) — Step-by-Step
 
 1. Account bei [privy.io](https://privy.io) erstellen
-2. **New App → Twinpilot**
+2. **New App → EthTwin**
 3. **Settings → Login Methods:**
    - ✅ Email
    - ✅ Passkey
@@ -285,7 +285,7 @@ Workemon (`@workemon`) entscheidet mit uns in den ersten 2h welcher Pfad:
 
 **Setup:**
 1. Account bei [namestone.com](https://namestone.com)
-2. Parent-Domain registrieren oder claim (z.B. `twinpilot.eth`)
+2. Parent-Domain registrieren oder claim (z.B. `ethtwin.eth`)
 3. API-Key holen
 4. POST `/api/public_v1/set-name` für jeden Subname
 

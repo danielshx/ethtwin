@@ -1,4 +1,4 @@
-# 🚀 Twinpilot
+# 🚀 EthTwin
 
 > AI co-pilot for your on-chain life. Voice-first. Privacy by default. Lives in ENS.
 
@@ -8,10 +8,10 @@ Built at **ETHPrague 2026** in 48 hours
 
 You spawn your AI Twin in 60 seconds (email + passkey, no seed phrase). The Twin:
 
-- Lives at your ENS subname (`yourname.twinpilot.eth`)
+- Lives at your ENS subname (`yourname.ethtwin.eth`)
 - Stores its persona, capabilities, and stealth meta-key in ENS Text Records
 - Talks to you via voice
-- Hires other AI agents via x402 micropayments when it needs help (`analyst.twinpilot.eth`)
+- Hires other AI agents via x402 micropayments when it needs help (`analyst.ethtwin.eth`)
 - Uses cosmic true randomness from satellites (Orbitport cTRNG) to seed stealth addresses for private payments
 - Translates every transaction into plain English before you sign
 

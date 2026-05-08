@@ -154,7 +154,7 @@ export const KNOWN_CONTRACTS: Record<Address, KnownContract> = {
     name: "ENS Registry",
     abi: ensRegistryAbi,
   },
-  // Sepolia public resolver bound to ethtwin.eth & twinpilot.eth in our setup
+  // Sepolia public resolver bound to ethtwin.eth in our setup
   "0xE99638b40E4Fff0129D56f03b55b6bbC4BBE49b5": {
     name: "ENS Public Resolver (Sepolia)",
     abi: ensResolverAbi,

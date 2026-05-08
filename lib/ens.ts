@@ -178,7 +178,7 @@ export async function setTextRecord(name: string, key: string, value: string): P
 
 /**
  * Sets the forward address record on the resolver bound to `name`.
- * Useful so `daniel.twinpilot.eth` resolves to the user's wallet.
+ * Useful so `daniel.ethtwin.eth` resolves to the user's wallet.
  */
 export async function setAddressRecord(name: string, addr: Address): Promise<Hash> {
   const { wallet, account } = getDevWalletClient()

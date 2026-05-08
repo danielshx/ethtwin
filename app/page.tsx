@@ -13,9 +13,9 @@ import { TwinChat } from "@/components/twin-chat"
 import { Toaster } from "@/components/ui/sonner"
 import { toast } from "sonner"
 
-const PARENT_DOMAIN = process.env.NEXT_PUBLIC_PARENT_DOMAIN ?? "twinpilot.eth"
+const PARENT_DOMAIN = process.env.NEXT_PUBLIC_PARENT_DOMAIN ?? "ethtwin.eth"
 const PRIVY_CONFIGURED = !!process.env.NEXT_PUBLIC_PRIVY_APP_ID
-const STORAGE_KEY = "twinpilot.session.v1"
+const STORAGE_KEY = "ethtwin.session.v1"
 
 type SessionState = {
   ensName: string
@@ -122,7 +122,7 @@ function App() {
           <span className="grid h-8 w-8 place-items-center rounded-full bg-primary/20 text-primary">
             <Sparkles className="h-4 w-4" />
           </span>
-          <span className="text-lg font-semibold tracking-tight">Twinpilot</span>
+          <span className="text-lg font-semibold tracking-tight">EthTwin</span>
           <Badge
             variant="secondary"
             className="hidden font-mono text-[10px] sm:inline-flex"

@@ -423,7 +423,7 @@ export async function createSubname(
 
 // Usage in onboarding:
 await createSubname(
-  'twinpilot.eth',
+  'ethtwin.eth',
   'daniel',
   smartWalletAddress,
   {

@@ -33,7 +33,7 @@
 #### Pitcher / Generalist
 - [ ] Mentor-Pings raus (alle 4)
 - [ ] Devfolio Account erstellen, Team-Submission vorbereiten
-- [x] ENS-Domain klären: `twinpilot.eth` verfügbar? Backup-Optionen — *gewechselt zu `ethtwin.eth`, registriert auf Sepolia*
+- [x] ENS-Domain klären: `ethtwin.eth` verfügbar? Backup-Optionen — *gewechselt zu `ethtwin.eth`, registriert auf Sepolia*
 - [ ] Notion-Doc für Pitch-Skript erstellen
 
 ### Phase 0 — Done-Definition
@@ -67,7 +67,7 @@
 - [ ] Loading-States + erste Polish-Animation
 
 #### Pitcher
-- [ ] `analyst.twinpilot.eth` Sample-Agent vorbereitet (Endpoint-Stub)
+- [ ] `analyst.ethtwin.eth` Sample-Agent vorbereitet (Endpoint-Stub)
 - [ ] Pitch-Skript v1 (Rohfassung, 3 Min)
 
 ### Phase 1 — Done-Definition
@@ -102,7 +102,7 @@
 - [ ] ENS-Reverse-Resolution überall: nie 0x... zeigen
 
 #### Pitcher
-- [ ] `analyst.twinpilot.eth` deployed: Endpoint reagiert auf x402-Payment, gibt LLM-Response zurück
+- [ ] `analyst.ethtwin.eth` deployed: Endpoint reagiert auf x402-Payment, gibt LLM-Response zurück
 - [ ] Pitch-Skript v2 mit konkreten Beats
 - [ ] Edge-Case-Antworten geschrieben (siehe Backlog)
 
@@ -129,7 +129,7 @@ Voice-Sample wird im Demo-Video aufgenommen als Backup.
 #### ETH-Dev
 - [ ] Live-On-Chain Stealth-Send mit cTRNG-Seed
 - [ ] Test-Tx auf Base Sepolia: Sender → Stealth Address → Recipient sieht Funds
-- [ ] Agent-Discovery: Twin queried `analyst.twinpilot.eth`, liest Capabilities, schickt x402
+- [ ] Agent-Discovery: Twin queried `analyst.ethtwin.eth`, liest Capabilities, schickt x402
 
 #### Backend
 - [ ] Cosmic Seed Endpoint mit echter Orbitport-Attestation (oder Cache-Fallback)

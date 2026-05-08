@@ -14,11 +14,11 @@ Meanwhile, **AI agents need on-chain identities** but no infrastructure exists t
 
 ## The Vision
 
-**Twinpilot is your AI co-pilot for the on-chain world.**
+**EthTwin is your AI co-pilot for the on-chain world.**
 
 Each user spawns a personal **AI Twin** in 60 seconds. The Twin:
 
-- **Lives in ENS:** persona, capabilities, endpoint, reputation, and stealth meta-key all in Text Records of `yourname.twinpilot.eth`.
+- **Lives in ENS:** persona, capabilities, endpoint, reputation, and stealth meta-key all in Text Records of `yourname.ethtwin.eth`.
 - **Talks to you:** voice-first interface (with chat fallback). No more clicking through wallet UIs.
 - **Acts for you:** plain-English transaction summaries before every signature. The Twin protects you from blind signing.
 - **Coordinates with other agents:** when your Twin needs help, it discovers other agents via ENS, evaluates capabilities from their Text Records, and pays them via x402 micropayments.
@@ -26,11 +26,11 @@ Each user spawns a personal **AI Twin** in 60 seconds. The Twin:
 
 ## The Wow Hook
 
-> *"Twinpilot uses true randomness from satellites to protect your privacy. Not pseudo-random. Real cosmic noise. Verifiable on-chain."*
+> *"EthTwin uses true randomness from satellites to protect your privacy. Not pseudo-random. Real cosmic noise. Verifiable on-chain."*
 
 This is what no other team at the hackathon will say. It's our defensible USP.
 
-## What makes Twinpilot defensible
+## What makes EthTwin defensible
 
 | Layer | Why it sticks |
 |---|---|

@@ -36,7 +36,7 @@ type OnboardingFlowProps = {
 }
 
 export function OnboardingFlow({
-  parentDomain = "twinpilot.eth",
+  parentDomain = "ethtwin.eth",
   defaultUsername = "",
   smartWalletAddress,
   onAuthenticate,
