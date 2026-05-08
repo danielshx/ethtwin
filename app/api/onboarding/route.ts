@@ -82,21 +82,31 @@ export async function POST(req: Request) {
   const ensipKey = `agent-registration[${interop}][${body.twinAgentId}]`
 
   try {
-    const parentResolver = await readResolver(PARENT_DOMAIN)
+    // Architecture: dev wallet retains registry ownership of every subname so
+    // it can write records + create message sub-subnames on the user's behalf.
+    // The user's wallet appears in the `addr` record. Hijacking check uses
+    // the existing addr record.
+    const { wallet, account: devAccount } = getDevWalletClient()
+
+    // Parallelize all ENS reads + nonce fetch — saves ~2-3s vs sequential.
+    const [parentResolver, existingOwner, existingAddr, currentDirectory, startingNonce] =
+      await Promise.all([
+        readResolver(PARENT_DOMAIN),
+        readSubnameOwner(ensName),
+        resolveEnsAddress(ensName),
+        readAgentDirectory(),
+        sepoliaClient.getTransactionCount({
+          address: devAccount.address,
+          blockTag: "pending",
+        }),
+      ])
+
     if (parentResolver === ZERO_ADDRESS) {
       return jsonError(
         `Parent ENS name ${PARENT_DOMAIN} has no resolver set on Sepolia`,
         500,
       )
     }
-
-    // Architecture: dev wallet retains registry ownership of every subname so
-    // it can write records + create message sub-subnames on the user's behalf.
-    // The user's wallet appears in the `addr` record. Hijacking check uses
-    // the existing addr record.
-    const { wallet, account: devAccount } = getDevWalletClient()
-    const existingOwner = await readSubnameOwner(ensName)
-    const existingAddr = await resolveEnsAddress(ensName)
 
     const needsCreate = existingOwner === ZERO_ADDRESS
     if (
@@ -147,7 +157,6 @@ export async function POST(req: Request) {
       ),
     ]
 
-    const currentDirectory = await readAgentDirectory()
     const alreadyListed = currentDirectory.some(
       (e) => e.ens.toLowerCase() === ensName.toLowerCase(),
     )
@@ -166,42 +175,41 @@ export async function POST(req: Request) {
       )
     }
 
-    // ── Broadcast back-to-back with sequential nonces, no waits ──
-    // Fetching nonce once and assigning manually means viem doesn't need to
-    // re-fetch. Passing `gas` lets viem skip the eth_estimateGas simulation
-    // (which would revert for the multicall since the subname doesn't exist
-    // in the current state if we're creating it).
-    const startingNonce = await sepoliaClient.getTransactionCount({
-      address: devAccount.address,
-      blockTag: "pending",
-    })
-
+    // ── Broadcast both txs via sendTransaction (skips writeContract's
+    // built-in simulation, which would block on the multicall because the
+    // subname doesn't exist in the current state when we're creating it) ──
     let createTx: Hash | null = null
     let recordsNonce = startingNonce
 
     if (needsCreate) {
       const labelHash = keccak256(toBytes(body.username))
       const parentNode = namehash(PARENT_DOMAIN)
-      createTx = await wallet.writeContract({
-        account: devAccount,
-        chain: wallet.chain,
-        address: ENS_REGISTRY,
+      const createData = encodeFunctionData({
         abi: ensRegistryAbi,
         functionName: "setSubnodeRecord",
         args: [parentNode, labelHash, devAccount.address, parentResolver, 0n],
+      })
+      createTx = await wallet.sendTransaction({
+        account: devAccount,
+        chain: wallet.chain,
+        to: ENS_REGISTRY,
+        data: createData,
         nonce: startingNonce,
         gas: CREATE_SUBNAME_GAS,
       })
       recordsNonce = startingNonce + 1
     }
 
-    const recordsTx = await wallet.writeContract({
-      account: devAccount,
-      chain: wallet.chain,
-      address: parentResolver,
+    const recordsData = encodeFunctionData({
       abi: ensResolverAbi,
       functionName: "multicall",
       args: [calls],
+    })
+    const recordsTx = await wallet.sendTransaction({
+      account: devAccount,
+      chain: wallet.chain,
+      to: parentResolver,
+      data: recordsData,
       nonce: recordsNonce,
       gas: RESOLVER_MULTICALL_GAS,
     })
