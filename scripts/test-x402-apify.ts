@@ -37,12 +37,12 @@ function logHeader(s: string) {
 async function preflight() {
   logHeader("Preflight")
 
-  // 1. env
-  const senderKey = process.env.X402_SENDER_KEY
+  // 1. env (fall back to DEV_WALLET_PRIVATE_KEY so we don't duplicate the secret)
+  const senderKey = process.env.X402_SENDER_KEY ?? process.env.DEV_WALLET_PRIVATE_KEY
   const actor = process.env.APIFY_ACTOR
   const endpointTpl = process.env.APIFY_X402_ENDPOINT
   const missing: string[] = []
-  if (!senderKey) missing.push("X402_SENDER_KEY")
+  if (!senderKey) missing.push("X402_SENDER_KEY (or DEV_WALLET_PRIVATE_KEY)")
   if (!actor) missing.push("APIFY_ACTOR")
   if (missing.length) {
     console.log(`FAIL  Missing env: ${missing.join(", ")}`)

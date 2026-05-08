@@ -13,15 +13,23 @@ let cachedFetch: typeof fetch | null = null
 
 export function paidFetch(): typeof fetch {
   if (cachedFetch) return cachedFetch
-  const senderKey = process.env.X402_SENDER_KEY as `0x${string}` | undefined
-  if (!senderKey) {
-    throw new Error("X402_SENDER_KEY missing — cannot make paid x402 requests")
+  // Prefer X402_SENDER_KEY; fall back to DEV_WALLET_PRIVATE_KEY so the
+  // hackathon dev wallet can sign x402 challenges without duplicating the secret.
+  const raw = process.env.X402_SENDER_KEY ?? process.env.DEV_WALLET_PRIVATE_KEY
+  if (!raw) {
+    throw new Error(
+      "Neither X402_SENDER_KEY nor DEV_WALLET_PRIVATE_KEY is set — cannot make paid x402 requests",
+    )
   }
+  const senderKey = (raw.startsWith("0x") ? raw : `0x${raw}`) as `0x${string}`
   const signer = privateKeyToAccount(senderKey)
   const client = new x402Client()
   for (const ns of CHAIN_NAMESPACES) {
     // ExactEvmScheme accepts a viem signer; the type is loose so we cast.
+    // Register for both v2 (default) and v1 — different facilitators / servers
+    // emit different x402Version fields and the client must dispatch to the right scheme.
     client.register(ns, new ExactEvmScheme(signer as never))
+    client.registerV1(ns, new ExactEvmScheme(signer as never))
   }
   cachedFetch = wrapFetchWithPayment(fetch, client) as typeof fetch
   return cachedFetch
