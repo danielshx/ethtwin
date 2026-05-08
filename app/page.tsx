@@ -1,14 +1,14 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { usePrivy, useWallets } from "@privy-io/react-auth"
+import { useConnectWallet, usePrivy, useWallets } from "@privy-io/react-auth"
 import { useSmartWallets } from "@privy-io/react-auth/smart-wallets"
 import { motion } from "framer-motion"
 import { LogOut, Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card } from "@/components/ui/card"
-import { OnboardingFlow, type OnboardingResult } from "@/components/onboarding-flow"
+import { OnboardingFlow, type AuthMethod, type OnboardingResult } from "@/components/onboarding-flow"
 import { TwinChat } from "@/components/twin-chat"
 import { Messenger } from "@/components/messenger"
 import { Toaster } from "@/components/ui/sonner"
@@ -17,6 +17,10 @@ import { toast } from "sonner"
 const PARENT_DOMAIN = process.env.NEXT_PUBLIC_PARENT_DOMAIN ?? "twinpilot.eth"
 const PRIVY_CONFIGURED = !!process.env.NEXT_PUBLIC_PRIVY_APP_ID
 const STORAGE_KEY = "twinpilot.session.v1"
+// Fallback addr record when an email-only user signs in but no embedded smart
+// wallet has surfaced yet. The twin is mintable; the addr record points at the
+// shared dev wallet. Caveat: multiple email-only users would share an addr.
+const DEV_WALLET_FALLBACK = "0x4E09c220BD556396Bc255A4DD24F858Bafeba6f5"
 
 type SessionState = {
   ensName: string
@@ -39,6 +43,7 @@ function App() {
   const privy = usePrivy()
   const { wallets } = useWallets()
   const smart = useSmartWallets()
+  const { connectWallet } = useConnectWallet()
   const [session, setSession] = useState<SessionState | null>(null)
   const [hydrated, setHydrated] = useState(false)
 
@@ -56,14 +61,26 @@ function App() {
     const embedded = wallets.find((w) => w.walletClientType === "privy")
     if (embedded?.address) return embedded.address
     // External wallet login (MetaMask/Rabby/etc.) — use whatever's connected.
-    return wallets[0]?.address ?? null
-  }, [smart.client?.account?.address, wallets])
+    if (wallets[0]?.address) return wallets[0].address
+    // Email-only user with no embedded wallet yet — fall back to the shared
+    // dev wallet so the twin can still be minted.
+    if (privy.authenticated) return DEV_WALLET_FALLBACK
+    return null
+  }, [smart.client?.account?.address, wallets, privy.authenticated])
 
-  async function handleAuthenticate() {
+  async function handleAuthenticate(method: AuthMethod = "any") {
     if (!privy.authenticated) {
-      await privy.login()
+      if (method === "wallet") {
+        // Direct wallet picker — skips the email/passkey choices.
+        connectWallet()
+      } else if (method === "passkey") {
+        privy.login({ loginMethods: ["passkey"] })
+      } else {
+        // Generic — Privy modal lets user pick any method.
+        privy.login()
+      }
     }
-    return { smartWalletAddress: smartWalletAddress ?? "0x0" }
+    return { smartWalletAddress: smartWalletAddress ?? DEV_WALLET_FALLBACK }
   }
 
   async function handleMint(input: {

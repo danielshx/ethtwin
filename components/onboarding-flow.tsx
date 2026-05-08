@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { CheckCircle2, KeyRound, Loader2, Sparkles } from "lucide-react"
+import { CheckCircle2, KeyRound, Loader2, Sparkles, Wallet } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
@@ -19,13 +19,17 @@ export type OnboardingResult = {
   cosmicAttestation: string
 }
 
+export type AuthMethod = "any" | "passkey" | "wallet"
+
 type Step = "intro" | "username" | "cosmic" | "minting" | "done"
 
 type OnboardingFlowProps = {
   parentDomain?: string
   defaultUsername?: string
   smartWalletAddress?: `0x${string}` | string | null
-  onAuthenticate: () => Promise<{ smartWalletAddress: `0x${string}` | string } | void> | void
+  onAuthenticate: (
+    method?: AuthMethod,
+  ) => Promise<{ smartWalletAddress: `0x${string}` | string } | void> | void
   onMint: (input: {
     username: string
     smartWalletAddress: `0x${string}` | string
@@ -65,11 +69,11 @@ export function OnboardingFlow({
     if (smartWalletAddress) setWalletAddr(smartWalletAddress)
   }, [smartWalletAddress])
 
-  async function handleAuth() {
+  async function handleAuth(method: AuthMethod = "any") {
     setAuthBusy(true)
     setError(null)
     try {
-      const result = await onAuthenticate()
+      const result = await onAuthenticate(method)
       if (result?.smartWalletAddress) setWalletAddr(result.smartWalletAddress)
       setStep("username")
     } catch (e) {
@@ -179,27 +183,58 @@ export function OnboardingFlow({
                 Spawn your AI twin
               </h2>
               <p className="text-sm text-muted-foreground">
-                One passkey, one ENS subname, one agent that lives on-chain for you.
-                No seed phrase, no extension.
+                A long-lived agent that lives in ENS, transacts on your behalf,
+                and coordinates with other twins. No seed phrase, no extension.
               </p>
               <div className="my-2 grid gap-2 text-sm">
-                <Bullet>Email + passkey login (Privy)</Bullet>
-                <Bullet>Smart wallet auto-created on Base Sepolia</Bullet>
-                <Bullet>
-                  Your twin's identity, persona, and stealth meta-key live in ENS
-                </Bullet>
+                <Bullet>Identity lives in ENS — persona + stealth keys + capabilities</Bullet>
+                <Bullet>Privacy-first payments via EIP-5564 stealth addresses</Bullet>
+                <Bullet>Talks to other twins through on-chain ENS messaging</Bullet>
               </div>
-              <Button onClick={handleAuth} disabled={authBusy} size="lg">
-                {authBusy ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Connecting…
-                  </>
-                ) : (
-                  <>
-                    <KeyRound className="mr-2 h-4 w-4" /> Continue with passkey
-                  </>
-                )}
-              </Button>
+
+              <div className="mt-2 grid gap-3">
+                <Button
+                  onClick={() => handleAuth("any")}
+                  disabled={authBusy}
+                  size="lg"
+                  className="relative h-12 overflow-hidden bg-gradient-to-r from-primary to-fuchsia-500 text-primary-foreground shadow-lg shadow-primary/25 transition hover:shadow-primary/40"
+                >
+                  {authBusy ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Connecting…
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="mr-2 h-4 w-4" /> Create new twin agent
+                    </>
+                  )}
+                </Button>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <Button
+                    onClick={() => handleAuth("passkey")}
+                    disabled={authBusy}
+                    variant="outline"
+                    size="lg"
+                    className="h-11 border-white/15 bg-white/5 hover:border-primary/40 hover:bg-primary/10"
+                  >
+                    <KeyRound className="mr-2 h-4 w-4" /> Sign in with passkey
+                  </Button>
+                  <Button
+                    onClick={() => handleAuth("wallet")}
+                    disabled={authBusy}
+                    variant="outline"
+                    size="lg"
+                    className="h-11 border-white/15 bg-white/5 hover:border-primary/40 hover:bg-primary/10"
+                  >
+                    <Wallet className="mr-2 h-4 w-4" /> Connect wallet
+                  </Button>
+                </div>
+
+                <p className="text-center font-mono text-[10px] text-muted-foreground">
+                  Returning users land back in their existing twin automatically.
+                </p>
+              </div>
             </StepShell>
           )}
 
