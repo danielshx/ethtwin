@@ -87,7 +87,7 @@ Nach Recherche ist **NameStone** die beste Option für 48h-Hackathon:
 
 **Setup:**
 1. Account bei [namestone.com](https://namestone.com)
-2. Parent-Domain registrieren oder claim (z.B. `twinpilot.eth`)
+2. Parent-Domain registrieren oder claim (z.B. `ethtwin.eth`)
 3. API-Key holen
 4. POST `/api/public_v1/set-name` für jeden Subname
 
@@ -251,7 +251,7 @@ curl -X POST https://sepolia.base.org \
 
 ## 📋 Pre-Hackathon-Checkliste (1-2h vor Start)
 
-- [ ] **ENS Domain:** `twinpilot.eth` Verfügbarkeit + Namestone-Account
+- [ ] **ENS Domain:** `ethtwin.eth` Verfügbarkeit + Namestone-Account
 - [ ] **Lib-Versionen:** `npm view` für alle 13 packages durchgelaufen
 - [ ] **API-Keys beschafft:**
   - [ ] Anthropic API Key + Credit

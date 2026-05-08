@@ -18,7 +18,7 @@ export const mainnetClient = createPublicClient({
 })
 
 export const PARENT_DOMAIN =
-  process.env.NEXT_PUBLIC_PARENT_DOMAIN ?? "twinpilot.eth"
+  process.env.NEXT_PUBLIC_PARENT_DOMAIN ?? "ethtwin.eth"
 
 function rpcUrlForChain(chain: Chain): string | undefined {
   switch (chain.id) {

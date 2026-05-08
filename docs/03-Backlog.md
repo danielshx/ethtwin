@@ -46,7 +46,7 @@ Diese Spikes klären Annahmen bevor wir bauen — falls ein Spike fehlschlägt, 
 ### Onboarding
 - [ ] **T1-01** Privy Login mit Email + Passkey (`@privy-io/react-auth`)
 - [ ] **T1-02** Smart Wallet Embedded (Privy + Kernel/ZeroDev provider)
-- [ ] **T1-03** ENS Subname-Erstellung während Onboarding via NameStone REST API (`{username}.twinpilot.eth`)
+- [ ] **T1-03** ENS Subname-Erstellung während Onboarding via NameStone REST API (`{username}.ethtwin.eth`)
 - [ ] **T1-04** Smart Wallet wird Owner des ENS Subname Records
 - [ ] **T1-05** Twin-Persona-Default in ENS Text Records gespeichert (description, avatar, twin.persona)
 - [ ] **T1-05b** **ENSIP-25 Text Record** gesetzt: `agent-registration[<ERC-7930-encoded-registry>][<agentId>] = "1"`
@@ -95,8 +95,8 @@ Diese Spikes klären Annahmen bevor wir bauen — falls ein Spike fehlschlägt, 
 - [ ] **T2-06** Attestation-Hash anklickbar → Block-Explorer
 
 ### Agent-zu-Agent x402 mit ENSIP-25
-- [ ] **T2-07** `analyst.twinpilot.eth` als Sample-Agent deployed
-- [ ] **T2-08** `analyst.twinpilot.eth` Capabilities + ENSIP-25 Record + endpoint in Text Records
+- [ ] **T2-07** `analyst.ethtwin.eth` als Sample-Agent deployed
+- [ ] **T2-08** `analyst.ethtwin.eth` Capabilities + ENSIP-25 Record + endpoint in Text Records
 - [ ] **T2-09** Twin findet `analyst.eth` über ENS-Discovery
 - [ ] **T2-09b** **ENSIP-25 Verification:** Twin liest `agent-registration[...]` → zeigt "✓ Verified Agent" Badge
 - [ ] **T2-10** Twin macht x402-Tx an Analyst, Analyst antwortet, Twin synthetisiert
@@ -122,7 +122,7 @@ Diese Spikes klären Annahmen bevor wir bauen — falls ein Spike fehlschlägt, 
 - [ ] **T3-02** Twin nutzt mehrere Apify-Actors für verschiedene Use-Cases
 
 ### ENS Creative Stretch
-- [ ] **T3-03** Reputation-Score in ENS Text Records (signed by `twinpilot.eth`)
+- [ ] **T3-03** Reputation-Score in ENS Text Records (signed by `ethtwin.eth`)
 - [ ] **T3-04** Multi-Agent-Discovery (3+ Sample-Agents mit ENSIP-25 records)
 - [ ] **T3-05** ERC-8004 IdentityRegistry mock deployed (für volle ENSIP-25 demo)
 

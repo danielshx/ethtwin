@@ -44,6 +44,22 @@ export function requireEnv(name: string) {
   return { ok: true as const, value }
 }
 
+// Resolves the public app URL: explicit NEXT_PUBLIC_APP_URL wins, otherwise
+// fall back to Vercel's auto-injected VERCEL_PROJECT_PRODUCTION_URL / VERCEL_URL
+// so preview + prod deployments work without manual env config.
+export function resolveAppUrl() {
+  const explicit = process.env.NEXT_PUBLIC_APP_URL
+  if (explicit) return { ok: true as const, value: explicit.replace(/\/$/, "") }
+  const prod = process.env.VERCEL_PROJECT_PRODUCTION_URL
+  if (prod) return { ok: true as const, value: `https://${prod}` }
+  const vercel = process.env.VERCEL_URL
+  if (vercel) return { ok: true as const, value: `https://${vercel}` }
+  return {
+    ok: false as const,
+    response: jsonError("App URL not configured (set NEXT_PUBLIC_APP_URL)", 500),
+  }
+}
+
 export const ethereumAddressSchema = z
   .string()
   .regex(/^0x[a-fA-F0-9]{40}$/, "Expected a valid EVM address")

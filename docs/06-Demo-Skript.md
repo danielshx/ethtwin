@@ -11,7 +11,7 @@
 ## Setup vor Demo
 
 ### Browser-Tabs (in dieser Reihenfolge)
-1. Tab 1: `https://twinpilot.xyz` (Login-Page)
+1. Tab 1: `https://ethtwin.xyz` (Login-Page)
 2. Tab 2: Block Explorer (basescan.org/sepolia/) — pre-loaded auf Smart Wallet Address
 3. Tab 3: ENS App (app.ens.domains) — pre-loaded auf parent domain
 4. Tab 4: Backup-Demo-Video (für Notfall)
@@ -19,11 +19,11 @@
 ### Pre-Demo Checks
 - Privy Smart Wallet hat genug USDC (mindestens $5 USDC für Demo-Tx)
 - Privy Smart Wallet hat genug Sepolia ETH (Gas) — falls Paymaster aus
-- ENS Subname `daniel.twinpilot.eth` existiert
+- ENS Subname `daniel.ethtwin.eth` existiert
 - ENSIP-25 Text Record gesetzt (`agent-registration[...]`)
 - Stealth-Meta-Address Text Record gesetzt
 - cTRNG-Cache prefetched (mehrere Samples)
-- analyst.twinpilot.eth antwortet
+- analyst.ethtwin.eth antwortet
 - OpenAI Realtime API funktioniert
 
 ### Audio
@@ -38,7 +38,7 @@
 ### [0:00 – 0:15] Hook
 > *"Hi, ich bin Daniel. Ich hatte vor 60 Sekunden noch keine Wallet, kein Crypto, keinen ENS-Namen. Jetzt habe ich alles drei — und einen AI-Zwilling der für mich arbeitet."*
 
-**Bühne:** Pitcher steht, Twinpilot-Logo auf Screen.
+**Bühne:** Pitcher steht, EthTwin-Logo auf Screen.
 
 ---
 
@@ -49,11 +49,11 @@
 - Email eingeben → "Continue"
 - Privy Passkey-Prompt (Face-ID-Animation auf Screen oder echtes Phone)
 - Privy Smart Wallet wird auto-erstellt auf Base Sepolia
-- ENS-Subname-Reservation: `daniel.twinpilot.eth` reserviert
+- ENS-Subname-Reservation: `daniel.ethtwin.eth` reserviert
 - Text Records werden geschrieben (inkl. ENSIP-25 + Stealth-Meta-Address)
 - **Twin spawnt:** Welcome-Animation
 
-> *"Mein Twin lebt bei `daniel.twinpilot.eth`. Seine Persönlichkeit, seine Fähigkeiten, sein Stealth-Privacy-Schlüssel — alles in ENS Text Records. Plus: er ist ENSIP-25 verifiziert — der offizielle Standard für AI-Agent-Identity in ENS."*
+> *"Mein Twin lebt bei `daniel.ethtwin.eth`. Seine Persönlichkeit, seine Fähigkeiten, sein Stealth-Privacy-Schlüssel — alles in ENS Text Records. Plus: er ist ENSIP-25 verifiziert — der offizielle Standard für AI-Agent-Identity in ENS."*
 
 **[Optional, 5 Sek]:** Tab 3 öffnen, ENS Records anzeigen → schnell schließen.
 
@@ -81,10 +81,10 @@
 **Voice:** *"Twin, frag analyst.eth nach den besten DeFi-Yields heute."*
 
 **Auf Screen:**
-- Twin: *"Ich kontaktiere analyst.twinpilot.eth..."*
+- Twin: *"Ich kontaktiere analyst.ethtwin.eth..."*
 - **ENSIP-25 Verification Badge erscheint: "✓ Verified Agent"**
 - Animation: Twin → analyst.eth Flow-Visualisierung
-- Tx-Notification: x402-Tx an `analyst.twinpilot.eth`
+- Tx-Notification: x402-Tx an `analyst.ethtwin.eth`
 - analyst.eth antwortet
 - Twin synthetisiert: *"Empfehlung: 50% Aave V3 USDC, 50% halten. Risiko: niedrig."*
 
@@ -116,11 +116,11 @@
 ### [2:35 – 3:00] Closing
 > *"In drei Minuten habt ihr gesehen: Onboarding ohne Seed Phrase. AI-Twin der für mich denkt. ENSIP-25-verifizierte Agent-zu-Agent-Economy. Plain-English-Approvals statt blind signing. Live x402-Payments. Echte Cosmic-Privacy aus dem Weltall."*
 
-> *"Twinpilot ist ENS-native, voice-first, privacy-by-default."*
+> *"EthTwin ist ENS-native, voice-first, privacy-by-default."*
 
-> *"Twin lebt bei `daniel.twinpilot.eth`. Welchen Twin willst du?"*
+> *"Twin lebt bei `daniel.ethtwin.eth`. Welchen Twin willst du?"*
 
-**Final Frame:** Logo + URL `twinpilot.xyz` + Slogan.
+**Final Frame:** Logo + URL `ethtwin.xyz` + Slogan.
 
 ---
 
@@ -148,7 +148,7 @@
 > *Stateless Backend auf Vercel. ENS skaliert von Natur aus. cTRNG-Cache pooled. x402 fees pay for own throughput. Wir haben kein Centralized Bottleneck.*
 
 ### "Warum nicht einfach Smart Wallets + AA?"
-> *Wir nutzen Smart Wallets — Privy gibt uns ERC-4337 mit Passkey-Auth. Aber Smart Wallets allein lösen nicht Privacy + Agent-Identity + Voice-UX + Multi-Agent-Coordination. Twinpilot ist die Schicht darüber.*
+> *Wir nutzen Smart Wallets — Privy gibt uns ERC-4337 mit Passkey-Auth. Aber Smart Wallets allein lösen nicht Privacy + Agent-Identity + Voice-UX + Multi-Agent-Coordination. EthTwin ist die Schicht darüber.*
 
 ### "Warum $1 USDC pro Apify-Call? Ist das nicht teuer?"
 > *Das ist Apify's x402-Minimum für Pay-Per-Event Actors. Für Real-Time-Daten ist das Standard — Twin nutzt es selektiv, nur wenn der User explizit fragt. Plus: das ist agent-driven Payment, nicht user-driven — der Twin entscheidet, das System bleibt smooth.*
@@ -176,7 +176,7 @@
 - [ ] Test-Voice-Befehl 1× durchgespielt
 - [ ] cTRNG-Seed-Cache prefetched (für falls API langsam)
 - [ ] x402-Apify-Endpoint warm (1× Test-Call)
-- [ ] `analyst.twinpilot.eth` antwortet + ist ENSIP-25 verified
+- [ ] `analyst.ethtwin.eth` antwortet + ist ENSIP-25 verified
 - [ ] Backup-Video bereit für Tab-Switch
 - [ ] Wasser
 - [ ] Atmung
@@ -185,7 +185,7 @@
 
 ## Die 5 Sätze die der Pitcher auswendig kann
 
-1. *"Twin lebt bei `daniel.twinpilot.eth`. Komplett in ENS, ENSIP-25 verifiziert."*
+1. *"Twin lebt bei `daniel.ethtwin.eth`. Komplett in ENS, ENSIP-25 verifiziert."*
 2. *"Echte Cosmic-Randomness aus dem Weltall — nicht VRF."*
 3. *"Plain English statt blind signing."*
 4. *"Agent-zu-Agent-Economy via x402 — verifizierbar via ENSIP-25."*

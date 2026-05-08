@@ -202,7 +202,7 @@ function ThinkingDots() {
 const PROMPTS = [
   "Show me what you know about my wallet",
   "Send 5 USDC to vitalik.eth privately",
-  "Hire analyst.twinpilot.eth to summarise this address",
+  "Hire analyst.ethtwin.eth to summarise this address",
   "Decode the last transaction I signed",
 ]
 

@@ -87,14 +87,14 @@ We need to decide in **Phase 0 (Stunde 0-3)** with workemon:
 5. /api/onboarding (server):
    - Verify Privy token via @privy-io/node
    - Call NameStone API: POST /set-name
-     - Domain: twinpilot.eth
+     - Domain: ethtwin.eth
      - Name: daniel
      - Address: <smartWalletAddress>
      - Text records:
        - description, twin.persona, twin.capabilities, twin.endpoint
        - stealth-meta-address (EIP-5564 format) ← our innovation
        - agent-registration[<registry>][<agentId>] = "1" ← ENSIP-25
-6. Frontend: Welcome animation, "Welcome, daniel.twinpilot.eth"
+6. Frontend: Welcome animation, "Welcome, daniel.ethtwin.eth"
 ```
 
 ### Flow 2: Voice → x402 → Twin Response
@@ -148,12 +148,12 @@ We need to decide in **Phase 0 (Stunde 0-3)** with workemon:
 
 ```
 1. User: "Twin, ask analyst.eth for DeFi yields"
-2. Twin tool: hireAgent({ agentEnsName: "analyst.twinpilot.eth", task: "..." })
+2. Twin tool: hireAgent({ agentEnsName: "analyst.ethtwin.eth", task: "..." })
 3. Backend:
    a. ENSIP-25 verification:
       - Build interopAddr = ERC-7930(ERC-8004 IdentityRegistry, Base Sepolia)
       - viem.getEnsText({ 
-          name: "analyst.twinpilot.eth", 
+          name: "analyst.ethtwin.eth", 
           key: `agent-registration[${interopAddr}][${analystId}]` 
         })
       - If non-empty → ✓ ENSIP-25 verified
@@ -174,7 +174,7 @@ We need to decide in **Phase 0 (Stunde 0-3)** with workemon:
 ## Datei-Struktur
 
 ```
-twinpilot/
+ethtwin/
 ├── app/
 │   ├── (auth)/
 │   │   ├── onboarding/page.tsx
@@ -264,7 +264,7 @@ twinpilot/
 ```
 ┌─────────────────────────────────────────┐
 │   ENS (Sepolia/Mainnet/NameStone)        │
-│   daniel.twinpilot.eth                   │
+│   daniel.ethtwin.eth                   │
 │   Text Records:                          │
 │   - agent-registration[<reg>][42] = "1"  │
 └─────────────────┬────────────────────────┘

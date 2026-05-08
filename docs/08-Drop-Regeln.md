@@ -122,7 +122,7 @@ Falls 50%+ kaputt ist und wir trotzdem pitchen müssen:
 
 ### Notfall-Skript (1:30 Min, statt 3:00)
 
-> *"Wir bauen Twinpilot — euer AI-Co-Pilot fürs On-Chain-Leben."*
+> *"Wir bauen EthTwin — euer AI-Co-Pilot fürs On-Chain-Leben."*
 > 
 > *"Drei Innovationen: ENS-native Agent-Identity, Cosmic-Privacy mit echtem Random aus Satelliten, x402 Agent-zu-Agent-Economy."*
 > 
@@ -132,7 +132,7 @@ Falls 50%+ kaputt ist und wir trotzdem pitchen müssen:
 > 
 > *[Backup-Video startet]*
 > 
-> *"Twinpilot ist ENS-native, voice-first, privacy-by-default. Welcher Twin wird deiner?"*
+> *"EthTwin ist ENS-native, voice-first, privacy-by-default. Welcher Twin wird deiner?"*
 
 **Backup-Video ist immer die Versicherung.** Aufnehmen in Stunde 36-44 ist kein Backup-Plan, sondern Risk-Management.
 

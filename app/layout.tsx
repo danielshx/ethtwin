@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 const geist = Geist({subsets:['latin'],variable:'--font-sans'});
 
 export const metadata: Metadata = {
-  title: "Twinpilot — AI co-pilot for your on-chain life",
+  title: "EthTwin — AI co-pilot for your on-chain life",
   description:
     "Voice-first AI Twin that lives in ENS, hires agents via x402, and uses cosmic randomness for stealth privacy.",
 }

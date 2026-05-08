@@ -9,10 +9,29 @@ import {
   verifyAgentRegistration,
 } from "./ensip25"
 import { readTwinRecords } from "./ens"
+<<<<<<< HEAD
 import { describeTx } from "./tx-decoder"
 import { sendStealthUSDC } from "./payments"
+=======
+import { getWalletSummary } from "./wallet-summary"
+>>>>>>> fcd697cc67b018f9b9a5e0e6858009dc80ea45ec
 
 export const twinTools = {
+  getWalletSummary: tool({
+    description:
+      "Get a concise summary of a wallet, including balances and ENS reverse resolution. Use when the user asks what the Twin knows about their wallet.",
+    inputSchema: z.object({
+      address: z.string().describe("Ethereum wallet address to summarize"),
+    }),
+    execute: async ({ address }) => {
+      const summary = await getWalletSummary(address)
+      return {
+        ok: true,
+        ...summary,
+      }
+    },
+  }),
+
   requestDataViaX402: tool({
     description:
       "Fetch live data from an Apify actor via x402 micropayment. Use when you need fresh on-chain or web data the user is asking about.",

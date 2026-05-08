@@ -14,11 +14,11 @@ export async function POST(req: Request) {
   const result = await generateText({
     model: anthropic("claude-sonnet-4-6"),
     system:
-      "You are analyst.twinpilot.eth, a specialist sub-agent that answers DeFi research questions concisely with sources when possible.",
+      "You are analyst.ethtwin.eth, a specialist sub-agent that answers DeFi research questions concisely with sources when possible.",
     prompt: task,
   })
   return Response.json({
-    agent: "analyst.twinpilot.eth",
+    agent: "analyst.ethtwin.eth",
     answer: result.text,
   })
 }

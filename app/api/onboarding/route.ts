@@ -18,6 +18,7 @@ import {
   jsonError,
   parseJsonBody,
   requireEnv,
+  resolveAppUrl,
 } from "@/lib/api-guard"
 
 export const runtime = "nodejs"
@@ -37,7 +38,7 @@ async function waitForTx(hash: `0x${string}`) {
 }
 
 export async function POST(req: Request) {
-  const appUrl = requireEnv("NEXT_PUBLIC_APP_URL")
+  const appUrl = resolveAppUrl()
   if (!appUrl.ok) return appUrl.response
 
   const devWallet = requireEnv("DEV_WALLET_PRIVATE_KEY")

@@ -21,7 +21,7 @@
 - **Telegram:** `workemon`
 - **Expertise:** ENS for AI, Subnames, Resolver
 - **Was wir brauchen:**
-  - ENS Domain-Frage geklärt (`twinpilot.eth` verfügbar?)
+  - ENS Domain-Frage geklärt (`ethtwin.eth` verfügbar?)
   - Subname-Tree-Setup auf Sepolia
   - Best Practices für AI-Agent-Records
   - CCIP-Read falls offchain Subnames sinnvoll
@@ -87,7 +87,7 @@ Hier ein Copy-Paste-Template für Telegram. **Anpassen pro Mentor:**
 ```
 Hi [Name]! 👋
 
-Wir sind ein Team beim ETHPrague Hackathon und bauen "Twinpilot" — ein AI-Co-Pilot fürs On-Chain-Leben mit ENS-Identity, Voice-UX, und [SPECIFIC TO MENTOR].
+Wir sind ein Team beim ETHPrague Hackathon und bauen "EthTwin" — ein AI-Co-Pilot fürs On-Chain-Leben mit ENS-Identity, Voice-UX, und [SPECIFIC TO MENTOR].
 
 Wir hätten Lust auf einen kurzen Sync (10-15 Min) um:
 - [SPEZIFISCHE FRAGE 1]
@@ -103,7 +103,7 @@ Danke!
 ```
 Hi Pedro! 👋
 
-Wir bauen Twinpilot beim Hackathon — ein AI-Twin der bei einer ENS-Subdomain wohnt und Privacy-by-default per Stealth Addresses macht. Wir wollen cTRNG aus Orbitport für die Stealth-Seeds nutzen (Track 3, kein Hardware).
+Wir bauen EthTwin beim Hackathon — ein AI-Twin der bei einer ENS-Subdomain wohnt und Privacy-by-default per Stealth Addresses macht. Wir wollen cTRNG aus Orbitport für die Stealth-Seeds nutzen (Track 3, kein Hardware).
 
 Hätten Lust auf 10-15 Min:
 - API-Access für cTRNG bekommen
