@@ -4,8 +4,20 @@
 // generated-avatar fallback for older twins that pre-date the profile defaults.
 
 import { jsonError } from "@/lib/api-guard"
-import { readTwinRecords, resolveEnsAddress } from "@/lib/ens"
+import { readAddrFast, readTextRecordFast } from "@/lib/ens"
 import { buildAvatarUrl } from "@/lib/twin-profile"
+
+const TWIN_TEXT_KEYS = [
+  "description",
+  "avatar",
+  "url",
+  "twin.persona",
+  "twin.capabilities",
+  "twin.endpoint",
+  "twin.version",
+  "stealth-meta-address",
+] as const
+type TwinKey = (typeof TWIN_TEXT_KEYS)[number]
 
 export const runtime = "nodejs"
 export const maxDuration = 15
@@ -22,23 +34,32 @@ export async function GET(
   const label = ens.split(".")[0] ?? ens
 
   try {
-    const [records, addr] = await Promise.all([
-      readTwinRecords(ens),
-      resolveEnsAddress(ens).catch(() => null),
-    ])
+    // All direct calls to the known parent resolver — bypass Universal
+    // Resolver / CCIP-Read which can hang for minutes on Vercel-Sepolia.
+    const reads: Promise<unknown>[] = [
+      readAddrFast(ens).catch(() => null),
+      ...TWIN_TEXT_KEYS.map((key) =>
+        readTextRecordFast(ens, key).catch(() => ""),
+      ),
+    ]
+    const [addrResult, ...textResults] = await Promise.all(reads)
+    const addr = addrResult as `0x${string}` | null
+    const recordMap = Object.fromEntries(
+      TWIN_TEXT_KEYS.map((key, i) => [key, (textResults[i] as string) || null]),
+    ) as Record<TwinKey, string | null>
 
     return Response.json({
       ok: true,
       ens,
-      addr: addr ?? null,
-      avatar: records.avatar ?? buildAvatarUrl(label),
-      description: records.description ?? null,
-      url: records.url ?? null,
-      persona: records["twin.persona"] ?? null,
-      capabilities: records["twin.capabilities"] ?? null,
-      endpoint: records["twin.endpoint"] ?? null,
-      stealthMeta: records["stealth-meta-address"] ?? null,
-      version: records["twin.version"] ?? null,
+      addr,
+      avatar: recordMap.avatar ?? buildAvatarUrl(label),
+      description: recordMap.description,
+      url: recordMap.url,
+      persona: recordMap["twin.persona"],
+      capabilities: recordMap["twin.capabilities"],
+      endpoint: recordMap["twin.endpoint"],
+      stealthMeta: recordMap["stealth-meta-address"],
+      version: recordMap["twin.version"],
     })
   } catch (error) {
     return jsonError(

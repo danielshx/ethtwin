@@ -25,7 +25,7 @@ import {
   getDevWalletClient,
   sepoliaClient,
 } from "./viem"
-import { resolveEnsAddress } from "./ens"
+import { readAddrFast, resolveEnsAddress } from "./ens"
 
 export type SupportedChain = "sepolia" | "base-sepolia"
 export type SupportedToken = "ETH" | "USDC"
@@ -91,7 +91,11 @@ export async function parseRecipient(input: string): Promise<Address> {
   if (!trimmed.includes(".")) {
     throw new Error(`"${trimmed}" is neither a 0x address nor an ENS name.`)
   }
-  const resolved = await resolveEnsAddress(trimmed)
+  // Fast path for our own ethtwin.eth tree — direct resolver call (200ms).
+  // Fall back to the slow Universal Resolver path for any other ENS name.
+  const resolved = trimmed.endsWith(".ethtwin.eth")
+    ? await readAddrFast(trimmed)
+    : await resolveEnsAddress(trimmed)
   if (!resolved) {
     throw new Error(`Could not resolve ENS name "${trimmed}" on Sepolia.`)
   }

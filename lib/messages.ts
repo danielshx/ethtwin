@@ -88,61 +88,24 @@ const RESOLVER_TEXT_VIEW_ABI = [
   },
 ] as const
 
-// Each message = 3 ENS text-record reads, each going through the universal
-// resolver = ~3-6 RPC roundtrips per record. Even with parallelism, a 30-msg
-// inbox can blow past Vercel timeouts when Sepolia ENS reads are slow.
-// Capping at 10 keeps the worst-case fan-out tolerable.
-const DEFAULT_INBOX_LIMIT = 10
+// Hard cap at 3 messages per inbox load. Each is 3 fast reads (single
+// eth_call each via direct resolver). 9 RPC roundtrips total — fits Vercel
+// even on slow Sepolia. The frontend can re-fetch with a higher limit on
+// demand, or the user can scroll.
+const DEFAULT_INBOX_LIMIT = 3
 
-/**
- * Full inbox read for a recipient ENS, sorted newest-first.
- *
- * Strategy: ONE multicall3 RPC call hydrates the entire inbox. Without
- * multicall this fans out to 1 + 3N calls (label list + per-message
- * from/body/at), which is too slow on Vercel due to round-trip latency.
- */
+/** Full inbox read for a recipient ENS, sorted newest-first. Hard-capped. */
 export async function readInbox(
   recipientEns: string,
   limit: number = DEFAULT_INBOX_LIMIT,
 ): Promise<Message[]> {
   const labels = await readMessageList(recipientEns)
-  // Append-only list — newest at the tail.
-  const recent = labels.slice(-Math.max(1, limit))
+  const recent = labels.slice(-Math.max(1, Math.min(limit, DEFAULT_INBOX_LIMIT)))
   if (recent.length === 0) return []
-
-  // Build all 3·N text() calls and execute them in a single multicall3 batch.
-  const contracts = recent.flatMap((label) => {
-    const node = namehash(`${label}.${recipientEns}`)
-    return (["from", "body", "at"] as const).map((key) => ({
-      address: PARENT_RESOLVER,
-      abi: RESOLVER_TEXT_VIEW_ABI,
-      functionName: "text" as const,
-      args: [node, key] as const,
-    }))
-  })
-
-  const results = await sepoliaClient.multicall({
-    contracts,
-    multicallAddress: MULTICALL3_ADDRESS,
-    allowFailure: true,
-  })
-
-  const messages: Message[] = []
-  for (let i = 0; i < recent.length; i++) {
-    const label = recent[i]!
-    const from = results[i * 3]?.status === "success" ? (results[i * 3]!.result as string) : ""
-    const body = results[i * 3 + 1]?.status === "success" ? (results[i * 3 + 1]!.result as string) : ""
-    const at = results[i * 3 + 2]?.status === "success" ? (results[i * 3 + 2]!.result as string) : ""
-    if (!from || !body || !at) continue
-    messages.push({
-      label,
-      ens: `${label}.${recipientEns}`,
-      from,
-      body,
-      at: Number(at),
-    })
-  }
-  return messages.sort((a, b) => b.at - a.at)
+  const messages = await Promise.all(
+    recent.map((label) => readSingleMessage(`${label}.${recipientEns}`, label)),
+  )
+  return messages.filter((m): m is Message => m !== null).sort((a, b) => b.at - a.at)
 }
 
 // ── Send side ────────────────────────────────────────────────────────────────

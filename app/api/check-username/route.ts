@@ -11,7 +11,7 @@ import { getAddress } from "viem"
 import { z } from "zod"
 import { ensLabelSchema, jsonError } from "@/lib/api-guard"
 import { PARENT_DOMAIN } from "@/lib/viem"
-import { resolveEnsAddress, readSubnameOwner } from "@/lib/ens"
+import { readAddrFast, readSubnameOwner } from "@/lib/ens"
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000"
 
@@ -20,6 +20,7 @@ const querySchema = z.object({
 })
 
 export const runtime = "nodejs"
+export const maxDuration = 10
 
 export async function GET(req: Request) {
   const url = new URL(req.url)
@@ -31,9 +32,11 @@ export async function GET(req: Request) {
   const ensName = `${username}.${PARENT_DOMAIN}`
 
   try {
+    // Both go directly to the known parent resolver — single eth_call each,
+    // skipping Universal Resolver / CCIP-Read.
     const [registryOwner, addr] = await Promise.all([
       readSubnameOwner(ensName),
-      resolveEnsAddress(ensName),
+      readAddrFast(ensName),
     ])
     const taken = registryOwner !== ZERO_ADDRESS
     return Response.json({

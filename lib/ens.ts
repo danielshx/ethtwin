@@ -151,6 +151,33 @@ export async function readTextRecordFast(name: string, key: string): Promise<str
   })
 }
 
+const RESOLVER_ADDR_ABI = [
+  {
+    name: "addr",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "node", type: "bytes32" }],
+    outputs: [{ name: "", type: "address" }],
+  },
+] as const
+
+const ZERO_ADDR = "0x0000000000000000000000000000000000000000"
+
+/**
+ * Fast forward resolution: direct eth_call to the known parent resolver's
+ * `addr(node)` view. Skips Universal Resolver / CCIP-Read entirely. Returns
+ * null when no addr record is set (or when the record is the zero address).
+ */
+export async function readAddrFast(name: string): Promise<Address | null> {
+  const result = await client.readContract({
+    address: PARENT_RESOLVER_FAST,
+    abi: RESOLVER_ADDR_ABI,
+    functionName: "addr",
+    args: [namehash(name)],
+  })
+  return result.toLowerCase() === ZERO_ADDR ? null : result
+}
+
 export async function readSubnameOwner(name: string): Promise<Address> {
   return client.readContract({
     address: ENS_REGISTRY,
