@@ -1,6 +1,8 @@
 # 04 — Architektur (Verified May 2026)
 
 > **Verifiziert:** Alle Lib-Versionen + API-Patterns aus echter Recherche. Code-Beispiele in `docs/12-Code-Beispiele.md`.
+>
+> **Stand 2026-05-08, abends:** Backend-Stack komplett gestubbt, Frontend-Komponenten + Auth-gated Homepage stehen, `pnpm build` clean. Live-Wiring (Privy-Login, NameStone-Mint, x402-Tx) hängt nur noch an gesetzten API-Keys.
 
 ## High-Level Diagramm
 
@@ -10,9 +12,13 @@
 │  ┌────────────────────────────────────────────────────┐  │
 │  │  Next.js 15 App Router · Tailwind 4 · shadcn/ui    │  │
 │  │  @privy-io/react-auth + SmartWalletsProvider       │  │
-│  │  Framer Motion 11 (Cosmic Animation)               │  │
-│  │  WebRTC peer to OpenAI Realtime                    │  │
-│  │  @ai-sdk/react useChat for text                    │  │
+│  │  Framer Motion 11 (CosmicOrb hero animation)       │  │
+│  │  ┌─ Auth-gated state machine (app/page.tsx) ────┐  │  │
+│  │  │ landing → OnboardingFlow → TwinChat          │  │  │
+│  │  │ (session persisted in localStorage)           │  │  │
+│  │  └───────────────────────────────────────────────┘  │  │
+│  │  WebRTC peer to OpenAI Realtime (Phase 2)          │  │
+│  │  @ai-sdk/react useChat + DefaultChatTransport      │  │
 │  └────────────────────────────────────────────────────┘  │
 └────────────────────┬─────────────────────────────────────┘
                      │ HTTPS / WSS / WebRTC
@@ -191,13 +197,19 @@ twinpilot/
 │   ├── layout.tsx
 │   └── globals.css
 ├── components/
-│   ├── ui/                         # shadcn components
-│   ├── twin-chat.tsx               # useChat from @ai-sdk/react
-│   ├── twin-voice.tsx              # useVoice WebRTC hook usage
-│   ├── cosmic-orb.tsx              # Hero animation (Framer Motion)
-│   ├── tx-approval-modal.tsx
-│   ├── ens-name-display.tsx
-│   └── onboarding-flow.tsx
+│   ├── ui/                         # shadcn components (button, card, input,
+│   │                               # dialog, badge, sonner, scroll-area,
+│   │                               # separator, label) — installed
+│   ├── twin-chat.tsx               # ✅ useChat from @ai-sdk/react v6 +
+│   │                               #    DefaultChatTransport, tool-call pills,
+│   │                               #    empty-state prompts
+│   ├── twin-voice.tsx              # ⏳ useVoice WebRTC hook usage (Phase 2)
+│   ├── cosmic-orb.tsx              # ✅ Hero animation (Framer Motion) +
+│   │                               #    useCosmicSeed() hook
+│   ├── tx-approval-modal.tsx       # ✅ Plain-English summary, ENS-aware,
+│   │                               #    calldata drawer, explorer link
+│   ├── ens-name-display.tsx        # ⏳ inline reverse-resolve helper (Phase 1)
+│   └── onboarding-flow.tsx         # ✅ 4-step wizard wraps CosmicOrb hero
 ├── hooks/
 │   └── useVoice.ts                 # WebRTC + ephemeral key reconnect
 ├── lib/

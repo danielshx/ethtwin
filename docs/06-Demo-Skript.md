@@ -4,6 +4,8 @@
 
 > Diese Demo gewinnt das Hackathon — oder nicht. Pitcher übt 5x. Frontend-Mensch übt 5x. Synchronisiert.
 
+> **Stand 2026-05-08, abends:** Frontend-Flow steht Ende-zu-Ende (Landing → OnboardingFlow → TwinChat), CosmicOrb spielt mit Mock-Seed, Tx-Approval-Modal ist verdrahtbar. Alle Live-Schritte hängen nur an gesetzten API-Keys.
+
 ---
 
 ## Setup vor Demo

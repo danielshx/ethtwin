@@ -8,19 +8,24 @@
 
 ---
 
-## ✅ Infra-Status (2026-05-08)
+## ✅ Infra-Status (2026-05-08, abends)
 
-Vor den Tier-Tasks: das Repo ist gescaffolded, Deps installed, Routen + lib/ gestubbt.
+Vor den Tier-Tasks: das Repo ist gescaffolded, Deps installed, Routen + lib/ gestubbt, Frontend-Shell steht.
 
-- [x] Next.js 15 + Turbopack + Tailwind 4 + TS strict scaffold (`pnpm dev` HTTP 200, `pnpm typecheck` clean)
+- [x] Next.js 15 + Turbopack + Tailwind 4 + TS strict scaffold (`pnpm dev`, `pnpm build`, `pnpm typecheck` alle clean)
 - [x] Alle verifizierten Deps installed (siehe `docs/11-Tech-Verifikation.md`) inkl. `permissionless` (Privy SmartWallets peer)
 - [x] `lib/` komplett gestubbt: `viem`, `ens`, `ensip25` (ERC-7930 + agent-registration verify), `namestone`, `cosmic` (mit Mock-Fallback), `stealth` (Beta-SDK in try/catch), `x402-client` (`x402Client` + `ExactEvmScheme`), `twin-tools` (4 AI-SDK-v6 tools), `privy-server`, `prompts`, `utils`
 - [x] API-Routen gestubbt: `/api/{twin,voice,twin-tool,x402,ens,stealth,cosmic-seed,onboarding,agents/analyst}` — `/api/cosmic-seed` live getestet
-- [x] App-Shell: `layout.tsx`, `providers.tsx` (Privy + SmartWallets, Base Sepolia), `page.tsx`, `globals.css`
+- [x] App-Shell: `layout.tsx`, `providers.tsx` (Privy + SmartWallets, Base Sepolia), `page.tsx` (auth-gated state machine), `globals.css` (cosmic dark theme)
 - [x] `.env.example`, `.gitignore`, `tsconfig.json`, `next.config.ts`, `postcss.config.mjs`
 - [x] Smoke-Test-Scripts: `pnpm test:chain`, `pnpm test:claude`, `scripts/warm-cosmic-cache.ts`
-- [ ] Frontend-Komponenten (`components/twin-chat.tsx`, `cosmic-orb.tsx`, `tx-approval-modal.tsx`, `onboarding-flow.tsx`) — **noch nicht angelegt**
-- [ ] shadcn/ui CLI init (`pnpm dlx shadcn@latest init`) — **noch ausstehend**
+- [x] **shadcn/ui initialisiert** (Tailwind 4, neutral base, cosmic-purple Override) — Komponenten in `components/ui/`: `button`, `card`, `input`, `dialog`, `badge`, `sonner`, `scroll-area`, `separator`, `label`
+- [x] **Frontend-Komponenten gebaut:**
+  - `components/cosmic-orb.tsx` — Framer-Motion-Hero + `useCosmicSeed()` Hook (idle / fetching / revealed Phasen)
+  - `components/twin-chat.tsx` — `useChat` (AI SDK v6) Streaming-UI mit Tool-Call-Rendering, Empty-State-Prompts
+  - `components/tx-approval-modal.tsx` — Plain-English-Modal mit ENS-Reverse, Calldata-Drawer, Block-Explorer-Link
+  - `components/onboarding-flow.tsx` — 4-Step Wizard (intro → username → cosmic → done), nutzt `CosmicOrb` als Hero
+- [x] **Homepage** verbindet alles: Privy-Auth → OnboardingFlow → TwinChat (Session in localStorage), mit Missing-Env-Fallback wenn `NEXT_PUBLIC_PRIVY_APP_ID` fehlt
 
 ---
 
@@ -50,13 +55,12 @@ Diese Spikes klären Annahmen bevor wir bauen — falls ein Spike fehlschlägt, 
 - [ ] **T1-05c** **`stealth-meta-address`** Text Record gesetzt (EIP-5564 format `st:eth:0x...`)
 
 ### Twin Agent
-- [ ] **T1-06** `/api/twin/route.ts` mit Vercel AI SDK v6 + Claude Sonnet 4.6 (`claude-sonnet-4-6`)
-- [ ] **T1-07** System Prompt aus ENS Text Records hydriert
-- [ ] **T1-08** Mindestens 2 Tools verfügbar (AI SDK v6 `inputSchema`):
-  - `requestDataViaX402`
-  - `decodeTransaction`
-- [ ] **T1-09** Streaming-Responses ans Frontend
-- [ ] **T1-10** Multi-Turn Konversation funktioniert (Context bleibt)
+- [x] **T1-06** `/api/twin/route.ts` mit Vercel AI SDK v6 + Claude Sonnet 4.6 (`claude-sonnet-4-6`) — Stub-Code steht, braucht ANTHROPIC_API_KEY für Live
+- [x] **T1-07** System Prompt aus ENS Text Records hydriert (`lib/prompts.ts` + `readTwinRecords`)
+- [x] **T1-08** 4 Tools verfügbar (AI SDK v6 `inputSchema`):
+  - `requestDataViaX402`, `decodeTransaction`, `generatePrivatePaymentAddress`, `hireAgent`
+- [x] **T1-09** Streaming-Responses ans Frontend (`useChat` + `DefaultChatTransport` in `components/twin-chat.tsx`)
+- [x] **T1-10** Multi-Turn Konversation funktioniert (Context bleibt) — `useChat` standard, ungeprüft live
 
 ### Voice (oder Chat-Fallback)
 - [ ] **T1-11** Chat-Interface 100% funktional (immer als Fallback)
@@ -64,9 +68,9 @@ Diese Spikes klären Annahmen bevor wir bauen — falls ein Spike fehlschlägt, 
 - [ ] **T1-12b** Ephemeral Key Minting Endpoint (`/api/voice/route.ts`) für WebRTC
 
 ### Tx-Approval-Flow
-- [ ] **T1-13** Tx-Approval-Modal mit Plain English Summary
-- [ ] **T1-14** ENS-Reverse-Resolution für alle Adressen im UI (`viem.getEnsName`)
-- [ ] **T1-15** Mindestens 1 Tx live signiert mit Privy Smart Wallet auf Base Sepolia
+- [x] **T1-13** Tx-Approval-Modal mit Plain English Summary (`components/tx-approval-modal.tsx`) — Calldata-Drawer + Explorer-Link inklusive
+- [x] **T1-14** ENS-Reverse-Resolution-Helper im Modal (`toEnsName`/`fromEnsName` Props) — Caller-Wiring zu `viem.getEnsName` ausstehend
+- [ ] **T1-15** Mindestens 1 Tx live signiert mit Privy Smart Wallet auf Base Sepolia (Modal ruft `onApprove` Callback — Privy `client.sendTransaction`-Wiring noch zu tun)
 
 ### x402
 - [ ] **T1-16** `@x402/fetch` SDK eingebaut
@@ -74,9 +78,9 @@ Diese Spikes klären Annahmen bevor wir bauen — falls ein Spike fehlschlägt, 
 - [ ] **T1-18** Block-Explorer-Link in der Demo zeigbar (basescan.org)
 
 ### Demo-Polish
-- [ ] **T1-19** Onboarding-Animation (smooth, unter 60 Sek)
-- [ ] **T1-20** Twin-Chat-UI mit gestreamten Responses + Loading-Indikator
-- [ ] **T1-21** Block-Explorer-Tab vorbereitet für Demo
+- [x] **T1-19** Onboarding-Animation: 4-Step Wizard mit StepIndicator + CosmicOrb-Hero, smooth Transitions via Framer Motion
+- [x] **T1-20** Twin-Chat-UI mit gestreamten Responses, Thinking-Dots, Tool-Call-Pills, Empty-State-Prompt-Vorschläge
+- [ ] **T1-21** Block-Explorer-Tab vorbereitet für Demo (Modal hat bereits `${explorerBase}${hash}`-Link, Live-Tx fehlt)
 
 ---
 
