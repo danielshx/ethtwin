@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbopack",
+    "dev": "next dev --turbopack --port 3000",
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
@@ -16,7 +16,9 @@
     "test:decoder": "tsx --env-file=.env.local scripts/test-tx-decoder.ts",
     "ens:stealth-provision": "tsx --env-file=.env.local scripts/provision-stealth-meta.ts",
     "test:x402": "tsx --env-file=.env.local scripts/test-x402-apify.ts",
-    "test:x402-mock": "tsx --env-file=.env.local scripts/test-x402-mock.ts"
+    "test:x402-mock": "tsx --env-file=.env.local scripts/test-x402-mock.ts",
+    "send:stealth-usdc": "tsx --env-file=.env.local scripts/send-stealth-usdc.ts",
+    "test:privy-key": "tsx --env-file=.env.local scripts/test-privy-key.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "3.0.76",
