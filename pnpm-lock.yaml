@@ -108,6 +108,9 @@ importers:
       '@types/react-dom':
         specifier: ^19.0.0
         version: 19.2.3(@types/react@19.2.14)
+      jose:
+        specifier: ^6.2.3
+        version: 6.2.3
       postcss:
         specifier: ^8.4.0
         version: 8.5.14
