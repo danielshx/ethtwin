@@ -4,9 +4,26 @@
 >
 > **Wichtigste Verifikation:** ENSIP-25 ist offizieller Standard für AI Agent Identity in ENS, ERC-8004 IdentityRegistry ist live auf Mainnet (seit 29. Jan 2026) + Base Sepolia. Wir implementieren beides = doppelter ENS-Bounty-Hit.
 
+## 📊 Live-Demo-Status (Stand 2026-05-09)
+
+| # | Bounty | Status | Was fehlt für volle Punkte |
+|---|---|---|---|
+| 1 | Umia — Agentic Venture | 🟡 Code-fertig | Pitch-Skript + Slides |
+| 2 | **ENS for AI Agents** | 🟢 **Live** | nichts technisch — pitch sitzt |
+| 3 | **ENS Creative** | 🟢 **Live** | nichts — `stealth-meta-address` + ENS-Messenger sind on-chain demonstrable |
+| 4 | Apify x402 | 🟡 Mock grün | live Apify-Tx ($1+ USDC, mainnet wallet funded) |
+| 5 | SpaceComputer cTRNG | 🟡 Wrapper grün | `ORBITPORT_API_KEY` für live Attestation |
+| 6 | Best UX Flow | 🟢 **Live (minus Voice)** | Voice gedroppt per Drop-Decision; Rest sitzt |
+| 7 | **Best Privacy by Design** | 🟢 **Live** | nichts — Stealth-Send läuft end-to-end |
+
+**Solid-Cash-Floor:** ENS×2 + Privacy + UX = ~$3-4k einigermaßen sicher.
+**Stretch-Add:** Umia + Apify + SpaceComputer wenn Pitch + live Tx + Orbitport-Key landen.
+
 ---
 
 ## 🥇 1. Umia — Best Agentic Venture ($2k cash)
+
+> **Status: 🟡 Code-fertig.** Twin live auf https://ethtwin-woad.vercel.app — Mint, Messenger, Stealth-Send, Token-Transfer, Agent-Hire alle gewired. Fehlt: Pitch-Skript + Slides (`Phase 3 Pitcher` TODO).
 
 ### Anforderung
 Project must classify as Agentic Venture suitable to launch on Umia. Must incorporate Agents in execution. Must have reasonable path to revenue + token.
@@ -31,6 +48,8 @@ Project must classify as Agentic Venture suitable to launch on Umia. Must incorp
 ---
 
 ## 🥈 2. ENS — Best ENS Integration for AI Agents ($1.25k 1st place)
+
+> **Status: 🟢 LIVE.** Every twin on Sepolia ENS gets `agent-registration[<interopAddr>][<agentId>]` text record set during onboarding via `lib/ensip25.ts:encodeInteropAddress()`. `verifyAgentRegistration()` reads it back. `findAgents` + `hireAgent` Twin tools exercise the discovery flow. Verified for `daniel.ethtwin.eth` + `rami.ethtwin.eth` + every onboarded twin.
 
 ### 🔥 Killer-Move: ENSIP-25 + ERC-8004 Implementation
 
@@ -103,6 +122,10 @@ if (isVerified) showBadge("✓ ENSIP-25 Verified Agent")
 ---
 
 ## 🥉 3. ENS — Most Creative Use of ENS ($1.25k 1st)
+
+> **Status: 🟢 LIVE — TWO creative patterns shipping on-chain.**
+> 1. `stealth-meta-address` text record (proposed pattern, no ENSIP yet) — published to `daniel.ethtwin.eth` via `pnpm ens:stealth-provision` ([tx 0xbf9f…2a7e](https://sepolia.etherscan.io/tx/0xbf9fffbedd589176c70c9fbac43a20f7cb2b10770afc33c547fd72c932782a7e))
+> 2. **ENS-as-messaging-medium** — every message is a sub-subname `msg-<ts>-<seq>.<recipient>.ethtwin.eth` with `from`/`body`/`at` text records, indexed via `messages.list` text record on the recipient. Live in the **ENS Messenger** tab. Reads via single direct resolver eth_call (`readTextRecordFast`).
 
 ### 🔥 Unsere kreative Erfindung: Stealth-Meta-Address Text Record
 

@@ -19,16 +19,16 @@
 - [x] Test-Wallet mit Sepolia ETH funden (faucet) — `0x4E09…a6f5`
 
 #### Backend
-- [ ] Privy.io Account, App-ID + Secret holen
-- [ ] Anthropic API Key, OpenAI API Key
+- [x] Privy.io Account, App-ID + Secret holen — App `cmowxk4e…hbs5` live; PEM verification key wired in `lib/privy-server.ts`
+- [~] Anthropic API Key, OpenAI API Key — *OpenAI key in `.env.local` + Vercel; Anthropic optional fallback path in `app/api/twin/route.ts`. OpenAI quota currently throttling Twin chat — billing top-up still needed.*
 - [ ] Apify Account + API Key (Mentor: Jakub `@themq37`)
-- [ ] Orbitport Access (Mentor: Pedro `@zkpedro`)
+- [ ] Orbitport Access (Mentor: Pedro `@zkpedro`) — *Wrapper `lib/cosmic.ts` ready with mock fallback; live API key not yet provisioned*
 
 #### Frontend
-- [ ] Next.js Repo aufsetzen mit Tailwind + shadcn
-- [ ] Framer Motion + Lucide installiert
-- [ ] Dark mode default setting
-- [ ] Login-Skeleton mit Privy-Provider gewrapped
+- [x] Next.js Repo aufsetzen mit Tailwind + shadcn — `next@15`, Tailwind 4, shadcn CLI 4.7
+- [x] Framer Motion + Lucide installiert — used in cosmic-orb, onboarding-flow, twin-chat, messenger
+- [x] Dark mode default setting — `<Toaster theme="dark" />` + dark-themed Tailwind tokens
+- [x] Login-Skeleton mit Privy-Provider gewrapped — `app/providers.tsx` (PrivyProvider + SmartWalletsProvider)
 
 #### Pitcher / Generalist
 - [ ] Mentor-Pings raus (alle 4)
@@ -57,14 +57,14 @@
 - [x] Reverse-Resolution-Helper (`lib/ens.ts`) — `reverseResolve`, `withEnsName`, `shortenAddress`
 
 #### Backend
-- [ ] `/api/twin/route.ts` — Vercel AI SDK + Claude Sonnet 4.5
-- [ ] Twin Loop: System Prompt aus ENS Text Records hydrieren
-- [ ] Erste Tool-Definitions (placeholder): `get_balance`, `send_tx`
+- [x] `/api/twin/route.ts` — Vercel AI SDK v6 + auto-detect OpenAI/Anthropic (`selectModel()`); model name never exposed in responses per persona contract
+- [x] Twin Loop: System Prompt aus ENS Text Records hydrieren — `buildSystemPrompt(records, ensName)` in `lib/prompts.ts`, hardened so Twin never reveals its underlying model
+- [x] Tool-Definitions: live in `lib/twin-tools.ts` — `getWalletSummary`, `decodeTransaction`, `sendToken`, `getBalance`, `sendStealthUsdc`, `generatePrivatePaymentAddress`, `requestDataViaX402`, `findAgents`, `hireAgent`
 
 #### Frontend
-- [ ] Onboarding-Flow: Email → Passkey → ENS-Subname-Reservation → Smart-Wallet-Erstellung
-- [ ] Twin-Chat-UI mit Streaming-Response
-- [ ] Loading-States + erste Polish-Animation
+- [x] Onboarding-Flow: Three-button intro (Create twin / Passkey / Connect wallet) → username → cosmic-orb seed → mint with on-chain polling. `components/onboarding-flow.tsx`
+- [x] Twin-Chat-UI mit Streaming-Response — `components/twin-chat.tsx` via `@ai-sdk/react` `useChat`; chain badge auto-derives from env (`live on Sepolia/Base/…`)
+- [x] Loading-States + Polish-Animation — Framer Motion in cosmic-orb (idle → fetching → revealed → sending), onboarding step transitions, message bubbles
 
 #### Pitcher
 - [x] `analyst.ethtwin.eth` Sample-Agent vorbereitet — `app/api/agents/analyst/route.ts` mit `withX402` paywall + Coinbase-Facilitator (env-gated; ENS-Subname-Provisioning steht noch aus)
@@ -90,16 +90,16 @@
 - [x] Stealth-Meta-Key in ENS Text Record speichern + lesen — published auf `daniel.ethtwin.eth` (tx [`0xbf9f…2a7e`](https://sepolia.etherscan.io/tx/0xbf9fffbedd589176c70c9fbac43a20f7cb2b10770afc33c547fd72c932782a7e)), end-to-end verifiziert via `pnpm ens:stealth-provision`
 
 #### Backend
-- [ ] OpenAI Realtime API integration (`/api/voice/route.ts`)
-- [~] x402-fetch SDK eingebaut, erste Apify x402 Test-Request — *SDK eingebaut + Mock-Test grün (`pnpm test:x402-mock`); `lib/x402-client.ts` v1+v2 dispatch fixed (ExactEvmSchemeV1, CAIP-2 slugs); echte Apify-Tx noch ausstehend*
-- [ ] Twin's Tool-Calling: `request_data_via_x402`, `decode_transaction`
-- [ ] Orbitport cTRNG Wrapper (`lib/cosmic.ts`) mit Caching
+- [ ] OpenAI Realtime API integration (`/api/voice/route.ts`) — *bewusst gedroppt; Chat-only Demo per Drop-Decision Punkt 1*
+- [~] x402-fetch SDK eingebaut, erste Apify x402 Test-Request — *SDK eingebaut + Mock-Test grün (`pnpm test:x402-mock`); `lib/x402-client.ts` v1+v2 dispatch fixed (ExactEvmSchemeV1, CAIP-2 slugs); receipt parsing inline'd; echte Apify-Tx noch ausstehend*
+- [x] Twin's Tool-Calling: `requestDataViaX402` + `decodeTransaction` (real, via `lib/tx-decoder.ts`) live in `lib/twin-tools.ts`
+- [x] Orbitport cTRNG Wrapper (`lib/cosmic.ts`) mit Caching — rolling cache + attestation passthrough + mock fallback when API key missing
 
 #### Frontend
-- [ ] Voice-UI mit Push-to-Talk + Realtime-Streaming-Display
-- [ ] Tx-Approval-Modal mit Plain English Summary
-- [ ] Toast-Notifications für x402-Payments (mit Block-Explorer-Link)
-- [ ] ENS-Reverse-Resolution überall: nie 0x... zeigen
+- [ ] Voice-UI mit Push-to-Talk + Realtime-Streaming-Display — *gedroppt, siehe oben*
+- [x] Tx-Approval-Modal mit Plain English Summary — `components/tx-approval-modal.tsx` (used by token-transfer); decoder + ENS reverse-name wired
+- [x] Toast-Notifications für Tx-Broadcasts (mit Block-Explorer-Link) — sonner-based in messenger + token-transfer; explorer URL in toast description
+- [x] ENS-Reverse-Resolution überall: `withEnsName(addr)` + `useEnsName` hook + `AvatarImage` fallback to short 0x… — sidebars + tx-approval-modal show ENS
 
 #### Pitcher
 - [x] `analyst.ethtwin.eth` Endpoint reagiert auf x402-Payment, gibt LLM-Response zurück — Code-seitig fertig (`withX402` + `generateText(claude-sonnet-4-6)`); live tx-Test gegen funded `X402_SENDER_KEY` ausstehend
