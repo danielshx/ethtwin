@@ -20,6 +20,8 @@ export type TxIntent = {
   data?: `0x${string}` | string
   chain?: "base-sepolia" | "sepolia" | "mainnet"
   plainEnglish: string
+  /** Demo-only reviews show the Sourcify/risk UX but never execute a tx. */
+  demoOnly?: boolean
   /**
    * Reverse-resolved ENS name for `to`. Callers should populate this via
    * `useEnsName(intent.to)` from `@/lib/use-ens-name` before opening the
@@ -74,7 +76,7 @@ export function TxApprovalModal({
 
   if (!intent) return null
 
-  const requiresRiskAcknowledgement = intent.riskLevel === "high"
+  const requiresRiskAcknowledgement = intent.riskLevel === "high" && !intent.demoOnly
   const approveDisabled = submitting || !!hash || (requiresRiskAcknowledgement && !riskAcknowledged)
 
   const explorerBase =
@@ -85,6 +87,10 @@ export function TxApprovalModal({
         : "https://sepolia.basescan.org/tx/"
 
   async function handleApprove() {
+    if (intent?.demoOnly) {
+      onOpenChange(false)
+      return
+    }
     setSubmitting(true)
     setError(null)
     try {
@@ -107,15 +113,23 @@ export function TxApprovalModal({
         <DialogHeader className="shrink-0">
           <DialogTitle className="flex items-center gap-2">
             <ShieldCheck className="h-5 w-5 text-primary" />
-            Approve transaction
+            {intent.demoOnly ? "Risky approval demo" : "Approve transaction"}
           </DialogTitle>
           <DialogDescription>
-            Your twin checks verified source, decodes the action, and flags wallet-risk patterns before you sign.
+            {intent.demoOnly
+              ? "This is a safe demo review. No transaction will be sent."
+              : "Your twin checks verified source, decodes the action, and flags wallet-risk patterns before you sign."}
           </DialogDescription>
         </DialogHeader>
 
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1 text-sm">
           <SourcifySafetyFlow intent={intent} />
+
+          {intent.demoOnly ? (
+            <p className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 text-xs text-muted-foreground">
+              Demo only: EthTwin is showing what it would catch before signing. This modal is intentionally non-executable.
+            </p>
+          ) : null}
 
           <p className="rounded-md bg-secondary/60 px-3 py-2.5 leading-relaxed whitespace-pre-line">
             {intent.plainEnglish}
@@ -201,7 +215,7 @@ export function TxApprovalModal({
             onClick={() => onOpenChange(false)}
             disabled={submitting}
           >
-            Reject
+            {intent.demoOnly ? "Close" : "Reject"}
           </Button>
           <Button onClick={handleApprove} disabled={approveDisabled}>
             {submitting ? (
@@ -210,6 +224,8 @@ export function TxApprovalModal({
               </>
             ) : hash ? (
               "Done"
+            ) : intent.demoOnly ? (
+              "Close demo"
             ) : requiresRiskAcknowledgement && !riskAcknowledged ? (
               "Acknowledge risk first"
             ) : (
