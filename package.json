@@ -37,6 +37,7 @@
     "@base-ui/react": "^1.4.1",
     "@coinbase/x402": "2.1.0",
     "@ensdomains/ensjs": "4.2.2",
+    "@noble/curves": "^1.9.7",
     "@privy-io/node": "0.18.0",
     "@privy-io/react-auth": "3.23.1",
     "@scopelift/stealth-address-sdk": "1.0.0-beta.5",

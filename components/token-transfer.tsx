@@ -2,17 +2,18 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { motion } from "framer-motion"
-<<<<<<< HEAD
-import { ArrowUpRight, Coins, Loader2, Send, Users } from "lucide-react"
-=======
 import { ArrowUpRight, Coins, Loader2, Send, ShieldAlert, ShieldCheck, Users } from "lucide-react"
->>>>>>> 1bf43d3fb61091e73ec2ec4c7f62f587315620b6
 import { toast } from "sonner"
 import {
   createPublicClient,
+  encodeFunctionData,
+  getAddress,
   http,
+  isAddress,
   parseEther,
   parseUnits,
+  type Address,
+  type Hex,
 } from "viem"
 import { sepolia } from "viem/chains"
 import { Button } from "@/components/ui/button"
@@ -25,12 +26,9 @@ import { displayNameFromEns } from "@/lib/ens"
 import { cn } from "@/lib/utils"
 import { AgentProfileDialog } from "@/components/agent-profile"
 import { EnsAvatar } from "@/components/ens-avatar"
-<<<<<<< HEAD
-=======
 import { TxApprovalModal, type TxIntent } from "@/components/tx-approval-modal"
 import { useEnsName } from "@/lib/use-ens-name"
 import { describeTx } from "@/lib/tx-decoder"
->>>>>>> 1bf43d3fb61091e73ec2ec4c7f62f587315620b6
 
 type AgentEntry = {
   ens: string
@@ -81,16 +79,11 @@ const RISKY_APPROVAL_SPENDER: Address = "0x000000000000000000000000000000000000d
 const MAX_ETH_WEI = parseEther("0.01")
 const MAX_USDC_RAW = parseUnits("1", 6)
 
-<<<<<<< HEAD
-// Public Sepolia client retained for any future forward-ENS resolution we
-// might want to do client-side; the actual send goes through /api/transfer
-// which resolves recipients server-side via lib/transfers.ts.
-=======
 // Base Sepolia USDC. Same address used in lib/transfers.ts + lib/payments.ts.
 const USDC_BASE_SEPOLIA: Address = "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
 
-// Minimal ERC-20 ABI for client-side calldata encoding used by the normal
-// transfer path and the non-executable risky approval demo.
+// Minimal ERC-20 ABI for client-side calldata encoding used by the Sourcify
+// safety review and the non-executable risky approval demo.
 const ERC20_REVIEW_ABI = [
   {
     name: "transfer",
@@ -116,12 +109,23 @@ const ERC20_REVIEW_ABI = [
 
 // Public Sepolia client for forward ENS resolution (`alice.ethtwin.eth` →
 // `0x…`). Our subnames live on Sepolia per CLAUDE.md.
->>>>>>> 1bf43d3fb61091e73ec2ec4c7f62f587315620b6
 const sepoliaPublic = createPublicClient({
   chain: sepolia,
   transport: http(process.env.NEXT_PUBLIC_SEPOLIA_RPC ?? undefined),
 })
-void sepoliaPublic
+
+async function resolveRecipient(input: string): Promise<Address> {
+  const trimmed = input.trim()
+  if (isAddress(trimmed)) return getAddress(trimmed)
+  if (!trimmed.includes(".")) {
+    throw new Error(`"${trimmed}" is neither a 0x address nor an ENS name.`)
+  }
+  const resolved = await sepoliaPublic.getEnsAddress({ name: trimmed })
+  if (!resolved) {
+    throw new Error(`Could not resolve ENS name "${trimmed}" on Sepolia.`)
+  }
+  return getAddress(resolved)
+}
 
 export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTransferProps) {
   const [agents, setAgents] = useState<AgentEntry[]>([])
@@ -141,14 +145,10 @@ export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTrans
   // work" is that the new KMS wallet has zero ETH for gas.
   const [twinAddress, setTwinAddress] = useState<string | null>(null)
 
-<<<<<<< HEAD
   // KMS-only signing path: every send goes through /api/transfer, which
   // resolves ENS → twin.kms-key-id → SpaceComputer KMS for the signature.
-  // No client-side smart-wallet path, no approval modal.
-=======
-  // Tx approval modal state. Sourcify review is execution-agnostic: the modal
-  // opens before Base Sepolia sends whether the final executor is Privy today,
-  // a backend/dev-wallet fallback, or Space Computer KMS later.
+  // On Base Sepolia we still run the Sourcify safety review modal *before*
+  // calling the KMS executor — review is independent of who signs.
   const [pendingIntent, setPendingIntent] = useState<TxIntent | null>(null)
   const [pendingMeta, setPendingMeta] = useState<{
     chain: Chain
@@ -159,17 +159,15 @@ export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTrans
   } | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
 
-  // Reverse-resolve ENS names for the modal. Per CLAUDE.md: tx approvals
-  // show ENS, never 0x… The hook returns null while loading / on miss; the
-  // modal already falls back to a truncated 0x… in that case.
+  // Reverse-resolve the recipient ENS for the modal. Per CLAUDE.md: tx
+  // approvals show ENS, never 0x… The hook returns null while loading / on
+  // miss; the modal already falls back to a truncated 0x… in that case.
   const toEnsName = useEnsName(pendingMeta?.resolvedTo)
-  const fromEnsName = useEnsName(smartWalletAddress)
+  const fromEnsName = myEnsName
 
-  // Sourcify review is independent from Privy. Privy smart wallets are only
-  // one possible execution backend after the user approves the safety review.
+  // Sourcify safety review only runs on Base Sepolia (where the decoded
+  // calldata + Sourcify lookups are wired). Sepolia goes straight to KMS.
   const canReviewBeforeSend = chain === "base-sepolia"
-  const canUseSmartWallet = !!smartClient && chain === "base-sepolia"
->>>>>>> 1bf43d3fb61091e73ec2ec4c7f62f587315620b6
 
   // Load agents + recent transfers on mount.
   const loadAgents = useCallback(async () => {
@@ -326,18 +324,9 @@ export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTrans
       return
     }
 
-<<<<<<< HEAD
-    // ── KMS-signed path via /api/transfer ────────────────────────────
-    // The server resolves the active twin's ENS → twin.kms-key-id text
-    // record, signs via SpaceComputer KMS, and broadcasts. Funds come from
-    // the twin's KMS-derived address. Auth is the session cookie (sent
-    // automatically with same-origin fetches), no Privy token needed.
-    setSending(true)
-    try {
-=======
-    // Base Sepolia uses the Sourcify safety review before execution. The
-    // actual executor is selected only after approval (smart wallet when
-    // available, otherwise the existing backend transfer route).
+    // ── Base Sepolia: Sourcify safety review FIRST, then KMS execute ──
+    // Decode calldata, look up the contract on Sourcify, and open the
+    // approval modal. The KMS executor runs only after the user approves.
     if (canReviewBeforeSend) {
       setSending(true)
       try {
@@ -395,6 +384,7 @@ export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTrans
       return
     }
 
+    // Sepolia path — no Sourcify review wired here, go straight to KMS.
     await executeBackendTransfer({
       chain: chain2send,
       token: token2send,
@@ -403,6 +393,9 @@ export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTrans
     })
   }
 
+  // KMS-signed executor. Server resolves the active twin's ENS →
+  // twin.kms-key-id text record, signs via SpaceComputer KMS, and
+  // broadcasts. Auth is the session cookie (same-origin fetch).
   async function executeBackendTransfer(meta: {
     chain: Chain
     token: Token
@@ -411,29 +404,16 @@ export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTrans
   }): Promise<{ hash: `0x${string}` }> {
     setSending(true)
     try {
-      const authToken = await getAuthToken()
-      if (!authToken) {
-        throw new Error("Not authenticated. Sign in again.")
-      }
->>>>>>> 1bf43d3fb61091e73ec2ec4c7f62f587315620b6
       const res = await fetch("/api/transfer", {
         method: "POST",
         credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-<<<<<<< HEAD
-          chain: chain2send,
-          token: token2send,
-          to: recip,
-          amount: amt,
-          fromEns: myEnsName,
-=======
-          privyToken: authToken,
           chain: meta.chain,
           token: meta.token,
           to: meta.recipientInput,
           amount: meta.amount,
->>>>>>> 1bf43d3fb61091e73ec2ec4c7f62f587315620b6
+          fromEns: myEnsName,
         }),
       })
       // Vercel function timeouts return plain text. Parse defensively.
@@ -513,12 +493,8 @@ export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTrans
     }
   }
 
-<<<<<<< HEAD
-=======
-  // Approval callback wired into TxApprovalModal. Sourcify review is separate
-  // from execution: use a Privy smart wallet if present, otherwise execute via
-  // the backend route. This keeps the review flow compatible with Space
-  // Computer KMS replacing the execution layer later.
+  // Approval callback wired into TxApprovalModal. After the user approves
+  // the Sourcify review, route execution through the KMS-only backend.
   async function handleReviewedTransferApprove(
     intent: TxIntent,
   ): Promise<{ hash: `0x${string}` }> {
@@ -530,57 +506,14 @@ export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTrans
       throw new Error("Missing tx context.")
     }
     const meta = pendingMeta
-
-    if (!smartClient) {
-      return executeBackendTransfer({
-        chain: meta.chain,
-        token: meta.token,
-        recipientInput: meta.recipientInput,
-        amount: meta.amount,
-      })
-    }
-
-    const value = meta.token === "ETH" ? parseEther(meta.amount) : 0n
-
-    // The smart-wallet client is already pinned to Base Sepolia via
-    // `SmartWalletsProvider` + `supportedChains` in `app/providers.tsx`,
-    // so we omit `chain` here. `Call` shape per `SendUserOperationParameters`
-    // is `{ to, value, data }`.
-    const hash = await smartClient.sendTransaction({
-      to: intent.to as Address,
-      value,
-      data: (intent.data as Hex) ?? "0x",
-    })
-    const explorerUrl = `https://sepolia.basescan.org/tx/${hash}`
-    pushRecent({
-      id: hash,
+    return executeBackendTransfer({
       chain: meta.chain,
       token: meta.token,
-      to: meta.resolvedTo,
       recipientInput: meta.recipientInput,
       amount: meta.amount,
-      txHash: hash,
-      blockExplorerUrl: explorerUrl,
-      at: Math.floor(Date.now() / 1000),
     })
-    addHistoryEntry({
-      kind: "transfer",
-      status: "success",
-      chain: meta.chain,
-      summary: `Sent ${meta.amount} ${meta.token} → ${meta.recipientInput}`,
-      description: `Signed with ${myEnsName}'s smart wallet · ${meta.resolvedTo}`,
-      txHash: hash,
-      explorerUrl,
-      syncTo: { ens: myEnsName, getAuthToken },
-    })
-    toast.success(`Sent ${meta.amount} ${meta.token} on Base Sepolia`, {
-      description: explorerUrl,
-    })
-    loadBalance()
-    return { hash }
   }
 
->>>>>>> 1bf43d3fb61091e73ec2ec4c7f62f587315620b6
   return (
     <Card className={cn("grid h-[70dvh] grid-cols-[260px_1fr] overflow-hidden", className)}>
       {/* Sidebar — directory, identical pattern to messenger */}
@@ -777,7 +710,12 @@ export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTrans
               Demo cap: 0.01 ETH or 1 USDC per send. Signed by your twin's
               SpaceComputer KMS key.
             </p>
-<<<<<<< HEAD
+            {canReviewBeforeSend ? (
+              <p className="mt-1 flex items-center gap-1 font-mono text-[10px] text-primary/90">
+                <ShieldCheck className="h-3 w-3" />
+                Sourcify safety review runs before execution.
+              </p>
+            ) : null}
             {/* Show the twin's KMS-bound on-chain address + a faucet hint
              *  when the balance is empty. This is the single biggest UX
              *  trap of the KMS-only flow: a freshly-minted twin's address
@@ -832,13 +770,6 @@ export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTrans
                   ) : null}
                 </div>
               </div>
-=======
-            {canReviewBeforeSend ? (
-              <p className="mt-1 flex items-center gap-1 font-mono text-[10px] text-primary/90">
-                <ShieldCheck className="h-3 w-3" />
-                Sourcify safety review runs before execution.
-              </p>
->>>>>>> 1bf43d3fb61091e73ec2ec4c7f62f587315620b6
             ) : null}
           </div>
 
@@ -851,20 +782,12 @@ export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTrans
             {sending ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-<<<<<<< HEAD
-                Broadcasting…
-=======
                 {canReviewBeforeSend ? "Preparing review…" : "Broadcasting…"}
->>>>>>> 1bf43d3fb61091e73ec2ec4c7f62f587315620b6
               </>
             ) : (
               <>
                 <Send className="mr-2 h-4 w-4" />
-<<<<<<< HEAD
-                Send {amount} {token} on{" "}
-=======
                 {canReviewBeforeSend ? "Review & send" : "Send"} {amount} {token} on{" "}
->>>>>>> 1bf43d3fb61091e73ec2ec4c7f62f587315620b6
                 {chain === "sepolia" ? "Sepolia" : "Base Sepolia"}
               </>
             )}
@@ -920,8 +843,6 @@ export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTrans
         open={profileEns !== null}
         onOpenChange={(open) => !open && setProfileEns(null)}
       />
-<<<<<<< HEAD
-=======
 
       <TxApprovalModal
         intent={
@@ -943,7 +864,6 @@ export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTrans
         }}
         onApprove={handleReviewedTransferApprove}
       />
->>>>>>> 1bf43d3fb61091e73ec2ec4c7f62f587315620b6
     </Card>
   )
 }
