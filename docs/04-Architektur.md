@@ -199,6 +199,8 @@ plus paywalled Sample-Agent (`app/api/agents/analyst/route.ts`).
 
 **Loop-Cap:** `MAX_AUTO_REPLY_CHAIN_DEPTH = 2` in `lib/twin-tools.ts`. Nach Hop 2 postet das `sendMessage`-Tool die ENS-Subname zwar weiterhin on-chain, kickt aber den Auto-Reply-Endpoint nicht mehr — die Kette endet zuverlässig.
 
+**Background-Reply-Notification (twin-chat.tsx):** Wenn `waitForReply` innerhalb der Streaming-Runde nicht trifft (Peer antwortet erst nach ~25 s), registriert der Chat eine `PendingTask { peerEns, sentAt }` in `localStorage` (`ethtwin.twinchat.pending.<ens>`). Ein 8-s-Poller gegen `/api/messages?for=<me>` injiziert die Antwort als zusätzliche Assistant-Bubble in den Chat ("📬 Update — Tom (tom.ethtwin.eth) just replied: …"), sobald sie on-chain landet — ohne Refresh, ohne dass der User erneut prompten muss. Stale Tasks werden nach 15 min verworfen. Dadurch kann der User sofort weitere Prompts feuern (concurrent prompt queue: alles während eines Streams Eingegebene wird einzeln nach Idle-Übergang abgearbeitet) und parallele Agent-Tasks im selben Chat verfolgen.
+
 ### Tool-Surface (`lib/twin-tools.ts` — 16 Tools, factory-built via `buildTwinTools({ fromEns, fromAddress, chainDepth })`)
 
 `chainDepth` ist der Hop-Counter für autonome Twin-zu-Twin-Auto-Replies: 0 (oder undefined) für die User-Chat-Route, 1+ wenn `/api/twin/auto-reply` selbst rekursiv `sendMessage` aufruft. `sendMessage` schaltet die Auto-Reply-Trigger ab, sobald `chainDepth >= 2`, damit Tom→Alice→Bob nicht in eine Endlosschleife läuft.
@@ -261,7 +263,7 @@ ethtwin/
 │   └── globals.css
 ├── components/
 │   ├── ui/                         # shadcn primitives
-│   ├── twin-chat.tsx               # ✅ useChat + ENSIP-25 verified-badge + persistent localStorage history + seedPrompt prop for quick-send
+│   ├── twin-chat.tsx               # ✅ useChat + ENSIP-25 verified-badge + persistent localStorage history + seedPrompt prop + background-task tracker (auto-injects peer replies as in-line "Update —" bubbles) + concurrent prompt queue
 │   ├── voice-twin.tsx              # ✅ OpenAI Realtime over WebRTC w/ Listening/Thinking/Speaking states
 │   ├── maria-shell.tsx             # ✅ NEW (demo-mode): single-view shell — big breathing avatar, gamification pills, quick-send tap cards
 │   ├── twin-avatar.tsx             # ✅ NEW: state-driven breathing avatar (idle/listening/thinking/speaking)

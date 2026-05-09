@@ -8,12 +8,15 @@ import {
   ArrowUpRight,
   Check,
   Coins,
+  Hourglass,
+  ListPlus,
   Lock,
   Mail,
   Send,
   Sparkles,
   Trash2,
   Wand2,
+  X,
   Zap,
   ShieldCheck,
   ShieldAlert,
@@ -121,6 +124,57 @@ function clearChatHistory(ens: string) {
   }
 }
 
+// Pending background tasks: when the twin sends an on-chain message to a peer
+// and the streaming turn ends without `waitForReply` capturing the answer, we
+// register the peer here. A poller watches the inbox and injects an assistant
+// "Update —" bubble into the chat as soon as the reply lands. This keeps the
+// user notified inside the original chat even when a task takes minutes.
+type PendingTask = {
+  /** Stable id (sendMessage tx hash if available, else `peer-at`) so we don't
+   *  re-register the same task across re-renders or page reloads. */
+  id: string
+  peerEns: string
+  /** Unix seconds — only inbox messages strictly newer than this fulfill. */
+  sentAt: number
+  /** ms since epoch — used to auto-expire stale tasks the peer never answered. */
+  registeredAt: number
+}
+
+const PENDING_KEY = (ens: string) =>
+  `ethtwin.twinchat.pending.${ens.toLowerCase()}`
+const PENDING_POLL_MS = 8_000
+// Auto-drop pending tasks the peer never answers so they don't linger forever.
+const PENDING_MAX_AGE_MS = 15 * 60_000
+
+function loadPending(ens: string): PendingTask[] {
+  if (typeof window === "undefined") return []
+  try {
+    const raw = window.localStorage.getItem(PENDING_KEY(ens))
+    if (!raw) return []
+    const parsed = JSON.parse(raw) as unknown
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter(
+      (p): p is PendingTask =>
+        !!p &&
+        typeof (p as PendingTask).id === "string" &&
+        typeof (p as PendingTask).peerEns === "string" &&
+        typeof (p as PendingTask).sentAt === "number" &&
+        typeof (p as PendingTask).registeredAt === "number",
+    )
+  } catch {
+    return []
+  }
+}
+
+function savePending(ens: string, list: PendingTask[]) {
+  if (typeof window === "undefined") return
+  try {
+    window.localStorage.setItem(PENDING_KEY(ens), JSON.stringify(list))
+  } catch {
+    // ignore
+  }
+}
+
 export function TwinChat({
   ensName,
   className,
@@ -147,6 +201,13 @@ export function TwinChat({
   const isStreaming = status === "submitted" || status === "streaming"
   const [profileOpen, setProfileOpen] = useState(false)
   const hydratedRef = useRef(false)
+  const [pending, setPending] = useState<PendingTask[]>([])
+  const pendingHydratedRef = useRef(false)
+  // Queued prompts the user fired while the twin was already streaming. We
+  // drain them one-at-a-time once the agent goes idle so concurrent asks don't
+  // race each other (the AI SDK transport is single-flight per chat).
+  const [queue, setQueue] = useState<string[]>([])
+  const prevStatusRef = useRef(status)
 
   // Hydrate persisted messages on mount (or when the user switches twins).
   useEffect(() => {
@@ -181,15 +242,168 @@ export function TwinChat({
   useEffect(() => {
     if (!seedPrompt || seededRef.current === seedPrompt) return
     seededRef.current = seedPrompt
-    sendMessage({ text: seedPrompt })
+    if (isStreaming) {
+      setQueue((q) => [...q, seedPrompt])
+    } else {
+      sendMessage({ text: seedPrompt })
+    }
     onSeedConsumed?.()
-  }, [seedPrompt, sendMessage, onSeedConsumed])
+  }, [seedPrompt, sendMessage, onSeedConsumed, isStreaming])
+
+  // Hydrate / persist pending background tasks per ENS.
+  useEffect(() => {
+    pendingHydratedRef.current = false
+    setPending(loadPending(ensName))
+    pendingHydratedRef.current = true
+  }, [ensName])
+  useEffect(() => {
+    if (!pendingHydratedRef.current) return
+    savePending(ensName, pending)
+  }, [ensName, pending])
+
+  // When a turn ends, scan the most recent assistant message for sendMessage
+  // tool calls that expected an auto-reply but weren't captured by a follow-up
+  // waitForReply. Each becomes a PendingTask the poller will fulfill in the
+  // background and inject into this same chat.
+  useEffect(() => {
+    const prev = prevStatusRef.current
+    prevStatusRef.current = status
+    const wasBusy = prev === "streaming" || prev === "submitted"
+    const nowIdle = status === "ready"
+    if (!wasBusy || !nowIdle) return
+    if (messages.length === 0) return
+    const lastAssistant = [...messages]
+      .reverse()
+      .find((m) => m.role === "assistant")
+    if (!lastAssistant) return
+    const parts = lastAssistant.parts as Array<
+      { type: string } & Record<string, unknown>
+    >
+    const newTasks: PendingTask[] = []
+    for (let i = 0; i < parts.length; i++) {
+      const p = parts[i]!
+      if (p.type !== "tool-sendMessage") continue
+      const out = (p as { output?: ToolOutput }).output
+      if (!out?.ok || !out.autoReplyExpected || !out.toEns || !out.at) continue
+      const peerLower = out.toEns.toLowerCase()
+      // Did a later waitForReply in this same assistant turn already pull the
+      // reply in? If so, don't register — the user already saw it.
+      const alreadyCaptured = parts.slice(i + 1).some((q) => {
+        if (q.type !== "tool-waitForReply") return false
+        const qo = (q as { output?: ToolOutput }).output
+        return Boolean(
+          qo?.ok &&
+            !qo.timedOut &&
+            qo.body &&
+            qo.from?.toLowerCase() === peerLower,
+        )
+      })
+      if (alreadyCaptured) continue
+      const id = out.txHash ?? `${peerLower}-${out.at}`
+      newTasks.push({
+        id,
+        peerEns: out.toEns,
+        sentAt: out.at,
+        registeredAt: Date.now(),
+      })
+    }
+    if (newTasks.length === 0) return
+    setPending((existing) => {
+      const seen = new Set(existing.map((t) => t.id))
+      const merged = [...existing]
+      for (const t of newTasks) if (!seen.has(t.id)) merged.push(t)
+      return merged
+    })
+  }, [status, messages])
+
+  // Poll the inbox for pending tasks. When a peer reply lands after sentAt,
+  // inject an assistant bubble into the chat as an in-line "Update —" note
+  // and drop the task. Auto-expire stale tasks the peer never answers.
+  useEffect(() => {
+    if (pending.length === 0) return
+    let cancelled = false
+    const tick = async () => {
+      if (cancelled) return
+      let inbox: Array<{ from: string; body: string; at: number }> = []
+      try {
+        const res = await fetch(
+          `/api/messages?for=${encodeURIComponent(ensName)}&limit=20`,
+        )
+        const data = (await res.json()) as {
+          ok?: boolean
+          messages?: Array<{ from: string; body: string; at: number }>
+        }
+        if (data.ok && Array.isArray(data.messages)) inbox = data.messages
+      } catch {
+        return
+      }
+      if (cancelled) return
+      const fulfilled: Array<{ task: PendingTask; body: string }> = []
+      const remaining: PendingTask[] = []
+      for (const t of pending) {
+        if (Date.now() - t.registeredAt > PENDING_MAX_AGE_MS) continue // drop stale
+        const peerLower = t.peerEns.toLowerCase()
+        const match = inbox.find(
+          (m) => m.from.toLowerCase() === peerLower && m.at > t.sentAt,
+        )
+        if (match) fulfilled.push({ task: t, body: match.body })
+        else remaining.push(t)
+      }
+      if (fulfilled.length === 0 && remaining.length === pending.length) return
+      if (fulfilled.length > 0) {
+        const bubbles = fulfilled.map(({ task, body }) => {
+          const peerName = displayNameFromEns(task.peerEns).displayName
+          return {
+            id: crypto.randomUUID(),
+            role: "assistant" as const,
+            parts: [
+              {
+                type: "text" as const,
+                text: `📬 Update — ${peerName} (${task.peerEns}) just replied:\n\n"${body}"`,
+              },
+            ],
+          }
+        })
+        setMessages((prev) =>
+          [...prev, ...(bubbles as unknown as typeof prev)] as typeof prev,
+        )
+      }
+      setPending(remaining)
+    }
+    void tick()
+    const id = setInterval(tick, PENDING_POLL_MS)
+    return () => {
+      cancelled = true
+      clearInterval(id)
+    }
+  }, [pending, ensName, setMessages])
+
+  // Drain the queue: when the twin goes idle, fire the next queued prompt.
+  useEffect(() => {
+    if (isStreaming) return
+    if (queue.length === 0) return
+    const [next, ...rest] = queue
+    setQueue(rest)
+    if (next) sendMessage({ text: next })
+  }, [isStreaming, queue, sendMessage])
+
+  function dismissPending(id: string) {
+    setPending((p) => p.filter((t) => t.id !== id))
+  }
+
+  function dropQueuedAt(idx: number) {
+    setQueue((q) => q.filter((_, i) => i !== idx))
+  }
 
   function onSubmit(e: React.FormEvent) {
     e.preventDefault()
     const text = input.trim()
-    if (!text || isStreaming) return
-    sendMessage({ text })
+    if (!text) return
+    if (isStreaming) {
+      setQueue((q) => [...q, text])
+    } else {
+      sendMessage({ text })
+    }
     setInput("")
   }
 
@@ -268,6 +482,49 @@ export function TwinChat({
         )}
       </div>
 
+      {(pending.length > 0 || queue.length > 0) && (
+        <div className="flex flex-wrap gap-1.5 border-t border-border/60 px-3 py-2">
+          {pending.map((t) => (
+            <span
+              key={t.id}
+              className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-2.5 py-1 text-[10px] text-primary ring-1 ring-primary/20"
+              title={`Waiting for ${t.peerEns} to reply on-chain. You'll be notified here when they answer.`}
+            >
+              <Hourglass className="h-3 w-3 animate-pulse" />
+              <span className="font-mono">
+                waiting on {displayNameFromEns(t.peerEns).displayName}
+              </span>
+              <button
+                type="button"
+                onClick={() => dismissPending(t.id)}
+                className="ml-0.5 rounded-full p-0.5 hover:bg-primary/20"
+                aria-label="Stop waiting"
+              >
+                <X className="h-2.5 w-2.5" />
+              </button>
+            </span>
+          ))}
+          {queue.map((q, i) => (
+            <span
+              key={`q-${i}`}
+              className="inline-flex items-center gap-1.5 rounded-full bg-secondary/70 px-2.5 py-1 text-[10px] text-secondary-foreground ring-1 ring-border/60"
+              title="Queued — will run as soon as the current task finishes."
+            >
+              <ListPlus className="h-3 w-3" />
+              <span className="max-w-[24ch] truncate">{q}</span>
+              <button
+                type="button"
+                onClick={() => dropQueuedAt(i)}
+                className="ml-0.5 rounded-full p-0.5 hover:bg-secondary"
+                aria-label="Remove queued prompt"
+              >
+                <X className="h-2.5 w-2.5" />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+
       <form
         onSubmit={onSubmit}
         className="flex items-center gap-2 border-t border-border/60 px-3 py-3"
@@ -275,14 +532,22 @@ export function TwinChat({
         <Input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder={`Ask ${ensName} anything…`}
-          disabled={isStreaming}
+          placeholder={
+            isStreaming
+              ? `Queue another ask for ${ensName}…`
+              : `Ask ${ensName} anything…`
+          }
           className="flex-1"
         />
         {isStreaming ? (
-          <Button type="button" variant="secondary" onClick={stop}>
-            Stop
-          </Button>
+          <>
+            <Button type="submit" variant="default" disabled={!input.trim()} title="Queue this prompt">
+              <ListPlus className="h-4 w-4" />
+            </Button>
+            <Button type="button" variant="secondary" onClick={stop}>
+              Stop
+            </Button>
+          </>
         ) : (
           <Button type="submit" disabled={!input.trim()}>
             <Send className="h-4 w-4" />
@@ -410,6 +675,16 @@ type ToolOutput = {
   messageEns?: string
   txHash?: string
   blockExplorerUrl?: string
+  /** sendMessage: unix seconds when the message landed on-chain */
+  at?: number
+  /** sendMessage: true when the recipient is a `.ethtwin.eth` twin and an
+   *  auto-reply is expected — the trigger to register a PendingTask if the
+   *  current turn ends without waitForReply capturing the answer. */
+  autoReplyExpected?: boolean
+  // waitForReply
+  body?: string
+  from?: string
+  timedOut?: boolean
   // sendStealthUsdc / sendToken
   stealthAddress?: string
   cosmicSeeded?: boolean
