@@ -25,7 +25,8 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { addHistoryEntry } from "@/lib/history"
 import { displayNameFromEns } from "@/lib/ens"
 import { cn } from "@/lib/utils"
-import { AgentProfileDialog, AvatarImage } from "@/components/agent-profile"
+import { AgentProfileDialog } from "@/components/agent-profile"
+import { EnsAvatar } from "@/components/ens-avatar"
 import { TxApprovalModal, type TxIntent } from "@/components/tx-approval-modal"
 import { useEnsName } from "@/lib/use-ens-name"
 
@@ -489,7 +490,7 @@ export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTrans
                       onClick={() => pickAgent(a.ens)}
                       className="flex flex-1 items-center gap-2.5 px-2 py-2 text-left min-w-0"
                     >
-                      <AvatarImage src={a.avatar ?? null} ens={a.ens} size={36} />
+                      <EnsAvatar ens={a.ens} size={36} />
                       <div className="flex min-w-0 flex-1 flex-col leading-tight">
                         <span
                           className={cn(
@@ -549,14 +550,7 @@ export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTrans
                 disabled={!recipient.includes(".")}
                 title={recipient.includes(".") ? "View profile" : undefined}
               >
-                <AvatarImage
-                  src={
-                    agents.find((a) => a.ens.toLowerCase() === recipient.toLowerCase())
-                      ?.avatar ?? null
-                  }
-                  ens={recipient}
-                  size={28}
-                />
+                <EnsAvatar ens={recipient} size={28} />
                 <span className="font-mono text-sm">{recipient}</span>
               </button>
             ) : (
