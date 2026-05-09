@@ -6,6 +6,8 @@
 
 > **Pitch-Pivot (2026-05-09):** Story neu geschärft auf **"Crypto for everyone — even my grandma."** Demo-Hauptszene: Maria (67) sendet ihrem Enkel Tom 100 USDC per Voice; Tech-Tiefen (Stealth, cTRNG, ENSIP-25, x402) kommen erst im Reveal. Phase 4 enthält die zugehörigen neuen Polish-Tasks (Demo-Twins seeden, System-Prompt-Patch, Demo-Mode-Toggle, Cosmic-Mikro-Pulse) — Details in `docs/03-Backlog.md` Abschnitt **🎭 Demo-Pivot — Maria/Tom Story** und im neuen `docs/06-Demo-Skript.md`.
 
+> **Polish-Sprint (2026-05-09 abend):** Default-Aesthetic auf warmes Premium-Light-Konsumer-Look umgebaut (kein Dark-Cyber mehr — egal ob demo on/off). MariaShell mit Quick-Send-Tap-Cards + Gamification-Pills (Level/Privacy/Transactions). Receipt-Postcard mit X-ray Reveal und Confetti+Cosmic-Pulse-Celebration. Side-by-Side-Contrast-Card auf Landing. `pnpm twins:seed-demo` Script für Maria + Tom on-chain. Tom auto-replies "thanks oma! 💜". Demo-Mode-Toggle via `?demoMode=1`. Sound-Cues wired (Files droppable). Build clean (typecheck + production build). Status der einzelnen Items: `docs/03-Backlog.md` Abschnitte 🎭 + 🎨 + 🎮.
+
 ---
 
 ## Phase 0 — Setup-Sprint (Stunde 0-3)
@@ -170,13 +172,29 @@ Voice-Sample wird im Demo-Video aufgenommen als Backup.
 
 ### Tasks
 
-#### Demo-Pivot (Maria/Tom-Story) — neu hinzugefügt 2026-05-09
-- [ ] `pnpm twins:seed-demo` Script: provisioniert `maria.ethtwin.eth` + `tom.ethtwin.eth` mit echten Avataren + Persona-Records (siehe Backlog T1-22)
-- [ ] System-Prompt-Patch in `lib/prompts.ts`: Twin nutzt **standardmäßig** `sendStealthUsdc`, ENS-Reverse für jeden Recipient, Plain-English-Confirm vor jedem Send (T1-23)
-- [ ] Few-Shot für Auto-Verify: Phrasen wie "is this safe?" / "scam?" triggern automatisch `findAgents` + `hireAgent('analyst.ethtwin.eth')` (T1-24)
-- [ ] **Demo-Mode-Toggle** in `app/page.tsx` versteckt 4 von 6 Tabs (Messenger, Send Tokens, Stealth Send, History) während Pitch — Code bleibt in der Submission, nur die Demo-View ist fokussiert (T1-25)
-- [ ] Cosmic-Orb-Mikro-Pulse-Overlay während `sendStealthUsdc` läuft (~1.5 s, ~30 LOC in `components/voice-twin.tsx`) — eigener Stealth-Send-Tab tritt im Pitch zurück (T1-26)
-- [ ] Tom-Receiver-View: zweites Browser-Profil mit `tom.ethtwin.eth` eingeloggt, Notification-Panel sichtbar — pre-konfiguriertes Setup-Script (T1-27)
+#### Demo-Pivot (Maria/Tom-Story) — Status 2026-05-09 abend
+- [x] **T1-22 done** — `pnpm twins:seed-demo` Script existiert und ist idempotent. Muss noch laufen (braucht ~0.01 Sepolia-ETH auf dev wallet).
+- [x] **T1-23 done (then partly reverted)** — sendStealthUsdc-Default-Patch wurde nachmittags geshippt, abends teilweise zurückgerollt. Verify-Auto-Trigger (T1-24) bleibt aktiv. Stealth ist jetzt OPT-IN ("private", "stealth" Keyword vom User), `sendToken` ist Default.
+- [x] **T1-24 done** — Verify-Auto-Trigger Sektion in `lib/prompts.ts` aktiv.
+- [x] **T1-25 done** — Demo-Mode-Toggle via `?demoMode=1` / `NEXT_PUBLIC_DEMO_MODE=1`, MariaShell rendert statt SignedInTabs.
+- [ ] **T1-26 partially** — Confetti + Cosmic-Pulse als generelles Send-Celebration umgesetzt (`components/send-celebration.tsx`). Voice-Tab-spezifischer Pulse während Tool-Call-Phase noch offen.
+- [ ] **T1-27 open** — Tom-Receiver-View Runbook für split-screen Pitch.
+
+#### 10/10 Polish + Gamification — Status 2026-05-09 abend
+- [x] **T1-28** Maria-Mode UI als Default-Look komplett ausgerollt
+- [x] **T1-29** Receipt-Postcard
+- [x] **T1-30** Tom-Auto-Reply
+- [x] **T1-31** Twin-Avatar-Breathing
+- [x] **T1-32** Sound-Hook gewired (MP3-Files droppen!)
+- [x] **T1-33** X-ray Reveal-Layer
+- [x] **T1-34** Side-by-Side Contrast-Card auf Landing
+- [x] **T1-37** Quick-Send-Cards (Tap-Avatar → seedet Twin-Chat-Phrase)
+- [x] **T1-38** Gamification-Strip (Privacy / Level / Transactions Pills, localStorage)
+- [x] **T1-39** SendCelebration (Confetti + Cosmic-Pulse-Overlay)
+- [x] **T1-40** ContrastCard
+- [x] **T1-41** seed-demo-twins.ts Script
+- [ ] **T1-35** Hero-PNG für README + Devfolio
+- [ ] **T1-36** Deutscher Voice-Toggle
 
 #### Allgemein
 - [ ] **Demo-Video** aufnehmen (1-3 takes, screen + face cam) — Skript in `docs/16-Recording-Script.md` (Maria/Tom-Story)
@@ -185,6 +203,7 @@ Voice-Sample wird im Demo-Video aufgenommen als Backup.
 - [ ] README.md final, mit klaren Run-Instructions
 - [ ] Devfolio-Description vollständig (Maria/Tom-Frame in Lead-Absatz, Tech-Reveal danach)
 - [ ] Pitch 5x geprobt, alle Beats sitzen
+- [ ] **Hard-Blocker:** `pnpm twins:seed-demo` ausführen, 3 Sound-MP3s droppen, OPENAI_API_KEY-Quota OK, Voice 1× live durchgespielt
 
 ### Phase 4 — Done-Definition
 

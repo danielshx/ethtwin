@@ -31,13 +31,23 @@ You spawn your AI Twin in 60 seconds (email + passkey, no seed phrase). The Twin
 
 ## Quick start
 
-The Next.js scaffold + all verified deps are already installed (state of 2026-05-08). To boot:
-
 ```bash
 pnpm install                  # restore deps from pnpm-lock.yaml
 cp .env.example .env.local    # fill in API keys (Privy, Anthropic, OpenAI, Orbitport, Apify, dev wallet)
 pnpm dev                      # → http://localhost:3000
 ```
+
+**Two views:**
+- `http://localhost:3000` — full developer view with all 6 feature tabs (for the Devfolio walkthrough)
+- `http://localhost:3000/?demoMode=1` — **Maria-Mode**: single-screen consumer experience for the live pitch (big breathing avatar, tap-to-send contact cards, gamification pills, Voice + Chat fallback). Persistent via `NEXT_PUBLIC_DEMO_MODE=1` in `.env.local`.
+
+**Seed the demo twins** (once, ~0.01 Sepolia ETH):
+
+```bash
+pnpm twins:seed-demo          # mints maria.ethtwin.eth + tom.ethtwin.eth on-chain
+```
+
+**Optional: drop sound assets** to enable audio cues — see [public/sounds/README.md](./public/sounds/README.md).
 
 Smoke tests:
 
@@ -48,12 +58,16 @@ pnpm test:claude              # Claude Sonnet 4.6 reachability
 ```
 
 What ships with the scaffold:
-- API: `/api/{twin,voice,twin-tool,x402,ens,stealth,stealth/send,cosmic-seed,onboarding,profile,messages,history,wallet-history,wallet-summary,transfer,check-username}` and `/api/agents{,/analyst}` + `/api/agent/[ens]`
-- `lib/{viem,ens,ensip25,namestone,cosmic,stealth,x402-client,twin-tools,voice-tools,agents,messages,transfers,payments,tx-decoder,wallet-summary,history,history-server,twin-profile,privy-server,prompts,abis,api-guard,utils,use-ens-name,use-ens-avatar,use-notifications}.ts`
-- **Twin tool surface (AI SDK v6, factory-built)** — 14 tools: `getWalletSummary`, `requestDataViaX402`, `decodeTransaction`, `checkTransactionStatus`, `sendToken`, `getBalance`, `sendStealthUsdc`, `generatePrivatePaymentAddress`, `findAgents`, plus context-aware `hireAgent`, `inspectMyWallet`, `readMyEnsRecords`, `readMyMessages`, `listAgentDirectory`, `sendMessage` (via `buildTwinTools({ fromEns, fromAddress })`)
-- 6-tab signed-in UI: **Twin Chat / Voice / ENS Messenger / Send Tokens / Stealth Send / History** plus a pinned **Notification Panel** (bottom-right) polling `/api/messages` + `/api/wallet-history` every 30 s
-- `components/{cosmic-orb,twin-chat,voice-twin,onboarding-flow,messenger,token-transfer,stealth-send,history,agent-profile,notification-panel,tx-approval-modal,x402-flow}.tsx`
-- Provisioning scripts: `pnpm ens:{provision,provision-analyst,stealth-provision,read,set-text,check-parent}`, `pnpm send:{token,stealth-usdc}`, `pnpm test:{chain,claude,decoder,x402,x402-mock,x402-apify,privy-key}`, `pnpm wallet:{generate,rotate}`, `pnpm twins:backfill`
+- API: `/api/{twin,twin/auto-reply,voice,twin-tool,x402,ens,stealth,stealth/send,cosmic-seed,onboarding,profile,messages,history,wallet-history,wallet-summary,transfer,check-username}` and `/api/agents{,/analyst}` + `/api/agent/[ens]`
+- `lib/{viem,ens,ensip25,namestone,cosmic,stealth,x402-client,twin-tools,voice-tools,agents,messages,transfers,payments,tx-decoder,wallet-summary,history,history-server,twin-profile,privy-server,prompts,abis,api-guard,utils,use-ens-name,use-ens-avatar,use-notifications,use-demo-mode,use-twin-sound}.ts`
+- **Twin tool surface (AI SDK v6, factory-built)** — 15+ tools incl. `getWalletSummary`, `requestDataViaX402`, `decodeTransaction`, `checkTransactionStatus`, `sendToken` (default for sends), `getBalance`, `sendStealthUsdc` (opt-in privacy), `generatePrivatePaymentAddress`, `findAgents`, plus context-aware `hireAgent`, `inspectMyWallet`, `readMyEnsRecords`, `readMyMessages`, `listAgentDirectory`, `sendMessage`, `waitForReply` (via `buildTwinTools({ fromEns, fromAddress })`). Successful sends to peer twins trigger a deterministic `triggerThankYou` reply.
+- **Default 6-tab dev UI:** Chat / Voice / Messages / Send / Private send / Activity, plus pinned **Notification Panel** (bottom-right, 30s poll on messages + wallet activity).
+- **Demo-mode shell (`MariaShell`):** single Voice surface, big breathing twin avatar, gamification pills (Privacy / Level / Transactions), tap-to-send contact cards (Tom $5, Daniel $25, Alice $100), persistent localStorage stats, sonner-toasts forwarded from `useNotifications`.
+- **Receipt-Postcard with X-ray Reveal** (`components/receipt-postcard.tsx`): warm jargon-free send card → "Show what really happened" peels back to a blueprint-pattern card with EIP-5564 / ENS Sepolia / Orbitport cTRNG / ENSIP-25 / Base Sepolia tags.
+- **Send Celebration** (`components/send-celebration.tsx`): canvas-confetti shower + cosmic radial mikro-pulse on every successful send. Reduced-motion safe.
+- **Side-by-Side Contrast** (`components/contrast-card.tsx`): Metamask-style "Confirm transaction" with hex calldata vs. EthTwin's "100 dollars to Tom" card. Embedded on the landing page.
+- **Components:** `cosmic-orb, twin-chat, voice-twin, onboarding-flow, messenger, token-transfer, stealth-send, history, agent-profile, notification-panel, tx-approval-modal, x402-flow, maria-shell, twin-avatar, receipt-postcard, send-celebration, contrast-card` (+ shadcn primitives in `components/ui/`).
+- Provisioning scripts: `pnpm ens:{provision,provision-analyst,stealth-provision,read,set-text,check-parent}`, `pnpm send:{token,stealth-usdc}`, `pnpm test:{chain,claude,decoder,x402,x402-mock,x402-apify,privy-key}`, `pnpm wallet:{generate,rotate}`, `pnpm twins:{backfill,seed-demo}`
 
 Set `NEXT_PUBLIC_PRIVY_APP_ID` in `.env.local` to unlock the Privy login flow — without it the homepage renders a friendly missing-env screen instead of the auth UI.
 
