@@ -19,8 +19,12 @@ import {
 } from "viem"
 import { baseSepolia } from "viem/chains"
 import { baseSepoliaClient, getDevWalletClient } from "./viem"
-import { resolveEnsAddress, readStealthMetaAddress } from "./ens"
-import { generatePrivateAddress, type StealthResult } from "./stealth"
+import { resolveEnsAddress, readTextRecordFast } from "./ens"
+import {
+  deriveTwinStealthKeys,
+  generatePrivateAddress,
+  type StealthResult,
+} from "./stealth"
 
 // USDC on Base Sepolia (Circle, 6 decimals).
 export const USDC_BASE_SEPOLIA: Address = "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
@@ -80,12 +84,34 @@ export async function sendStealthUSDC(args: {
   const resolvedAddress = await resolveEnsAddress(recipientEnsName)
 
   // 2. Read recipient's stealth meta-address URI from ENS text record.
-  const metaURI = await readStealthMetaAddress(recipientEnsName)
-  if (!metaURI) {
-    throw new Error(
-      `${recipientEnsName} has no stealth-meta-address text record on Sepolia ENS. ` +
-        `Run pnpm ens:stealth-provision first.`,
-    )
+  // Use the fast direct-resolver path (bypasses CCIP-Read / Universal
+  // Resolver, which fails silently on our setup). If the recipient was
+  // minted before the deterministic deriveTwinStealthKeys integration,
+  // the on-chain text record is either empty or contains the old garbage
+  // cosmic-attestation hash; fall back to server-side derivation so old
+  // twins still receive stealth payments. Both routes produce the SAME
+  // meta-address per twin (HMAC of dev master + twin ENS).
+  const onChainMeta = await readTextRecordFast(
+    recipientEnsName,
+    "stealth-meta-address",
+  ).catch(() => "")
+  const isValidMetaURI =
+    typeof onChainMeta === "string" &&
+    /^st:eth:0x[0-9a-fA-F]{132}$/.test(onChainMeta)
+  let metaURI: string
+  if (isValidMetaURI) {
+    metaURI = onChainMeta
+  } else {
+    try {
+      metaURI = deriveTwinStealthKeys(recipientEnsName).stealthMetaAddressURI
+    } catch (err) {
+      throw new Error(
+        `${recipientEnsName} has no stealth-meta-address text record and we ` +
+          `couldn't derive one. Make sure the ENS name lives under the parent ` +
+          `domain (.ethtwin.eth) and re-mint the twin if it's old.\n` +
+          `cause: ${err instanceof Error ? err.message : String(err)}`,
+      )
+    }
   }
 
   // 3. Generate a one-time stealth address for this payment.

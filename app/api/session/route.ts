@@ -12,7 +12,7 @@
 
 import { z } from "zod"
 import { jsonError, parseJsonBody } from "@/lib/api-guard"
-import { readTextRecordFast } from "@/lib/ens"
+import { readSubnameOwner, readTextRecordFast } from "@/lib/ens"
 import { PARENT_DOMAIN } from "@/lib/viem"
 import {
   clearSessionCookie,
@@ -56,12 +56,28 @@ export async function POST(req: Request) {
     )
   }
 
-  // Two reads in parallel: KMS key id (= "is this a managed twin?") +
-  // login hash (= "what does ownership look like?").
-  const [kmsKeyId, loginHash] = await Promise.all([
+  // Three reads in parallel:
+  //   1. registry owner — confirms the subname hasn't been orphaned/deleted
+  //   2. KMS keyId text record — "is this a managed twin?"
+  //   3. login-hash text record — "what does ownership look like?"
+  // The registry-owner check is essential because text records persist in
+  // resolver storage even after `setSubnodeRecord(0x0, 0x0, 0)` orphans
+  // the subname. Without this check, deleted twins would still log in.
+  const [registryOwner, kmsKeyId, loginHash] = await Promise.all([
+    readSubnameOwner(ens).catch(
+      () => "0x0000000000000000000000000000000000000000",
+    ),
     readTextRecordFast(ens, "twin.kms-key-id").catch(() => ""),
     readTextRecordFast(ens, LOGIN_HASH_TEXT_KEY).catch(() => ""),
   ])
+  if (
+    registryOwner.toLowerCase() === "0x0000000000000000000000000000000000000000"
+  ) {
+    return jsonError(
+      `${ens} has been deleted (or never minted). Mint a fresh twin to log in.`,
+      404,
+    )
+  }
   if (!kmsKeyId) {
     return jsonError(
       `No KMS-managed twin found at ${ens}. Mint a new twin first.`,
