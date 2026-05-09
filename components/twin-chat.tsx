@@ -11,7 +11,9 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { AgentProfileDialog, AvatarImage } from "@/components/agent-profile"
 import { X402Flow } from "@/components/x402-flow"
+import { ReceiptPostcard } from "@/components/receipt-postcard"
 import { useEnsAvatar } from "@/lib/use-ens-avatar"
+import { useDemoMode } from "@/lib/use-demo-mode"
 import { displayNameFromEns } from "@/lib/ens"
 import { cn } from "@/lib/utils"
 
@@ -284,6 +286,7 @@ type ToolOutput = {
   blockExplorerUrl?: string
   // sendStealthUsdc / sendToken
   stealthAddress?: string
+  cosmicSeeded?: boolean
   amount?: string
   // sendToken-specific
   chain?: string
@@ -365,6 +368,30 @@ function AgentDetail({
   output: ToolOutput
   toolName: string
 }) {
+  // Postcard renderer: in demo mode, sends become large jargon-free cards.
+  // Anything else falls through to the existing dev/explorer UI.
+  const demoMode = useDemoMode()
+  if (
+    demoMode &&
+    output.ok &&
+    output.amount &&
+    (toolName === "sendStealthUsdc" || toolName === "sendToken")
+  ) {
+    return (
+      <div className="ml-1 mt-2">
+        <ReceiptPostcard
+          amount={output.amount}
+          recipientEnsName={output.recipientEnsName ?? output.toEns ?? output.recipientInput}
+          fromEnsName={output.fromEns}
+          txHash={output.txHash}
+          explorerUrl={output.blockExplorerUrl}
+          stealthAddress={output.stealthAddress}
+          cosmicSeeded={output.cosmicSeeded}
+          privateBadge={toolName === "sendStealthUsdc"}
+        />
+      </div>
+    )
+  }
   if (toolName === "findAgents" && output.agents?.length) {
     return (
       <ul className="ml-5 space-y-1.5 text-[11px] text-muted-foreground">

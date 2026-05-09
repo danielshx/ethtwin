@@ -442,6 +442,48 @@ export function buildTwinTools(ctx: TwinToolContext = {}) {
     ...twinTools,
     hireAgent: buildHireAgentTool(ctx),
 
+    // Override the static sendStealthUsdc so a successful send to another
+    // ethtwin.eth twin triggers a deterministic thank-you reply. Demo-payoff
+    // for Maria→Tom; in production this is harmless (capped to twins under
+    // our parent, fire-and-forget, never blocks the response).
+    sendStealthUsdc: tool({
+      description:
+        "Send USDC on Base Sepolia to an ENS recipient via a one-time stealth address (EIP-5564). The recipient must have a stealth-meta-address text record. Returns the stealth address, on-chain tx hash, and a block-explorer link. The recipient twin will auto-reply with a short thank-you when both are under ethtwin.eth.",
+      inputSchema: z.object({
+        recipientEnsName: z.string().describe("e.g. 'tom.ethtwin.eth'"),
+        amountUsdc: z
+          .union([z.string(), z.number()])
+          .describe("Human-readable USDC amount, e.g. 0.5 or '0.01'"),
+      }),
+      execute: async ({ recipientEnsName, amountUsdc }) => {
+        try {
+          const result = await sendStealthUSDC({ recipientEnsName, amountUsdc })
+          if (ctx.fromEns) {
+            triggerThankYou({
+              fromEns: ctx.fromEns,
+              toEns: result.recipient.ens,
+              amount: `${result.amountHuman} USDC`,
+            })
+          }
+          return {
+            ok: true,
+            fromEns: ctx.fromEns ?? null,
+            recipientEnsName: result.recipient.ens,
+            stealthAddress: result.stealth.stealthAddress,
+            ephemeralPublicKey: result.stealth.ephemeralPublicKey,
+            viewTag: result.stealth.viewTag,
+            cosmicSeeded: result.stealth.cosmicSeeded,
+            amount: result.amountHuman + " USDC",
+            txHash: result.txHash,
+            blockNumber: result.blockNumber.toString(),
+            blockExplorerUrl: result.blockExplorerUrl,
+          }
+        } catch (err) {
+          return { ok: false, error: err instanceof Error ? err.message : String(err) }
+        }
+      },
+    }),
+
     inspectMyWallet: tool({
       description:
         "Read the user's own twin wallet on-chain: ETH balances on Sepolia + Base Sepolia, ENS reverse-resolution, and a plain-English summary. Use IMMEDIATELY whenever the user asks about 'my wallet', 'my balance', 'what you know about me/my account', or any first-person on-chain question. Takes no arguments — uses the twin's session identity.",
@@ -682,6 +724,32 @@ export function buildTwinTools(ctx: TwinToolContext = {}) {
       },
     }),
   } as const
+}
+
+// Fire-and-forget thank-you message after a successful send. Deterministic
+// (no LLM in the loop) so the demo always lands the same emotional payoff —
+// "thanks oma! 💜" lands on Maria's phone right after she sends to Tom.
+// Scoped to recipients under `.ethtwin.eth` (parent we control via dev wallet).
+function triggerThankYou(payload: {
+  fromEns: string
+  toEns: string
+  amount: string
+}) {
+  const { fromEns, toEns, amount } = payload
+  if (!toEns.toLowerCase().endsWith(".ethtwin.eth")) return
+  if (!fromEns.toLowerCase().endsWith(".ethtwin.eth")) return
+  const senderHandle = fromEns.split(".")[0]
+  const body = `thanks ${senderHandle}! 💜 just got the ${amount}.`
+  // 2-second delay so the receipt-postcard lands first; then notification fires.
+  void (async () => {
+    await new Promise((r) => setTimeout(r, 2000))
+    try {
+      await sendEnsMessage({ fromEns: toEns, toEns: fromEns, body })
+    } catch {
+      // Best-effort — if the dev wallet can't sign or the recipient parent
+      // doesn't resolve, just skip; the demo still works without the reply.
+    }
+  })()
 }
 
 // Fire-and-forget call to the auto-reply route. Building the URL from

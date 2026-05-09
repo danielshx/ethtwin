@@ -6,7 +6,10 @@
 
 **EthTwin** is an AI co-pilot for your on-chain life. Each user spawns an AI Twin that lives at their ENS subname (`daniel.ethtwin.eth`), is voice-controlled, can hire other agents via x402 micropayments, and uses cosmic randomness from satellites for stealth-address privacy.
 
-**One-line pitch:** *"EthTwin is the AI co-pilot for your on-chain life. Voice-first. Privacy by default. Lives in ENS."*
+**One-line pitch (locked 2026-05-09):** *"Crypto for everyone — even my grandma."*
+Sub-line: *"The first crypto interface built for humans, not engineers."*
+
+**Demo persona:** Maria (67, Stuttgart) sends 100 USDC to her grandson Tom (`tom.ethtwin.eth`) via voice. The reveal at the end: every advanced primitive (stealth address, satellite randomness, ENSIP-25 agent verification, x402 micropayments) ran silently underneath. See `docs/06-Demo-Skript.md`.
 
 ## ⚠️ Critical Verified Facts (May 2026 — verified via web search + npm)
 
@@ -103,11 +106,11 @@ const myTool = tool({
 
 - TypeScript strict mode. No `any`.
 - Server logic in `app/api/*/route.ts`. Never expose API keys client-side.
-- ENS-related code in `lib/ens.ts` + `lib/agents.ts` (directory). Stealth in `lib/stealth.ts` + `lib/payments.ts`. Cosmic in `lib/cosmic.ts`. x402 in `lib/x402-client.ts`. ENS-Subname-Messenger primitives in `lib/messages.ts`. Hybrid history (client + server) in `lib/history.ts` + `lib/history-server.ts`.
+- ENS-related code in `lib/ens.ts` + `lib/agents.ts` (directory). Stealth in `lib/stealth.ts` + `lib/payments.ts`. Cosmic in `lib/cosmic.ts`. x402 in `lib/x402-client.ts`. ENS-Subname-Messenger primitives in `lib/messages.ts`. Hybrid history (client + server) in `lib/history.ts` + `lib/history-server.ts`. React hooks in `lib/use-ens-name.ts`, `lib/use-ens-avatar.ts`, `lib/use-notifications.ts`. Voice tool subset for OpenAI Realtime in `lib/voice-tools.ts`.
 - Components colocated with their feature. Reusable UI in `components/ui/` (shadcn).
 - Use shadcn components first.
 - Animations are budget. The cosmic reveal during onboarding + the **Stealth-Send-Tab** (`components/stealth-send.tsx`) are the only heavy Framer Motion / particle scenes.
-- **AI SDK v6 syntax:** tools use `inputSchema` (zod), not `parameters` (v5 pattern). Twin tools live in `lib/twin-tools.ts`. The chat route (`app/api/twin/route.ts`) calls the `buildTwinTools({ fromEns })` factory so request-scoped context (the user's twin ENS) reaches tools like `sendMessage`.
+- **AI SDK v6 syntax:** tools use `inputSchema` (zod), not `parameters` (v5 pattern). Twin tools live in `lib/twin-tools.ts` (15 tools total). The chat route (`app/api/twin/route.ts`) calls the `buildTwinTools({ fromEns, fromAddress })` factory so request-scoped context (the user's twin ENS + bound wallet address) reaches context-aware tools like `sendMessage`, `inspectMyWallet`, `readMyEnsRecords`, `readMyMessages`, `hireAgent`.
 
 ## ENS is central — never decorative
 

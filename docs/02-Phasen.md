@@ -4,6 +4,8 @@
 
 > **Aktueller Vorlauf (2026-05-08, Pre-Hackathon):** Repo, Stack, Backend-Stubs, Frontend-Komponenten und Auth-gated Homepage sind fertig. Phase 0 reduziert sich am Hackathon-Tag auf API-Keys eintragen + Spike-Tests gegen echte Services. Phase 1 ist halb erledigt — Twin-Chat, Onboarding-UI und Tx-Modal stehen, fehlt Live-Verdrahtung.
 
+> **Pitch-Pivot (2026-05-09):** Story neu geschärft auf **"Crypto for everyone — even my grandma."** Demo-Hauptszene: Maria (67) sendet ihrem Enkel Tom 100 USDC per Voice; Tech-Tiefen (Stealth, cTRNG, ENSIP-25, x402) kommen erst im Reveal. Phase 4 enthält die zugehörigen neuen Polish-Tasks (Demo-Twins seeden, System-Prompt-Patch, Demo-Mode-Toggle, Cosmic-Mikro-Pulse) — Details in `docs/03-Backlog.md` Abschnitt **🎭 Demo-Pivot — Maria/Tom Story** und im neuen `docs/06-Demo-Skript.md`.
+
 ---
 
 ## Phase 0 — Setup-Sprint (Stunde 0-3)
@@ -59,7 +61,7 @@
 #### Backend
 - [x] `/api/twin/route.ts` — Vercel AI SDK v6 + auto-detect OpenAI/Anthropic (`selectModel()`); model name never exposed in responses per persona contract
 - [x] Twin Loop: System Prompt aus ENS Text Records hydrieren — `buildSystemPrompt(records, ensName)` in `lib/prompts.ts`, hardened so Twin never reveals its underlying model
-- [x] Tool-Definitions: live in `lib/twin-tools.ts` — `getWalletSummary`, `decodeTransaction`, `sendToken`, `getBalance`, `sendStealthUsdc`, `generatePrivatePaymentAddress`, `requestDataViaX402`, `findAgents`, `hireAgent`
+- [x] Tool-Definitions: live in `lib/twin-tools.ts` — 15 Tools über `buildTwinTools({ fromEns, fromAddress })` Factory inkl. `getWalletSummary`, `decodeTransaction`, `checkTransactionStatus`, `sendToken`, `getBalance`, `sendStealthUsdc`, `generatePrivatePaymentAddress`, `requestDataViaX402`, `findAgents`, `hireAgent`, `inspectMyWallet`, `readMyEnsRecords`, `readMyMessages`, `listAgentDirectory`, `sendMessage`
 
 #### Frontend
 - [x] Onboarding-Flow: Three-button intro (Create twin / Passkey / Connect wallet) → username → cosmic-orb seed → mint with on-chain polling. `components/onboarding-flow.tsx`
@@ -90,13 +92,13 @@
 - [x] Stealth-Meta-Key in ENS Text Record speichern + lesen — published auf `daniel.ethtwin.eth` (tx [`0xbf9f…2a7e`](https://sepolia.etherscan.io/tx/0xbf9fffbedd589176c70c9fbac43a20f7cb2b10770afc33c547fd72c932782a7e)), end-to-end verifiziert via `pnpm ens:stealth-provision`
 
 #### Backend
-- [ ] OpenAI Realtime API integration (`/api/voice/route.ts`) — *bewusst gedroppt; Chat-only Demo per Drop-Decision Punkt 1*
+- [x] OpenAI Realtime API integration (`/api/voice/route.ts`) — Ephemeral-Key-Minter, hydrierter System-Prompt aus ENS Records, 503-Fallback ohne `OPENAI_API_KEY`. (Drop-Decision Punkt 1 wurde rückgängig gemacht — Voice ist wieder Tier-1, Chat bleibt der Runbook-Fallback.)
 - [~] x402-fetch SDK eingebaut, erste Apify x402 Test-Request — *SDK eingebaut + Mock-Test grün (`pnpm test:x402-mock`); `lib/x402-client.ts` v1+v2 dispatch fixed (ExactEvmSchemeV1, CAIP-2 slugs); receipt parsing inline'd; echte Apify-Tx noch ausstehend*
 - [x] Twin's Tool-Calling: `requestDataViaX402` + `decodeTransaction` (real, via `lib/tx-decoder.ts`) live in `lib/twin-tools.ts`
 - [x] Orbitport cTRNG Wrapper (`lib/cosmic.ts`) mit Caching — rolling cache + attestation passthrough + mock fallback when API key missing
 
 #### Frontend
-- [ ] Voice-UI mit Push-to-Talk + Realtime-Streaming-Display — *gedroppt, siehe oben*
+- [x] Voice-UI mit Realtime-Streaming-Display — `components/voice-twin.tsx` rendert Listening / Thinking / Speaking Orb-States, Live-Transcript-Bubbles, Tool-Call-Pills; reconnect 10 s vor Ablauf des 60 s-Ephemeral-Key.
 - [x] Tx-Approval-Modal mit Plain English Summary — `components/tx-approval-modal.tsx` (used by token-transfer); decoder + ENS reverse-name wired
 - [x] Toast-Notifications für Tx-Broadcasts (mit Block-Explorer-Link) — sonner-based in messenger + token-transfer; explorer URL in toast description
 - [x] ENS-Reverse-Resolution überall: `withEnsName(addr)` + `useEnsName` hook + `AvatarImage` fallback to short 0x… — sidebars + tx-approval-modal show ENS
@@ -168,11 +170,20 @@ Voice-Sample wird im Demo-Video aufgenommen als Backup.
 
 ### Tasks
 
-- [ ] **Demo-Video** aufnehmen (1-3 takes, screen + face cam)
+#### Demo-Pivot (Maria/Tom-Story) — neu hinzugefügt 2026-05-09
+- [ ] `pnpm twins:seed-demo` Script: provisioniert `maria.ethtwin.eth` + `tom.ethtwin.eth` mit echten Avataren + Persona-Records (siehe Backlog T1-22)
+- [ ] System-Prompt-Patch in `lib/prompts.ts`: Twin nutzt **standardmäßig** `sendStealthUsdc`, ENS-Reverse für jeden Recipient, Plain-English-Confirm vor jedem Send (T1-23)
+- [ ] Few-Shot für Auto-Verify: Phrasen wie "is this safe?" / "scam?" triggern automatisch `findAgents` + `hireAgent('analyst.ethtwin.eth')` (T1-24)
+- [ ] **Demo-Mode-Toggle** in `app/page.tsx` versteckt 4 von 6 Tabs (Messenger, Send Tokens, Stealth Send, History) während Pitch — Code bleibt in der Submission, nur die Demo-View ist fokussiert (T1-25)
+- [ ] Cosmic-Orb-Mikro-Pulse-Overlay während `sendStealthUsdc` läuft (~1.5 s, ~30 LOC in `components/voice-twin.tsx`) — eigener Stealth-Send-Tab tritt im Pitch zurück (T1-26)
+- [ ] Tom-Receiver-View: zweites Browser-Profil mit `tom.ethtwin.eth` eingeloggt, Notification-Panel sichtbar — pre-konfiguriertes Setup-Script (T1-27)
+
+#### Allgemein
+- [ ] **Demo-Video** aufnehmen (1-3 takes, screen + face cam) — Skript in `docs/16-Recording-Script.md` (Maria/Tom-Story)
 - [ ] Edge-Cases durchspielen: Internet-Loss, Voice-Drop, API-Latency
 - [ ] Mocks vorbereitet für jeden Drop-Case
 - [ ] README.md final, mit klaren Run-Instructions
-- [ ] Devfolio-Description vollständig
+- [ ] Devfolio-Description vollständig (Maria/Tom-Frame in Lead-Absatz, Tech-Reveal danach)
 - [ ] Pitch 5x geprobt, alle Beats sitzen
 
 ### Phase 4 — Done-Definition

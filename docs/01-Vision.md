@@ -24,9 +24,15 @@ Each user spawns a personal **AI Twin** in 60 seconds. The Twin:
 - **Coordinates with other agents:** when your Twin needs help, it discovers other agents via ENS, evaluates capabilities from their Text Records, and pays them via x402 micropayments.
 - **Protects your privacy by default:** every incoming payment routes through a fresh stealth address, seeded with verifiable cosmic randomness from satellites (Orbitport cTRNG).
 
-## The Wow Hook
+## The Wow Hook (locked 2026-05-09)
 
-> *"EthTwin uses true randomness from satellites to protect your privacy. Not pseudo-random. Real cosmic noise. Verifiable on-chain."*
+> *"Crypto for everyone — even my grandma."*
+
+The pitch is told through one persona: **Maria, 67, in Stuttgart, sending 100 USDC to her grandson Tom.** She uses voice. She sees ENS names, never `0x…`. She approves with a passkey. The whole flow takes 60 seconds.
+
+Then the reveal: *"What Maria didn't see — EIP-5564 stealth address, satellite randomness from Orbitport, ENSIP-25 agent verification, x402 micropayments to a verification agent. Crypto isn't hard. It's just been built for engineers. Until now."*
+
+The grandma framing is not just UX flavor — it is the **justification** for every advanced primitive in our stack. Stealth addresses are required because grandma has no clue what stealth means and shouldn't have to. Voice + ENS reverse + plain English exist because she can't type a hex address. Agent-to-agent x402 happens silently because she shouldn't have to research counterparties — her Twin does it.
 
 This is what no other team at the hackathon will say. It's our defensible USP.
 

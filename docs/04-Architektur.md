@@ -2,7 +2,7 @@
 
 > **Verifiziert:** Alle Lib-Versionen + API-Patterns aus echter Recherche. Code-Beispiele in `docs/12-Code-Beispiele.md`.
 >
-> **Stand 2026-05-09:** Onboarding live (mintet Sepolia-ENS-Subname + 7 Text Records + ENSIP-25 + agents.directory in 1 multicall), 5-Tab-UI (Chat / Messenger / Send Tokens / Stealth Send / History), Cosmic-Orb-Hero im Stealth-Send-Tab, `pnpm ens:provision-analyst` für den Sample-Agent. `pnpm build` clean. Live-Wiring (Privy-Login, x402-Tx) hängt nur noch an gesetzten API-Keys + funded dev wallet.
+> **Stand 2026-05-09:** Onboarding live (mintet Sepolia-ENS-Subname + 7 Text Records + ENSIP-25 + agents.directory in 1 multicall), **6-Tab-UI** (Chat / Voice / Messenger / Send Tokens / Stealth Send / History) plus pinned NotificationPanel (bottom-right, 30s-Polling), Cosmic-Orb-Hero im Stealth-Send-Tab, Voice via OpenAI Realtime über WebRTC, Wallet-History via Alchemy. `pnpm ens:provision-analyst` für den Sample-Agent. `pnpm build` clean. Live-Wiring (Privy-Login, x402-Tx) hängt nur noch an gesetzten API-Keys + funded dev wallet.
 
 ## High-Level Diagramm
 
@@ -174,18 +174,26 @@ plus paywalled Sample-Agent (`app/api/agents/analyst/route.ts`).
 6. Twin synthesisiert eigene Antwort im weiteren Verlauf
 ```
 
-### Tool-Surface (`lib/twin-tools.ts`)
+### Tool-Surface (`lib/twin-tools.ts` — 15 Tools, factory-built via `buildTwinTools({ fromEns, fromAddress })`)
 
 | Tool | Zweck |
 |---|---|
-| `getWalletSummary` | Balances + ENS-Reverse für eine Adresse |
+| `getWalletSummary` | Balances + ENS-Reverse für eine beliebige Adresse |
 | `requestDataViaX402` | Apify-Actor via `paidFetch()` aufrufen |
 | `decodeTransaction` | Calldata → Plain-English |
+| `checkTransactionStatus` | Receipt + Confirmations für eine Tx-Hash auf Sepolia/Base Sepolia |
 | `sendToken` / `getBalance` | Native ETH / USDC senden bzw. lesen |
 | `sendStealthUsdc` | EIP-5564-USDC-Transfer auf Base Sepolia |
 | `generatePrivatePaymentAddress` | One-time Stealth-Adresse aus Recipient-Meta-Key |
 | **`findAgents`** | On-chain Agent-Directory + ENSIP-25-Status |
-| **`hireAgent`** | ENSIP-25 verify → `paidFetch()` an `twin.endpoint` |
+| **`hireAgent`** | ENSIP-25 verify → `paidFetch()` an `twin.endpoint`, Settlement-Receipt → server-history |
+| **`inspectMyWallet`** | Parameter-loser Self-Lookup über `ctx.fromAddress` |
+| **`readMyEnsRecords`** | Eigene Twin-Records (avatar/description/persona/capabilities/endpoint/stealth-meta) |
+| **`readMyMessages`** | ENS-Inbox: letzte N `from/body/at`-Subname-Messages |
+| **`listAgentDirectory`** | Lightweight directory-Liste ohne ENSIP-25-Verify |
+| **`sendMessage`** | Outbound on-chain ENS-Subname-Message an anderen Twin |
+
+Voice nutzt eine reduzierte Tool-Subset über `lib/voice-tools.ts`, die das Frontend per Function-Call an `/api/twin-tool` weiterleitet.
 
 ## Datei-Struktur
 
@@ -199,18 +207,20 @@ ethtwin/
 │   │   ├── page.tsx                # Main chat / voice UI
 │   │   └── settings/page.tsx
 │   ├── api/
-│   │   ├── twin/route.ts           # AI agent loop (Claude 4.6 + buildTwinTools factory)
-│   │   ├── voice/route.ts          # OpenAI Realtime ephemeral key minter
-│   │   ├── twin-tool/route.ts      # Tool execution proxy (legacy voice path)
+│   │   ├── twin/route.ts           # AI agent loop (Claude 4.6 / OpenAI 4o-mini auto-detect + buildTwinTools factory)
+│   │   ├── voice/route.ts          # OpenAI Realtime ephemeral key minter (503 → graceful chat fallback)
+│   │   ├── twin-tool/route.ts      # Tool execution proxy used by Voice WebRTC function-calls
 │   │   ├── x402/route.ts           # x402 client wrapper for Apify
 │   │   ├── ens/route.ts            # ENS read/write helpers
 │   │   ├── stealth/route.ts        # EIP-5564 stealth-address generator
 │   │   ├── stealth/send/route.ts   # Privy-gated USDC stealth send (1 USDC cap)
 │   │   ├── cosmic-seed/route.ts    # Orbitport proxy + caching
 │   │   ├── onboarding/route.ts     # Privy verify → 1 multicall (subname + 7 records + ENSIP-25 + agents.directory)
+│   │   ├── profile/route.ts        # Privy-gated avatar/description multicall on the user's twin subname
 │   │   ├── messages/route.ts       # ENS-Subname-Messenger (POST send + GET inbox)
 │   │   ├── transfer/route.ts       # Privy-gated multichain ETH/USDC transfer
 │   │   ├── wallet-summary/route.ts # Read balances + ENS reverse for an address
+│   │   ├── wallet-history/route.ts # Recent on-chain activity (Alchemy alchemy_getAssetTransfers, Etherscan fallback)
 │   │   ├── history/route.ts        # Server-side history per ENS
 │   │   ├── check-username/route.ts # Polled by frontend after onboarding
 │   │   ├── agent/[ens]/route.ts    # Full agent profile (avatar, persona, capabilities)
@@ -223,11 +233,14 @@ ethtwin/
 ├── components/
 │   ├── ui/                         # shadcn primitives
 │   ├── twin-chat.tsx               # ✅ useChat + ENSIP-25 verified-badge + sendMessage rendering
+│   ├── voice-twin.tsx              # ✅ OpenAI Realtime over WebRTC w/ Listening/Thinking/Speaking states
 │   ├── messenger.tsx               # ✅ ENS-Subname-Messenger UI (one subname per message)
 │   ├── token-transfer.tsx          # ✅ Multichain ETH/USDC send w/ hard caps
 │   ├── stealth-send.tsx            # ✅ HERO TAB: CosmicOrb during EIP-5564 USDC send
-│   ├── history.tsx                 # ✅ Hybrid local + server history viewer
-│   ├── agent-profile.tsx           # ✅ Avatar + Persona + Capabilities + Stealth-Meta dialog
+│   ├── history.tsx                 # ✅ Hybrid local + server history + wallet-history viewer
+│   ├── agent-profile.tsx           # ✅ Avatar/Persona/Capabilities + Stealth-Meta + edit dialog → /api/profile
+│   ├── notification-panel.tsx      # ✅ Pinned bottom-right activity feed (messages + wallet activity)
+│   ├── x402-flow.tsx               # ✅ Twin → analyst flow animation during hireAgent
 │   ├── cosmic-orb.tsx              # ✅ Framer-Motion hero (idle/fetching/revealed phases)
 │   ├── tx-approval-modal.tsx       # ✅ Plain-English summary, ENS-aware
 │   └── onboarding-flow.tsx         # ✅ 4-step wizard wraps CosmicOrb hero
@@ -241,13 +254,17 @@ ethtwin/
 │   ├── payments.ts                 # Stealth USDC on Base Sepolia
 │   ├── stealth.ts                  # EIP-5564 + cosmic seed injection
 │   ├── cosmic.ts                   # Orbitport client with rolling cache + mock fallback
-│   ├── x402-client.ts              # @x402/fetch (v2) wrapper + paidFetch()
-│   ├── twin-tools.ts               # AI SDK tool surface + buildTwinTools({ fromEns }) factory
+│   ├── x402-client.ts              # @x402/fetch (v2) wrapper + paidFetch() / paidFetchWithReceipt()
+│   ├── twin-tools.ts               # AI SDK tool surface + buildTwinTools({ fromEns, fromAddress }) factory
+│   ├── voice-tools.ts              # Reduced tool subset exposed to OpenAI Realtime via WebRTC
 │   ├── tx-decoder.ts               # Calldata → plain English (LLM-augmented)
 │   ├── wallet-summary.ts           # Address summary helper
 │   ├── twin-profile.ts             # Default profile records (Pollinations.ai avatar)
 │   ├── history.ts                  # Client-side history (localStorage + sync)
 │   ├── history-server.ts           # File-based server history per ENS
+│   ├── use-ens-name.ts             # React hook: reverse-resolve any 0x address (cached)
+│   ├── use-ens-avatar.ts           # React hook: ENS avatar fallback (Pollinations placeholder)
+│   ├── use-notifications.ts        # React hook: 30s poll → unified messages + wallet activity feed
 │   ├── viem.ts                     # viem clients (Sepolia, Base Sepolia, dev wallet)
 │   ├── privy-server.ts             # @privy-io/node token verification
 │   ├── prompts.ts                  # System prompts (hydrated from ENS records)

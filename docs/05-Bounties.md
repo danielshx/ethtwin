@@ -4,6 +4,17 @@
 >
 > **Wichtigste Verifikation:** ENSIP-25 ist offizieller Standard für AI Agent Identity in ENS, ERC-8004 IdentityRegistry ist live auf Mainnet (seit 29. Jan 2026) + Base Sepolia. Wir implementieren beides = doppelter ENS-Bounty-Hit.
 
+## 🎭 Pitch-Frame (locked 2026-05-09)
+
+**Tagline:** *"Crypto for everyone — even my grandma."*
+
+Die Bounties werden nicht in einer Feature-Tour eingelöst, sondern in **einem Reveal-Beat nach der Maria/Tom-Demo**:
+- Maria (67) sendet Tom 100 USDC per Voice (60 s, ein Touch)
+- Cut. Schwarz. Bullets erscheinen: kein Seed, kein Hex, Stealth by Default, cosmic randomness, ENSIP-25-verified agent-to-agent x402
+- Closing: *"Crypto isn't hard. It's just been built for engineers. Until now."*
+
+Das macht jeden Bounty zur natürlichen Konsequenz der Story. Volles Skript: `docs/06-Demo-Skript.md`. Slides: `docs/14-Pitch-Slides.md`.
+
 ## 📊 Live-Demo-Status (Stand 2026-05-09)
 
 | # | Bounty | Status | Was fehlt für volle Punkte |
@@ -13,7 +24,7 @@
 | 3 | **ENS Creative** | 🟢 **Live** | nichts — `stealth-meta-address` + ENS-Messenger sind on-chain demonstrable |
 | 4 | Apify x402 | 🟡 Mock grün | live Apify-Tx ($1+ USDC, mainnet wallet funded) |
 | 5 | SpaceComputer cTRNG | 🟡 Wrapper grün | `ORBITPORT_API_KEY` für live Attestation |
-| 6 | Best UX Flow | 🟢 **Live (minus Voice)** | Voice gedroppt per Drop-Decision; Rest sitzt |
+| 6 | Best UX Flow | 🟢 **Live inkl. Voice** | OpenAI Realtime über WebRTC im Voice-Tab — Listening/Thinking/Speaking-States, Function-Calls via `/api/twin-tool`. Wenn `OPENAI_API_KEY` fehlt → graceful 503 + Switch-to-Chat-Card. |
 | 7 | **Best Privacy by Design** | 🟢 **Live** | nichts — Stealth-Send läuft end-to-end |
 
 **Solid-Cash-Floor:** ENS×2 + Privacy + UX = ~$3-4k einigermaßen sicher.
@@ -37,11 +48,15 @@ Project must classify as Agentic Venture suitable to launch on Umia. Must incorp
 | Token-Story | $TWIN governance + service credits + premium-tier-unlock |
 | Crowdfunding-Palatable | Klar definiertes Produkt, demoable, zugänglicher Markt |
 
-### Pitch-Slide für Umia
-- **Slide 1:** "EthTwin — AI co-pilot for on-chain life"
-- **Slide 2:** Demo (live)
-- **Slide 3:** Revenue: Subscription + x402 fees + B2B
-- **Slide 4:** Token: $TWIN for credits, governance, premium tier
+### Pitch-Slide für Umia (Maria/Tom-Edition)
+- **Slide 1:** "Crypto for everyone — even my grandma" + Maria-Avatar
+- **Slide 2:** Live-Demo (Stub-Cover)
+- **Slide 3:** Reveal — "What Maria didn't see" (Bullets: kein Seed, kein Hex, Stealth, cTRNG, ENSIP-25 + x402)
+- **Slide 4:** ENS as identity layer (optional Q&A-Backup)
+- **Slide 5:** Umia — "the next 1 billion users", drei Revenue-Säulen + $TWIN Token-Distribution
+
+### Pitch-Sentence (Umia-spezifisch)
+> *"EthTwin ist nicht die Wallet für die nächsten 100 Millionen Power-User. Es ist die Wallet für die nächsten 1 Milliarde — die, die Krypto bisher als zu kompliziert abgelehnt haben. Maria ist der Beweis dass das Tooling jetzt da ist."*
 
 ### Mentor: Francesco Mosterts (`@fra_mosterts`)
 
@@ -114,8 +129,8 @@ if (isVerified) showBadge("✓ ENSIP-25 Verified Agent")
 
 **ENS-Removal-Test: 6 von 6 Demo-Momenten brechen ohne ENS. ENSIP-25 macht uns zum Showcase.**
 
-### Pitch-Sentence
-> *"Twin lebt nicht 'irgendwo deployed' — Twin IST ENS. Persönlichkeit, Capabilities, Stealth-Schlüssel, Reputation — alles in Text Records von daniel.ethtwin.eth. Plus: wir implementieren ENSIP-25 mit ERC-8004 IdentityRegistry für verifizierbare Agent-Identity. Wenn du ENS killst, killst du Twin."*
+### Pitch-Sentence (Maria-Frame)
+> *"Maria sieht keine Hex-Adressen, sie sieht Tom. Hinter den Kulissen verifyt ihr Twin `tom.ethtwin.eth` über ENSIP-25 + ERC-8004 IdentityRegistry — den offiziellen Standard. Wenn du ENS killst, killst du Maria's Krypto-Erfahrung."*
 
 ### Mentor: workemon (`@workemon`)
 
@@ -149,8 +164,8 @@ await setEnsText({
 | Verifiable credentials via Text Records | ✅ ENSIP-25 doppelt |
 | Privacy primitives | ✅ Stealth + cosmic seed |
 
-### Pitch-Angle
-> *"Wir haben gezeigt: ENS kann mehr als nur address lookup. Es kann Privacy-Infrastruktur sein. Stealth-Meta-Addresses leben in ENS Text Records — jeder Sender kann privat zahlen, ohne jemals deine Hauptadresse zu kennen. Plus: ein kompletter Messaging-Layer auf ENS Sub-Subnames. Zwei neue Patterns die wir hier vorschlagen."*
+### Pitch-Angle (Maria-Frame)
+> *"Marias 100 USDC gingen an Toms `stealth-meta-address` Text Record — direkt aus ENS. Kein extra Registry, kein extra Onboarding für Tom. Genau das ist 'creative use of ENS': Privacy-Infrastruktur als Text-Record-Pattern. Wir proposen das als neuen ENSIP."*
 
 ---
 
@@ -168,11 +183,11 @@ await setEnsText({
 - **Apify MCP server supports x402** — agents pay via x402, no API token needed
 - Use `@x402/fetch` v2.x (NOT `x402-fetch` v1.x)
 
-### Wie wir hitten
+### Wie wir hitten (Maria-Frame)
 
-- **Use Case 1:** Twin macht autonom x402-Tx an Apify ($1+ USDC) für Real-Time-Daten
-- **Use Case 2 (Killer):** **Twin pays `analyst.eth` who pays Apify** — agent-to-agent x402 chaining
-- **Live Demo:** x402-Tx auf Base, Block-Explorer-Tab vorbereitet
+- **Demo-Beat 1 (Verify):** Maria fragt "is this safe?" → ihr Twin bezahlt $1 USDC an `analyst.ethtwin.eth` über x402 für eine Verifikations-Antwort. Live, on-chain, sichtbar als $1-USDC-Pill.
+- **Demo-Beat 2 (Daten):** Twin nutzt Apify x402 (Pay-Per-Event Actor) für Real-Time-Recipient-Reputation-Lookup wenn Apify-Endpoint live ist.
+- **Story:** Maria sieht den Preis nie. Twin entscheidet — das ist agent-driven payment, nicht user-driven. x402 Mikro-Markt in Action.
 
 ### Demo-Adjustment
 - ❌ Old script: "Twin pays $0.20 to Apify"
@@ -197,8 +212,8 @@ await setEnsText({
 - **Live Attestation:** Satellit-Hash anklickbar, on-chain verifiable
 - **No Hardware Required:** Track 3 ist API-only
 
-### Pitch-Differentiator
-> *"VRF gibt dir pseudorandom mit einem Operator als Trust-Anchor. cTRNG gibt dir physikalische Entropie aus dem Weltall. Für Privacy ist das relevant — niemand kann unsere Stealth Addresses vorhersagen. Nicht mal wir."*
+### Pitch-Differentiator (Maria-Frame)
+> *"Marias Stealth-Adresse wurde mit echter cTRNG-Entropie aus einem Orbitport-Satelliten geseedet — verifizierbar via Attestation. VRF gibt dir pseudorandom mit einem Operator als Trust-Anchor. cTRNG gibt dir physikalische Entropie aus dem Weltall. Für Privacy by Default ist das relevant — niemand kann Marias Stealth-Adressen vorhersagen. Nicht mal wir."*
 
 ### Mentor: Pedro Sousa (`@zkpedro`)
 
@@ -206,7 +221,7 @@ await setEnsText({
 
 ## 6. ETHPrague — Best UX Flow
 
-> **Status: 🟢 LIVE (minus Voice).** Voice gedroppt per Drop-Decision Punkt 1 — Chat-only Demo locked-in. Alles andere live auf https://ethtwin-woad.vercel.app.
+> **Status: 🟢 LIVE.** Voice wurde wieder eingebaut (Realtime über WebRTC mit Function-Calls), Chat bleibt der zuverlässige Fallback (`docs/13-Chat-Only-Demo-Runbook.md`). Alles andere live auf https://ethtwin-woad.vercel.app.
 
 | Ihre Checkliste | Status | Wie wir's machen |
 |---|---|---|
@@ -215,7 +230,7 @@ await setEnsText({
 | Gas/Chain Abstraction | ✅ | Privy Smart Wallet on Base Sepolia, dev-wallet relays user txs gasless |
 | ENS over hex | ✅ | `withEnsName(addr)` + `useEnsName` hook + `AvatarImage` fallback to short 0x… everywhere |
 | Fear of Loss | 🟡 | Tx approval modal shows the action; no explicit "risk warning" UI yet |
-| Global Accessibility | 🔴 | Voice gedroppt; Plain English layer in place |
+| Global Accessibility | 🟢 | Voice-Tab live (`components/voice-twin.tsx`) + Chat-only Runbook als Fallback |
 
 ---
 
@@ -228,7 +243,7 @@ await setEnsText({
 - 🟡 **Cosmic Randomness als Trust-Anchor** — wired through `lib/cosmic.ts`, currently mock fallback in deploy until `ORBITPORT_API_KEY` is set
 - ✅ **Zero Metadata Leak on receiver side** — every send goes to a fresh stealth address derived from the recipient's `stealth-meta-address` text record; no on-chain link between sender and recipient
 
-> *"Privacy ist nicht Feature in EthTwin. Privacy IST das Default."*
+> *"Maria weiß nicht mal was 'stealth' heißt — und genau deshalb ist sie geschützt. Privacy ist nicht Feature in EthTwin. Privacy IST das Default."*
 
 ---
 

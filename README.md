@@ -1,8 +1,11 @@
 # 🚀 EthTwin
 
-> AI co-pilot for your on-chain life. Voice-first. Privacy by default. Lives in ENS.
+> **Crypto for everyone — even my grandma.**
+> The first crypto interface built for humans, not engineers. Voice-first. Privacy by default. Lives in ENS.
 
 Built at **ETHPrague 2026** in 48 hours.
+
+Demo flow: Maria (67) sends 100 USDC to her grandson Tom by voice. The reveal at the end: every advanced primitive (stealth addresses, satellite randomness, ENSIP-25 agent verification, x402 micropayments) ran silently under the hood. See [docs/06-Demo-Skript.md](./docs/06-Demo-Skript.md).
 
 ## What it does
 
@@ -45,12 +48,12 @@ pnpm test:claude              # Claude Sonnet 4.6 reachability
 ```
 
 What ships with the scaffold:
-- API: `/api/{twin,voice,twin-tool,x402,ens,stealth,stealth/send,cosmic-seed,onboarding,messages,history,wallet-summary,transfer,check-username}` and `/api/agents{,/analyst}` + `/api/agent/[ens]`
-- `lib/{viem,ens,ensip25,namestone,cosmic,stealth,x402-client,twin-tools,agents,messages,transfers,payments,tx-decoder,wallet-summary,history,history-server,twin-profile,privy-server,prompts,abis,api-guard,utils}.ts`
-- **Twin tool surface (AI SDK v6, factory-built)**: `getWalletSummary`, `requestDataViaX402`, `decodeTransaction`, `sendToken`, `getBalance`, `sendStealthUsdc`, `generatePrivatePaymentAddress`, `findAgents`, `hireAgent`, `sendMessage`
-- 5-tab signed-in UI: **Twin Chat / ENS Messenger / Send Tokens / Stealth Send / History**
-- `components/{cosmic-orb,twin-chat,onboarding-flow,messenger,token-transfer,stealth-send,history,agent-profile,tx-approval-modal}.tsx`
-- Provisioning scripts: `pnpm ens:{provision,provision-analyst,stealth-provision,read,set-text,check-parent}`, `pnpm send:{token,stealth-usdc}`, `pnpm test:{chain,claude,decoder,x402,x402-mock,privy-key}`
+- API: `/api/{twin,voice,twin-tool,x402,ens,stealth,stealth/send,cosmic-seed,onboarding,profile,messages,history,wallet-history,wallet-summary,transfer,check-username}` and `/api/agents{,/analyst}` + `/api/agent/[ens]`
+- `lib/{viem,ens,ensip25,namestone,cosmic,stealth,x402-client,twin-tools,voice-tools,agents,messages,transfers,payments,tx-decoder,wallet-summary,history,history-server,twin-profile,privy-server,prompts,abis,api-guard,utils,use-ens-name,use-ens-avatar,use-notifications}.ts`
+- **Twin tool surface (AI SDK v6, factory-built)** — 14 tools: `getWalletSummary`, `requestDataViaX402`, `decodeTransaction`, `checkTransactionStatus`, `sendToken`, `getBalance`, `sendStealthUsdc`, `generatePrivatePaymentAddress`, `findAgents`, plus context-aware `hireAgent`, `inspectMyWallet`, `readMyEnsRecords`, `readMyMessages`, `listAgentDirectory`, `sendMessage` (via `buildTwinTools({ fromEns, fromAddress })`)
+- 6-tab signed-in UI: **Twin Chat / Voice / ENS Messenger / Send Tokens / Stealth Send / History** plus a pinned **Notification Panel** (bottom-right) polling `/api/messages` + `/api/wallet-history` every 30 s
+- `components/{cosmic-orb,twin-chat,voice-twin,onboarding-flow,messenger,token-transfer,stealth-send,history,agent-profile,notification-panel,tx-approval-modal,x402-flow}.tsx`
+- Provisioning scripts: `pnpm ens:{provision,provision-analyst,stealth-provision,read,set-text,check-parent}`, `pnpm send:{token,stealth-usdc}`, `pnpm test:{chain,claude,decoder,x402,x402-mock,x402-apify,privy-key}`, `pnpm wallet:{generate,rotate}`, `pnpm twins:backfill`
 
 Set `NEXT_PUBLIC_PRIVY_APP_ID` in `.env.local` to unlock the Privy login flow — without it the homepage renders a friendly missing-env screen instead of the auth UI.
 
@@ -70,6 +73,10 @@ See [docs/09-Setup.md](./docs/09-Setup.md) for the full setup guide, [docs/03-Ba
 - [10-Agents.md](./docs/10-Agents.md) — Claude Code sub-agents
 - [11-Tech-Verifikation.md](./docs/11-Tech-Verifikation.md) — Verified deps + known risks
 - [12-Code-Beispiele.md](./docs/12-Code-Beispiele.md) — Copy-paste-ready code snippets
+- [13-Chat-Only-Demo-Runbook.md](./docs/13-Chat-Only-Demo-Runbook.md) — Fallback demo flow if voice/WebRTC drops
+- [14-Pitch-Slides.md](./docs/14-Pitch-Slides.md) — 4 pitch slides w/ speaker notes
+- [15-Edge-Case-QnA.md](./docs/15-Edge-Case-QnA.md) — Anticipated judge questions + answers
+- [16-Recording-Script.md](./docs/16-Recording-Script.md) — Backup demo video shot list
 
 ## Verified key facts
 

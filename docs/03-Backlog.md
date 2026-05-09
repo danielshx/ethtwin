@@ -10,23 +10,26 @@
 
 ## ✅ Infra-Status (2026-05-09, fortlaufend)
 
-Onboarding ist live, Stealth-Send-Hero steht, Agent-Discovery + on-chain Messaging funktionieren end-to-end.
+Onboarding ist live, Stealth-Send-Hero steht, Voice ist zurück (T1-12), Agent-Discovery + on-chain Messaging + Wallet-History + Live-Notifications funktionieren end-to-end.
 
 - [x] Next.js 15 + Turbopack + Tailwind 4 + TS strict scaffold (`pnpm dev`, `pnpm build`, `pnpm typecheck` alle clean)
 - [x] Alle verifizierten Deps installed (siehe `docs/11-Tech-Verifikation.md`) inkl. `permissionless`, `@x402/core`
-- [x] `lib/`: `viem`, `ens`, `ensip25`, `namestone` (ungenutzt — Pfad gewechselt), `cosmic` (Cache + Mock-Fallback), `stealth` (Beta-SDK in try/catch), `x402-client`, `twin-tools` (10 Tools inkl. `findAgents`, `hireAgent`, `sendMessage`), `agents` (on-chain directory), `messages` (ENS-Subname-Messenger), `transfers`, `payments` (Stealth-USDC), `wallet-summary`, `tx-decoder`, `history` + `history-server` (hybrid client/server store), `twin-profile` (Pollinations-Avatar), `privy-server`, `prompts`, `utils`
-- [x] API-Routen: `/api/{twin,voice,twin-tool,x402,ens,stealth,stealth/send,cosmic-seed,onboarding,agents,agents/analyst,agent/[ens],messages,transfer,wallet-summary,history,check-username}/route.ts`
-- [x] App-Shell: `layout.tsx`, `providers.tsx` (Privy + SmartWallets, Base Sepolia), `page.tsx` (auth-gated state machine mit 5 Tabs: Chat / Messenger / Send Tokens / **Stealth Send** / History), `globals.css`
-- [x] Smoke-Test-Scripts: `pnpm test:{chain,claude,decoder,x402,x402-mock,privy-key}`, `pnpm ens:{check-parent,provision,provision-analyst,read,set-text,stealth-provision}`, `pnpm send:{token,stealth-usdc}`, `pnpm wallet:{generate,rotate}`, `pnpm twins:backfill`
+- [x] `lib/`: `viem`, `ens`, `ensip25`, `namestone` (ungenutzt — Pfad gewechselt), `cosmic` (Cache + Mock-Fallback), `stealth` (Beta-SDK in try/catch), `x402-client`, `twin-tools` (**14 Tools** — siehe T1-08), `voice-tools` (Realtime-spezifisches Tool-Bundle), `agents` (on-chain directory), `messages` (ENS-Subname-Messenger), `transfers`, `payments` (Stealth-USDC), `wallet-summary`, `tx-decoder`, `history` + `history-server` (hybrid client/server store), `twin-profile` (Pollinations-Avatar), `privy-server`, `prompts`, `abis`, `api-guard`, `utils`, plus React-Hooks `use-ens-name`, `use-ens-avatar`, `use-notifications`
+- [x] API-Routen: `/api/{twin,voice,twin-tool,x402,ens,stealth,stealth/send,cosmic-seed,onboarding,profile,agents,agents/analyst,agent/[ens],messages,transfer,wallet-summary,wallet-history,history,check-username}/route.ts`
+- [x] App-Shell: `layout.tsx`, `providers.tsx` (Privy + SmartWallets, Base Sepolia), `page.tsx` (auth-gated state machine mit **6 Tabs**: Chat / **Voice** / Messenger / Send Tokens / **Stealth Send** / History) plus globaler `NotificationPanel` (bottom-right, 30s-Polling auf `/api/messages` + `/api/wallet-history`), `globals.css`
+- [x] Smoke-Test-Scripts: `pnpm test:{chain,claude,decoder,x402,x402-mock,x402-apify,privy-key}`, `pnpm ens:{check-parent,provision,provision-analyst,read,set-text,stealth-provision}`, `pnpm send:{token,stealth-usdc}`, `pnpm wallet:{generate,rotate}`, `pnpm twins:backfill`
 - [x] shadcn/ui Komponenten (button, card, input, dialog, badge, sonner, scroll-area, separator, label)
 - [x] **Frontend-Komponenten:**
   - `components/cosmic-orb.tsx` — Framer-Motion-Hero + Phasen
   - `components/twin-chat.tsx` — AI-SDK-v6 useChat + ENSIP-25-Verified-Badge + sendMessage-Tool-Rendering + Profile-Dialog
+  - `components/voice-twin.tsx` — OpenAI Realtime über WebRTC, Listening / Thinking / Speaking Orb-States, Tool-Calls via `lib/voice-tools.ts` → `/api/twin-tool`, graceful 503-Fallback auf Chat
   - `components/messenger.tsx` — On-chain ENS messenger (Subname-pro-Message)
   - `components/token-transfer.tsx` — Multichain ETH/USDC Send mit hard caps
   - `components/stealth-send.tsx` — **Hero-Tab**: CosmicOrb-Animation während EIP-5564 USDC-Stealth-Send
-  - `components/history.tsx` — Hybrid localStorage + server-side history pro ENS
-  - `components/agent-profile.tsx` — Avatar + Persona + Capabilities + Stealth-Meta-Preview Dialog
+  - `components/history.tsx` — Hybrid localStorage + server-side history pro ENS, plus Wallet-Activity-Pull über `/api/wallet-history` (Alchemy `alchemy_getAssetTransfers`, Etherscan-Fallback)
+  - `components/agent-profile.tsx` — Avatar + Persona + Capabilities + Stealth-Meta-Preview Dialog inkl. Editor (Avatar/Description) der via `/api/profile` Multicall-Updates schickt
+  - `components/notification-panel.tsx` — pinned bottom-right Activity-Feed über `useNotifications`, Unread-Badge, Toast-Spawn auf neue Items
+  - `components/x402-flow.tsx` — Twin → analyst Flow-Animation während `hireAgent`
   - `components/onboarding-flow.tsx` — 4-Step Wizard (intro → username → cosmic → done)
   - `components/tx-approval-modal.tsx` — Plain-English-Modal (used opportunistically)
 - [x] **Onboarding live:** Privy → ENS-Subname auf Sepolia → addr-Record + 7 Twin Text Records + ENSIP-25 + stealth-meta-address + Eintrag in `agents.directory` (alles via dev-wallet, der `ethtwin.eth` Parent-Subname besitzt)
@@ -61,15 +64,16 @@ Diese Spikes klären Annahmen bevor wir bauen — falls ein Spike fehlschlägt, 
 ### Twin Agent
 - [x] **T1-06** `/api/twin/route.ts` mit Vercel AI SDK v6 + Claude Sonnet 4.6 (`claude-sonnet-4-6`) — Stub-Code steht, braucht ANTHROPIC_API_KEY für Live
 - [x] **T1-07** System Prompt aus ENS Text Records hydriert (`lib/prompts.ts` + `readTwinRecords`)
-- [x] **T1-08** Tools verfügbar (AI SDK v6 `inputSchema`):
-  - `getWalletSummary`, `requestDataViaX402`, `decodeTransaction`, `sendToken`, `getBalance`, `sendStealthUsdc`, `generatePrivatePaymentAddress`, `findAgents`, `hireAgent`, **`sendMessage`** (über `buildTwinTools({ fromEns })` Factory)
+- [x] **T1-08** Tools verfügbar (AI SDK v6 `inputSchema`) — **15 Tools über `buildTwinTools({ fromEns, fromAddress })` Factory** (`lib/twin-tools.ts`):
+  - **Statisch (9):** `getWalletSummary`, `requestDataViaX402`, `decodeTransaction`, `checkTransactionStatus`, `sendToken`, `getBalance`, `sendStealthUsdc`, `generatePrivatePaymentAddress`, `findAgents`
+  - **Context-aware (6):** `hireAgent`, `inspectMyWallet`, `readMyEnsRecords`, `readMyMessages`, `listAgentDirectory`, `sendMessage` — bekommen `fromEns`/`fromAddress` aus dem Twin's Session-Identity, sodass parameter-lose Fragen wie "what's in my wallet?" sofort funktionieren
 - [x] **T1-09** Streaming-Responses ans Frontend (`useChat` + `DefaultChatTransport` in `components/twin-chat.tsx`)
 - [x] **T1-10** Multi-Turn Konversation funktioniert (Context bleibt) — `useChat` standard, ungeprüft live
 
 ### Voice (oder Chat-Fallback)
 - [x] **T1-11** Chat-Interface 100% funktional (immer als Fallback) — `components/twin-chat.tsx` ist primary path; `components/voice-twin.tsx` zeigt explizites "Voice unavailable — using chat" Card mit Switch-Button wenn `/api/voice` 503 zurückgibt.
 - [x] **T1-12** Voice-Mode (OpenAI Realtime mit `gpt-4o-realtime-preview`) — neuer **Voice-Tab** (#7 in `app/page.tsx`), `components/voice-twin.tsx` öffnet `RTCPeerConnection` zu `https://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview` über Mic + Datenkanal, sendet `session.update` mit Tools aus `lib/voice-tools.ts`, executes Function-Calls via `/api/twin-tool` und re-injects results als `function_call_output`. Renders Listening / Thinking / Speaking Orb-States + inline transcripts.
-- [x] **T1-12b** Ephemeral Key Minting Endpoint (`/api/voice/route.ts`) — POST mintet `client_secret` mit hydriertem System-Prompt aus ENS Records, optional Privy-Auth-Verify, returned `{ client_secret, model, expires_at }`. Bei fehlendem `OPENAI_API_KEY` 503 mit `{ error: "voice-unavailable" }` für graceful degrade. Frontend renewt 10s vor Ablauf.
+- [x] **T1-12b** Ephemeral Key Minting Endpoint (`/api/voice/route.ts`) — POST mintet `client_secret` mit hydriertem System-Prompt aus ENS Records, optional Privy-Auth-Verify, returned `{ client_secret, model, expires_at }`. Bei fehlendem `OPENAI_API_KEY` 503 mit `{ error: "voice-unavailable" }` für graceful degrade. Frontend renewt 10s vor Ablauf. Voice ist auf Englisch gepinnt: Server-Instructions enthalten ein `# Language`-Block ("always speak and respond in English") und Whisper-Transcription ist mit `language: "en"` konfiguriert (server + client `session.update`).
 
 ### Tx-Approval-Flow
 - [x] **T1-13** Tx-Approval-Modal mit Plain English Summary (`components/tx-approval-modal.tsx`) — Calldata-Drawer + Explorer-Link inklusive
@@ -84,7 +88,32 @@ Diese Spikes klären Annahmen bevor wir bauen — falls ein Spike fehlschlägt, 
 ### Demo-Polish
 - [x] **T1-19** Onboarding-Animation: 4-Step Wizard mit StepIndicator + CosmicOrb-Hero, smooth Transitions via Framer Motion
 - [x] **T1-20** Twin-Chat-UI mit gestreamten Responses, Thinking-Dots, Tool-Call-Pills, Empty-State-Prompt-Vorschläge
-- [x] **T1-21** Block-Explorer-Tab vorbereitet für Demo — neuer 6. Tab `Explorer` (`components/explorer.tsx`) zeigt inline-iframe von BaseScan-Sepolia / Sepolia-Etherscan, scoped auf die Wallet-Adresse, mit Toggle zwischen beiden Chains; fällt auf Styled-Card mit "Open in BaseScan ↗" + letzte 3 Tx-Hashes aus `useHistory` zurück wenn iframe blocked (X-Frame-Options-Timeout 4s).
+- [x] **T1-21** ~~Block-Explorer-Tab~~ — entfernt (Commit `9ee3af1`, 2026-05-09). Stattdessen liefert der **History-Tab** (`components/history.tsx`) jetzt einen vollständigen Wallet-Activity-Feed über `/api/wallet-history` (Alchemy `alchemy_getAssetTransfers`, Etherscan-Fallback) mit Block-Explorer-Links pro Tx — selber Demo-Wert ohne iframe-Risiko.
+
+### 🎭 Demo-Pivot — Maria/Tom Story (added 2026-05-09)
+
+> **Pitch-Frame:** *"Crypto for everyone — even my grandma."* Hauptszene: Maria (67, Stuttgart) sendet ihrem Enkel Tom 100 USDC per Voice. Tech-Tiefen (Stealth, cTRNG, ENSIP-25, x402) kommen erst im Reveal. Volles Skript in `docs/06-Demo-Skript.md`. Diese Tasks sind **must-have für die Demo**, blockieren aber nicht das Bounty-Submission-Code-Set (alles drumherum bleibt im Repo).
+
+- [ ] **T1-22** `pnpm twins:seed-demo` Script: provisioniert `maria.ethtwin.eth` + `tom.ethtwin.eth` mit Pollinations-Avataren, deutschsprachigen Persona-Records (Maria) / English (Tom), addr-Records → vorhandene Demo-Wallets, ENSIP-25-Records, beide in `agents.directory` eingetragen. Reuses `lib/twin-profile.ts` + Onboarding-Backend-Pfad (`app/api/onboarding/route.ts`) — kein neuer Code-Pfad nötig.
+- [ ] **T1-23** **System-Prompt-Patch** in `lib/prompts.ts`: Twin nutzt **standardmäßig** `sendStealthUsdc` (nicht `sendToken`), resolved Recipients durch ENS bevor er sendet, zeigt Plain-English-Confirm-Card bevor Tx broadcasted wird. Few-Shot-Beispiele aus der Maria-Story einbauen ("Send Tom 100 dollars" → resolve `tom.ethtwin.eth` → confirm → stealth send).
+- [ ] **T1-24** **Verify-Auto-Trigger** im System-Prompt: Phrasen wie "is this safe?" / "scam?" / "is this really X?" triggern automatisch `findAgents` + `hireAgent('analyst.ethtwin.eth')`. Few-Shot-Beispiel aus dem Demo-Skript (Beat 1:00) einbauen.
+- [ ] **T1-25** **Demo-Mode-Toggle** in `app/page.tsx`: env-flag `NEXT_PUBLIC_DEMO_MODE=1` versteckt Tabs Messenger / Send Tokens / Stealth Send / History und lässt nur **Voice (default) + Chat (fallback)** sichtbar. Backup-Tabs bleiben routebar via `?showAllTabs=1` für Devfolio-Walkthrough. Code bleibt 100% im Repo.
+- [ ] **T1-26** **Cosmic-Mikro-Pulse-Overlay** in `components/voice-twin.tsx`: 1.5 s Framer-Motion-Pulse während ein `sendStealthUsdc`-Tool-Call läuft. ~30 LOC, reuses `components/cosmic-orb.tsx` als kompaktes Inline-Element. Eigener Stealth-Send-Tab tritt im Pitch zurück, bleibt aber sichtbar im non-Demo-Mode.
+- [ ] **T1-27** **Tom-Receiver-View-Setup**: kurzes Markdown-Runbook + zweites Browser-Profil pre-konfiguriert (auf 2. Laptop oder Browser-Window), `useNotifications`-Polling sichtbar. Im Pitch als Cut auf "Toms Phone" gezeigt.
+
+### 🎨 10/10 Polish-Sprint (added 2026-05-09)
+
+> Demo wirkt aktuell zu techie — diese Items lassen das Frontend so aussehen wie ein fertiges Consumer-Produkt für Maria, nicht wie ein Hackathon-Prototyp.
+
+- [ ] **T1-28** **Maria-Mode UI** (2-3h): warmer Farb-Override (Cream/Coral/Sage), 80px Buttons, 24-28pt Text, ein-Button-pro-Screen-Layout, jedes Krypto-Wort durch Plain-English ersetzt (`Smart Wallet → Your Twin`, `USDC → Dollars`, `Sign → Confirm`, `Tx Hash → Receipt`, `Stealth → unsichtbar`). Toggle via `NEXT_PUBLIC_DEMO_MODE=1` oder `?demoMode=1`. Dev-View bleibt für Devfolio-Walkthrough erhalten.
+- [ ] **T1-29** **Receipt-as-Postcard**: nach Send zeigt eine "Postkarten"-Card großer Recipient-Avatar + amount in fiat + "just now"-Timestamp + tiny "show details"-Expand der den Tech-Layer zeigt (Hash, Stealth-Adresse, Block-Explorer-Link). Visuelle Brücke zum Reveal-Beat.
+- [ ] **T1-30** **Tom antwortet automatisch ("thanks oma! 💜")**: nach Marias Send schickt Toms Twin server-seitig eine ENS-Messenger-Message zurück. Reuses `lib/messages.ts`. Maria's Phone vibriert/notification → emotionaler Payoff. Zusätzlicher Boost für ENS-Most-Creative.
+- [ ] **T1-31** **Twin-Avatar-Persönlichkeit**: subtile breathe-Loop (1.5s) immer; Listening = warmer Pulse; Thinking = zarter Wirbel; Speaking = Mund-Region-Bewegung. Framer Motion auf Pollinations-Avatar in `voice-twin.tsx` + `twin-chat.tsx`.
+- [ ] **T1-32** **Sound-Design (3 Signature-Sounds)**: `listening.mp3` (warm hum, fade-in), `done.mp3` (kurzer Glocken-Ping), `receive.mp3` (iMessage-style ding für Toms Notification). Source: freesound.org / pixabay. Inline-Play via `new Audio(...)` an Tool-Call-Events gebunden.
+- [ ] **T1-33** **X-ray Reveal-Layer**: beim Reveal-Cut wird Maria's Receipt-Card visuell weggepeelt — gleiche Position, gleiche Größe, aber jetzt sichtbar: Hash, Stealth-Adresse, ENSIP-25-Verify-Pfad, cTRNG-Attestation, x402-Receipt. Single Framer-Motion-Layer-Wipe in einem neuen `components/reveal-overlay.tsx`.
+- [ ] **T1-34** **Side-by-Side-Contrast-Slide**: Slide oder UI-Sektion die typisches Metamask-Approve-Popup (`0xa9059cbb…`, "Estimated gas: 0.00043 ETH") neben Marias Card (Toms Avatar + "Send 100 dollars to Tom") zeigt. Statisch in `docs/14-Pitch-Slides.md` + optional als `components/contrast-card.tsx` für Live-Reveal.
+- [ ] **T1-35** **Hero-Image für README + Devfolio**: einzelne Visualisierung — Marias Phone-Frame, Toms Avatar, Cosmic-Pulse, "100 USDC". Speichern als `public/hero.png`, einbinden in README + Devfolio-Submission.
+- [ ] **T1-36** **Twin spricht Deutsch (optional Toggle)**: Voice-Tab `lang`-Param `de` setzt OpenAI Realtime Voice + System-Prompt auf Deutsch (`"Du bist Maria's Twin. Antworte auf Deutsch."`). Macht die Stuttgart-67-Persona glaubwürdig. Default bleibt Englisch.
 
 ---
 
@@ -168,12 +197,14 @@ Stunde 48 — SUBMITTED         [ ] Done
 
 ## Bounty-Hit-Tracker (Submission-Vorbereitung)
 
+> **Pitch-Frame seit 2026-05-09:** Maria-Story als Lead. Bounties werden im Reveal-Beat eingelöst (siehe `docs/06-Demo-Skript.md` + `docs/14-Pitch-Slides.md`).
+
 Vor Devfolio-Submission durch:
 
-- [ ] Umia: Pitch-Slide für Token + Revenue ready
-- [ ] ENS for AI Agents: ENSIP-25 implementation in Demo + Description
-- [ ] ENS Most Creative: stealth-meta-address Text Record + EIP-5564 demo
-- [ ] Apify x402: live $1+ USDC tx in demo, blockexplorer link
-- [ ] SpaceComputer Track 3: cTRNG live attestation in demo
-- [ ] Best UX Flow: Plain English + Passkey + ENS reverse resolution
-- [ ] Best Privacy by Design: Stealth-by-default + cosmic seed
+- [ ] Umia: Maria-Story-Slide + "first crypto interface for the next 1B users" Revenue-Frame
+- [ ] ENS for AI Agents: ENSIP-25 verification von `tom.ethtwin.eth` + Twin-zu-analyst-Hire im Demo-Reveal
+- [ ] ENS Most Creative: `stealth-meta-address` Text Record + Send-an-tom-Demo (silent stealth)
+- [ ] Apify x402: live $1+ USDC Tx wenn Wallet gefundet — sonst pre-signed Receipt im Reveal
+- [ ] SpaceComputer Track 3: cTRNG-Attestation-Hash im Reveal sichtbar (Mikro-Pulse während Send)
+- [ ] Best UX Flow: Maria-Story IST der Hit — Plain English + Passkey + ENS reverse resolution + Voice in einem Beat
+- [ ] Best Privacy by Design: Stealth-by-default — Maria weiß nicht mal dass sie es nutzt
