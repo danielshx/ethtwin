@@ -1,6 +1,6 @@
 import { z } from "zod"
 import { verifyAuthToken } from "@/lib/privy-server"
-import { chatSubnameFor, readChatThread, readInbox, sendMessage } from "@/lib/messages"
+import { readChatThread, readInbox, sendMessage } from "@/lib/messages"
 import { jsonError, parseJsonBody } from "@/lib/api-guard"
 
 export const runtime = "nodejs"
@@ -27,8 +27,10 @@ export async function GET(req: Request) {
 
   if (between && and) {
     try {
-      const chatEns = chatSubnameFor(between, and)
-      const messages = await readChatThread(chatEns, between)
+      const messages = await readChatThread(between, and)
+      // chatEns surfaced to the client is the reader's own copy
+      // (chat-<peer>.<me>.ethtwin.eth) — useful for links to the ENS app.
+      const chatEns = messages[0]?.chatEns ?? null
       return Response.json({ ok: true, between, and, chatEns, messages })
     } catch (error) {
       return jsonError(

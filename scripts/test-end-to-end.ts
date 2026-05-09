@@ -33,7 +33,7 @@ import {
   verifyRecoveryCode,
 } from "../lib/recovery"
 import {
-  chatSubnameFor,
+  chatSubnamesFor,
   readChatThread,
   readInbox,
   sendMessage,
@@ -222,7 +222,12 @@ async function main() {
     toEns: b.ensName,
     body: "hello from A",
   })
-  log("send1", { tx: send1.recordsMulticallTx, chat: send1.chatEns, idx: send1.message.index })
+  log("send1", {
+    tx: send1.recordsMulticallTx,
+    mine: send1.mineChatEns,
+    theirs: send1.theirsChatEns,
+    idx: send1.message.index,
+  })
 
   log(`Send: ${b.ensName} → ${a.ensName}`)
   const send2 = await sendMessage({
@@ -232,17 +237,20 @@ async function main() {
   })
   log("send2", { tx: send2.recordsMulticallTx, idx: send2.message.index })
 
-  // --- Phase 4: chat-subname determinism. ---
-  const chatFromA = chatSubnameFor(a.ensName, b.ensName)
-  const chatFromB = chatSubnameFor(b.ensName, a.ensName)
-  if (chatFromA !== chatFromB) {
-    fail(`chatSubnameFor not symmetric: A→B=${chatFromA} vs B→A=${chatFromB}`)
+  // --- Phase 4: sub-subdomain pair derivation symmetry. ---
+  const fromA = chatSubnamesFor(a.ensName, b.ensName)
+  const fromB = chatSubnamesFor(b.ensName, a.ensName)
+  if (fromA.mine !== fromB.theirs || fromA.theirs !== fromB.mine) {
+    fail(`chat sub-subdomain pair is not symmetric:
+  A: mine=${fromA.mine} theirs=${fromA.theirs}
+  B: mine=${fromB.mine} theirs=${fromB.theirs}`)
   }
-  log("chat subname deterministic both ways", chatFromA)
+  log("A's chat sub-subdomain", fromA.mine)
+  log("B's chat sub-subdomain", fromB.mine)
 
   // --- Phase 5: read & decrypt from BOTH sides. ---
   log("Reading chat thread from A's perspective…")
-  const threadA = await readChatThread(chatFromA, a.ensName)
+  const threadA = await readChatThread(a.ensName, b.ensName)
   log("threadA length", threadA.length)
   for (const m of threadA) {
     log(`  msg ${m.index} from ${m.from}`, m.body)
@@ -257,7 +265,7 @@ async function main() {
   }
 
   log("Reading chat thread from B's perspective…")
-  const threadB = await readChatThread(chatFromA, b.ensName)
+  const threadB = await readChatThread(b.ensName, a.ensName)
   log("threadB length", threadB.length)
   for (const m of threadB) {
     log(`  msg ${m.index} from ${m.from}`, m.body)
@@ -286,7 +294,8 @@ async function main() {
   console.log(`\n✅ END-TO-END PASSED`)
   console.log(`   Twin A: ${a.ensName} (kms=${a.kmsKeyId})`)
   console.log(`   Twin B: ${b.ensName} (kms=${b.kmsKeyId})`)
-  console.log(`   Chat:   ${chatFromA}`)
+  console.log(`   A's chat sub-subdomain: ${fromA.mine}`)
+  console.log(`   B's chat sub-subdomain: ${fromB.mine}`)
   console.log(`   A sees ${threadA.length} messages, B sees ${threadB.length} messages.`)
   if (a.recoveryCode) console.log(`   A recovery: ${a.recoveryCode}`)
   if (b.recoveryCode) console.log(`   B recovery: ${b.recoveryCode}`)
