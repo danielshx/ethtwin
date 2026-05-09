@@ -169,6 +169,54 @@ export function Messenger({ myEnsName, getAuthToken, className }: MessengerProps
     loadAgents()
   }, [loadAgents])
 
+  // WhatsApp-style contact persistence:
+  // pull every chat-* subname from MY twin's `chats.list` text record,
+  // derive the peer ENS for each, and seed savedChats on-chain. This means
+  // every conversation you've ever had shows up in the sidebar even from a
+  // fresh browser, because the source-of-truth lives on Sepolia ENS.
+  const loadOnChainContacts = useCallback(async () => {
+    try {
+      const res = await fetch(
+        `/api/messages?for=${encodeURIComponent(myEnsName)}&limit=50`,
+      )
+      const data = (await res.json()) as {
+        ok?: boolean
+        messages?: Array<{ from: string }>
+      }
+      if (!data.ok || !Array.isArray(data.messages)) return
+      // For every distinct counterparty we've messaged with, ensure it's in
+      // savedChats. The inbox includes BOTH directions (our sends + theirs)
+      // so we just need to pick the non-me side of each chat.
+      const myLower = myEnsName.toLowerCase()
+      const peers = new Set<string>()
+      for (const m of data.messages) {
+        const from = m.from?.toLowerCase()
+        if (from && from !== myLower) peers.add(from)
+      }
+      if (peers.size === 0) return
+      setSavedChats((prev) => {
+        const set = new Set(prev.map((p) => p.toLowerCase()))
+        let changed = false
+        for (const peer of peers) {
+          if (!set.has(peer)) {
+            set.add(peer)
+            changed = true
+          }
+        }
+        if (!changed) return prev
+        const next = Array.from(set)
+        persistSavedChats(myEnsName, next)
+        return next
+      })
+    } catch {
+      // best-effort — sidebar still works without on-chain contact load
+    }
+  }, [myEnsName])
+
+  useEffect(() => {
+    loadOnChainContacts()
+  }, [loadOnChainContacts])
+
   // Reload thread whenever the selected contact changes, then poll. Reads
   // the chat thread directly via the deterministic chat-subname for the
   // pair — skips `chats.list` so the *very first* message on a brand-new
@@ -528,9 +576,9 @@ export function Messenger({ myEnsName, getAuthToken, className }: MessengerProps
               </div>
             ) : thread.length === 0 ? (
               <div className="mx-auto max-w-xs rounded-lg bg-card/80 px-4 py-6 text-center text-sm text-muted-foreground">
-                No messages yet. Say hi — every message lives in a chat
-                sub-subdomain under{" "}
-                <code className="font-mono text-xs text-foreground/80">{myEnsName}</code> on Sepolia ENS.
+                No messages yet. Say hi — every message lives as a text
+                record on the shared ENS subname between you two,
+                EIP-5564-encrypted so only the two of you can decrypt.
               </div>
             ) : (
               <>
@@ -573,10 +621,14 @@ export function Messenger({ myEnsName, getAuthToken, className }: MessengerProps
             <p className="mt-1.5 px-1 font-mono text-[10px] text-muted-foreground">
               Stored on-chain · text record on{" "}
               <span className="text-foreground/70">
-                chat-{displayNameFromEns(selected).displayName.toLowerCase()}.
-                {myEnsName.split(".")[0]}.ethtwin.eth
+                {(() => {
+                  const a = myEnsName.split(".")[0]?.toLowerCase() ?? ""
+                  const b = selected.split(".")[0]?.toLowerCase() ?? ""
+                  const [lo, hi] = [a, b].sort()
+                  return `chat-${lo}-${hi}.ethtwin.eth`
+                })()}
               </span>{" "}
-              · stealth-encrypted · ~24s
+              · EIP-5564-encrypted · ~24s
             </p>
           </form>
         ) : null}
