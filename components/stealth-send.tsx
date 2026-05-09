@@ -48,6 +48,21 @@ type CosmicSample = {
 
 type StealthChain = "sepolia" | "base-sepolia"
 
+type StealthInboxItem = {
+  chain: StealthChain
+  stealthAddress: `0x${string}`
+  ephemeralPublicKey: `0x${string}`
+  token: `0x${string}` | null
+  amount: string | null
+  amountHuman: string | null
+  balanceRaw: string
+  balanceHuman: string
+  blockNumber: string
+  txHash: `0x${string}`
+  caller: `0x${string}`
+  explorerUrl: string
+}
+
 type SendResult = {
   recipientEnsName: string
   stealthAddress: `0x${string}`
@@ -108,6 +123,8 @@ export function StealthSend({ myEnsName, getAuthToken, className }: StealthSendP
   const [profileEns, setProfileEns] = useState<string | null>(null)
   const [pendingIntent, setPendingIntent] = useState<TxIntent | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
+  const [inboxLoading, setInboxLoading] = useState(false)
+  const [inbox, setInbox] = useState<StealthInboxItem[]>([])
 
   // Load agent directory once.
   const loadAgents = useCallback(async () => {
@@ -132,6 +149,34 @@ export function StealthSend({ myEnsName, getAuthToken, className }: StealthSendP
   useEffect(() => {
     loadAgents()
   }, [loadAgents])
+
+  // Stealth inbox: scan the ERC-5564 Announcer for inbound payments
+  // addressed to this twin and surface them so the receiver actually has
+  // a UX surface that says "you got paid". Without this, stealth's privacy
+  // property hides the payment from the recipient too.
+  const loadInbox = useCallback(async () => {
+    setInboxLoading(true)
+    try {
+      const res = await fetch(
+        `/api/stealth/inbox?ens=${encodeURIComponent(myEnsName)}&chain=${chain}`,
+      )
+      const data = (await res.json()) as {
+        ok: boolean
+        matches?: StealthInboxItem[]
+      }
+      if (data.ok && data.matches) {
+        setInbox(data.matches)
+      }
+    } catch {
+      // best-effort — empty inbox surface is acceptable on transient RPC errors
+    } finally {
+      setInboxLoading(false)
+    }
+  }, [myEnsName, chain])
+
+  useEffect(() => {
+    loadInbox()
+  }, [loadInbox])
 
   const canSend = useMemo(() => {
     if (phase === "fetching" || phase === "reviewing" || phase === "sending") return false
@@ -385,6 +430,14 @@ export function StealthSend({ myEnsName, getAuthToken, className }: StealthSendP
             />
           ) : null}
 
+          <StealthInboxCard
+            myEnsName={myEnsName}
+            chain={chain}
+            items={inbox}
+            loading={inboxLoading}
+            onRefresh={loadInbox}
+          />
+
           <div className="flex items-center gap-2 pt-1">
             <Button
               onClick={handleSend}
@@ -479,6 +532,78 @@ function PhaseLabel({
     >
       {text}
     </motion.span>
+  )
+}
+
+function StealthInboxCard({
+  myEnsName,
+  chain,
+  items,
+  loading,
+  onRefresh,
+}: {
+  myEnsName: string
+  chain: StealthChain
+  items: StealthInboxItem[]
+  loading: boolean
+  onRefresh: () => void
+}) {
+  return (
+    <div className="space-y-2 rounded-md border border-border/60 bg-card/40 px-3 py-2.5 text-xs">
+      <div className="flex items-center justify-between">
+        <span className="font-medium text-foreground/90">
+          Stealth inbox · {myEnsName}
+        </span>
+        <button
+          type="button"
+          onClick={onRefresh}
+          disabled={loading}
+          className="font-mono text-[10px] text-primary/80 hover:text-primary disabled:opacity-50"
+        >
+          {loading ? "scanning…" : "refresh"}
+        </button>
+      </div>
+      <p className="text-[10px] leading-relaxed text-muted-foreground">
+        Server scans the ERC-5564 Announcer on{" "}
+        {chain === "sepolia" ? "Sepolia" : "Base Sepolia"} and re-derives each
+        stealth address with your viewing key. Hits below are payments
+        addressed to you that landed at one-time addresses unrelated to your
+        twin.
+      </p>
+      {items.length === 0 ? (
+        <p className="font-mono text-[10px] text-muted-foreground">
+          {loading ? "scanning announcer logs…" : "no inbound stealth payments yet."}
+        </p>
+      ) : (
+        <ul className="grid gap-1.5">
+          {items.map((it) => (
+            <li
+              key={it.txHash}
+              className="rounded-md border border-border/60 bg-background/40 px-2.5 py-1.5"
+            >
+              <div className="flex items-center justify-between">
+                <span className="font-mono text-[11px] text-emerald-300">
+                  {it.amountHuman ?? "?"} USDC
+                </span>
+                <a
+                  href={it.explorerUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-mono text-[10px] text-primary/80 hover:text-primary"
+                >
+                  view ↗
+                </a>
+              </div>
+              <div className="mt-0.5 grid gap-0.5 font-mono text-[10px] text-muted-foreground">
+                <span>at · {short(it.stealthAddress)}</span>
+                <span>balance now · {it.balanceHuman} USDC</span>
+                <span>from · {short(it.caller)}</span>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   )
 }
 

@@ -11,6 +11,8 @@ import { z } from "zod"
 import { parseUnits } from "viem"
 import { verifyAuthToken } from "@/lib/privy-server"
 import { sendStealthUSDC } from "@/lib/payments"
+import { sendMessage } from "@/lib/messages"
+import { getSession } from "@/lib/session"
 import { jsonError, parseJsonBody } from "@/lib/api-guard"
 
 export const runtime = "nodejs"
@@ -57,6 +59,38 @@ export async function POST(req: Request) {
       amountUsdc,
       ...(chain ? { chain } : {}),
     })
+
+    // Notify the recipient via the chat-subname so it shows up in their
+    // Messages tab. Without this, stealth recipients have no UX surface
+    // that tells them anything happened — their twin's address has no tx
+    // (that's the whole point of stealth) and their wallet history shows
+    // nothing. The message is the demo-friendly bridge until the proper
+    // Announcer-scanning inbox is wired up.
+    const session = await getSession()
+    if (session?.ens) {
+      const ipfsHash = result.stealth.ephemeralPublicKey.slice(2, 18)
+      const explorerLink = result.announceExplorerUrl ?? result.blockExplorerUrl
+      const body =
+        `💸 Stealth payment incoming: ${result.amountHuman} USDC on ${result.chain}.\n` +
+        `→ stealth address ${result.stealth.stealthAddress}\n` +
+        `→ ephemeral pub-key 0x${ipfsHash}…\n` +
+        `→ verify: ${explorerLink}`
+      try {
+        await sendMessage({
+          fromEns: session.ens,
+          toEns: result.recipient.ens,
+          body,
+        })
+      } catch (err) {
+        // Don't fail the whole request — the on-chain stealth send already
+        // landed. Log and let the client surface the partial success.
+        console.warn(
+          "[stealth/send] receipt-message post failed:",
+          err instanceof Error ? err.message : err,
+        )
+      }
+    }
+
     return Response.json({
       ok: true,
       recipientEnsName: result.recipient.ens,
