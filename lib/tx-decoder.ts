@@ -12,6 +12,7 @@ import {
 } from "viem"
 import { FALLBACK_ABIS, KNOWN_CONTRACTS, lookupContract } from "./abis"
 import { getSourcifyVerification } from "./sourcify"
+import { assessContractRisk, type ContractRisk } from "./contract-risk"
 
 export type TxInput = {
   to: Address
@@ -53,6 +54,7 @@ export type TxDescription = {
   decoded: DecodedTx
   english: string
   verification: SourceVerification
+  risk: ContractRisk
 }
 
 const EMPTY_DATA: Hex = "0x"
@@ -106,11 +108,13 @@ export async function describeTxWithVerification(tx: TxInput): Promise<TxDescrip
       sourceProvider: lookupContract(local.to) ? "local-abi" : "none",
       contractName: local.contractName,
     }
+    const risk = assessContractRisk({ decoded: local, verification })
     const english = await provider(local)
     return {
       decoded: local,
-      english: withVerificationSummary(english, verification),
+      english: withRiskSummary(withVerificationSummary(english, verification), risk),
       verification,
+      risk,
     }
   }
 
@@ -143,11 +147,13 @@ export async function describeTxWithVerification(tx: TxInput): Promise<TxDescrip
           ? { warning: "Contract has a partial Sourcify match; review with extra care." }
           : {}),
       }
+      const risk = assessContractRisk({ decoded: sourcifyDecoded, verification: sourceVerification })
       const english = await provider(sourcifyDecoded)
       return {
         decoded: sourcifyDecoded,
-        english: withVerificationSummary(english, sourceVerification),
+        english: withRiskSummary(withVerificationSummary(english, sourceVerification), risk),
         verification: sourceVerification,
+        risk,
       }
     }
   }
@@ -159,11 +165,13 @@ export async function describeTxWithVerification(tx: TxInput): Promise<TxDescrip
       verification.error ??
       "Contract source could not be verified on Sourcify, so calldata could not be decoded from verified source.",
   }
+  const risk = assessContractRisk({ decoded: local, verification: sourceVerification })
   const english = await provider(local)
   return {
     decoded: local,
-    english: withVerificationSummary(english, sourceVerification),
+    english: withRiskSummary(withVerificationSummary(english, sourceVerification), risk),
     verification: sourceVerification,
+    risk,
   }
 }
 
@@ -255,6 +263,11 @@ function withVerificationSummary(english: string, verification: SourceVerificati
     return `${english}\n\nSource check: no calldata contract verification needed.`
   }
   return `${english}\n\nSource check: unverified contract source. ${verification.warning ?? "Review carefully before signing."}`
+}
+
+function withRiskSummary(english: string, risk: ContractRisk): string {
+  const reasons = risk.reasons.length > 0 ? ` Reason: ${risk.reasons[0]}` : ""
+  return `${english}\n\nSafety check: ${risk.level.toUpperCase()} — ${risk.label}.${reasons} Recommendation: ${risk.recommendation}`
 }
 
 function buildSummary(args: {
