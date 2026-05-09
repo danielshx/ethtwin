@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Check, ExternalLink, Loader2, Pencil, X } from "lucide-react"
+import { Check, ExternalLink, Loader2, Pencil, Trash2, X } from "lucide-react"
 import { toast } from "sonner"
 import {
   Dialog,
@@ -40,6 +40,10 @@ type AgentProfileDialogProps = {
    *  dialog is showing the *viewer's own* twin. */
   editable?: boolean
   getAuthToken?: () => Promise<string | null>
+  /** Optional callback fired after the user successfully deletes their twin.
+   *  The hosting app should sign-out / drop the session so the user is
+   *  re-routed to onboarding. */
+  onDeleted?: () => void
 }
 
 export function AgentProfileDialog({
@@ -48,6 +52,7 @@ export function AgentProfileDialog({
   onOpenChange,
   editable,
   getAuthToken,
+  onDeleted,
 }: AgentProfileDialogProps) {
   const [profile, setProfile] = useState<AgentProfile | null>(null)
   const [loading, setLoading] = useState(false)
@@ -55,6 +60,7 @@ export function AgentProfileDialog({
   const [draftAvatar, setDraftAvatar] = useState("")
   const [draftDescription, setDraftDescription] = useState("")
   const [saving, setSaving] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
   useEffect(() => {
     if (!open || !ens) {
@@ -177,6 +183,67 @@ export function AgentProfileDialog({
     setDraftDescription(profile.description ?? "")
   }
 
+  async function handleDelete() {
+    if (!ens || !getAuthToken) return
+    const confirmed = confirm(
+      `Delete ${ens} forever?\n\nThis wipes the on-chain ENS subdomain (addr + every text record) and removes it from the directory. The action is irreversible.`,
+    )
+    if (!confirmed) return
+    setDeleting(true)
+    try {
+      const token = await getAuthToken()
+      if (!token) {
+        toast.error("Not authenticated.")
+        return
+      }
+      const res = await fetch("/api/profile/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ privyToken: token, ens }),
+      })
+      const ct = res.headers.get("content-type") ?? ""
+      if (!ct.includes("application/json")) {
+        const text = await res.text()
+        toast.error(
+          res.status === 504
+            ? "Vercel timed out — the delete may still land. Refresh in ~30s."
+            : `Server error ${res.status}: ${text.slice(0, 120)}`,
+        )
+        return
+      }
+      const data = (await res.json()) as {
+        ok: boolean
+        error?: string
+        txHash?: string
+        blockExplorerUrl?: string
+      }
+      if (!data.ok) {
+        toast.error(data.error ?? "Delete failed")
+        return
+      }
+      toast.success(`${ens} deleted on-chain`, {
+        description: data.blockExplorerUrl,
+      })
+      addHistoryEntry({
+        kind: "other",
+        status: "success",
+        chain: "sepolia",
+        summary: `Deleted twin: ${ens}`,
+        description: "Cleared ENS subdomain records + orphaned in registry",
+        txHash: data.txHash,
+        explorerUrl: data.blockExplorerUrl,
+        syncTo: { ens, getAuthToken },
+      })
+      onOpenChange(false)
+      onDeleted?.()
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Delete failed"
+      toast.error(msg)
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   function suggestRandomAvatar() {
     if (!ens) return
     const label = ens.split(".")[0] ?? ens
@@ -268,36 +335,58 @@ export function AgentProfileDialog({
               </div>
             </div>
 
-            <div className="flex items-center justify-end gap-2 border-t border-border/60 pt-3">
+            <div className="flex items-center justify-between gap-2 border-t border-border/60 pt-3">
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => {
-                  resetDrafts()
-                  setEditing(false)
-                }}
-                disabled={saving}
+                onClick={handleDelete}
+                disabled={saving || deleting}
+                className="text-destructive hover:text-destructive hover:bg-destructive/10"
               >
-                <X className="h-3.5 w-3.5" />
-                Cancel
-              </Button>
-              <Button size="sm" onClick={handleSave} disabled={saving}>
-                {saving ? (
+                {deleting ? (
                   <>
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    Writing on-chain…
+                    Deleting on-chain…
                   </>
                 ) : (
                   <>
-                    <Check className="h-3.5 w-3.5" />
-                    Save on ENS
+                    <Trash2 className="h-3.5 w-3.5" />
+                    Delete twin
                   </>
                 )}
               </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    resetDrafts()
+                    setEditing(false)
+                  }}
+                  disabled={saving || deleting}
+                >
+                  <X className="h-3.5 w-3.5" />
+                  Cancel
+                </Button>
+                <Button size="sm" onClick={handleSave} disabled={saving || deleting}>
+                  {saving ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      Writing on-chain…
+                    </>
+                  ) : (
+                    <>
+                      <Check className="h-3.5 w-3.5" />
+                      Save on ENS
+                    </>
+                  )}
+                </Button>
+              </div>
             </div>
             <p className="font-mono text-[10px] text-muted-foreground">
               Stored on Sepolia ENS as <span className="text-foreground/80">avatar</span> +{" "}
               <span className="text-foreground/80">description</span> text records · ~24s to land.
+              Deleting wipes every record + orphans the subname on-chain.
             </p>
           </div>
         ) : (

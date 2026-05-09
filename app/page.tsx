@@ -222,6 +222,7 @@ function App() {
             session={session}
             privy={privy}
             walletAddress={smartWalletAddress}
+            onTwinDeleted={handleSignOut}
           />
         )}
       </section>
@@ -239,10 +240,12 @@ function SignedInTabs({
   session,
   privy,
   walletAddress,
+  onTwinDeleted,
 }: {
   session: SessionState
   privy: ReturnType<typeof usePrivy>
   walletAddress: string | null
+  onTwinDeleted?: () => void
 }) {
   const [tab, setTab] = useState<
     "chat" | "voice" | "messenger" | "transfer" | "stealth" | "history"
@@ -266,6 +269,7 @@ function SignedInTabs({
         <TwinChat
           ensName={session.ensName}
           getAuthToken={getAuthToken}
+          onTwinDeleted={onTwinDeleted}
           className="h-[70dvh] w-full border-border/60 bg-card shadow-sm"
         />
       ) : tab === "voice" ? (

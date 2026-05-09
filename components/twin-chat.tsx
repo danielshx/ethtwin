@@ -40,6 +40,8 @@ type TwinChatProps = {
    *  the value changes. Used by Maria-Shell's quick-send tap cards. */
   seedPrompt?: string | null
   onSeedConsumed?: () => void
+  /** Bubbled up from the profile dialog when the user deletes their twin. */
+  onTwinDeleted?: () => void
 }
 
 // Reads the env var Next.js inlines at build time so the badge auto-adapts
@@ -125,6 +127,7 @@ export function TwinChat({
   getAuthToken,
   seedPrompt,
   onSeedConsumed,
+  onTwinDeleted,
 }: TwinChatProps) {
   const transport = useMemo(
     () =>
@@ -293,6 +296,7 @@ export function TwinChat({
         onOpenChange={setProfileOpen}
         editable={!!getAuthToken}
         getAuthToken={getAuthToken}
+        onDeleted={onTwinDeleted}
       />
     </Card>
   )
