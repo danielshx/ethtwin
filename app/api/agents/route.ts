@@ -1,25 +1,30 @@
 import { readAgentDirectory } from "@/lib/agents"
-import { buildAvatarUrl } from "@/lib/twin-profile"
+import { readTextRecordFast } from "@/lib/ens"
 import { jsonError } from "@/lib/api-guard"
 
 export const runtime = "nodejs"
 export const maxDuration = 15
 
-// Returns the directory with deterministic avatar URLs computed locally.
-// Avoids per-agent RPC reads — those previously caused 5-min hangs on Vercel
-// when the directory grew. Description is omitted here; clients fetch the
-// full profile from /api/agent/[ens] when opening the profile dialog.
+// Returns the directory with each agent's on-chain `avatar` text record.
+// Reads run in parallel via the fast direct-resolver path (single eth_call
+// per agent) so this stays under ~1s even with a dozen agents — much faster
+// than the old Universal-Resolver / CCIP-Read flow that was hanging Vercel.
+//
+// Description stays omitted from the listing; clients fetch the full profile
+// from /api/agent/[ens] when opening the profile dialog.
 export async function GET() {
   try {
     const agents = await readAgentDirectory()
-    const enriched = agents.map((a) => {
-      const label = a.ens.split(".")[0] ?? a.ens
-      return {
-        ...a,
-        avatar: buildAvatarUrl(label),
-        description: null,
-      }
-    })
+    const enriched = await Promise.all(
+      agents.map(async (a) => {
+        const avatar = await readTextRecordFast(a.ens, "avatar").catch(() => "")
+        return {
+          ...a,
+          avatar: avatar || null,
+          description: null,
+        }
+      }),
+    )
     return Response.json({ ok: true, agents: enriched })
   } catch (error) {
     return jsonError(

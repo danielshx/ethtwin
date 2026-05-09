@@ -15,7 +15,7 @@
 import { motion } from "framer-motion"
 import { ShieldCheck, ShieldAlert } from "lucide-react"
 import { AvatarImage } from "@/components/agent-profile"
-import { buildAvatarUrl } from "@/lib/twin-profile"
+import { useEnsAvatar } from "@/lib/use-ens-avatar"
 import { displayNameFromEns } from "@/lib/ens"
 import { cn } from "@/lib/utils"
 
@@ -63,7 +63,7 @@ function Node({
   align: "start" | "end"
   pulse?: boolean
 }) {
-  const label = ens.split(".")[0] ?? ens
+  const avatar = useEnsAvatar(ens)
   const { displayName } = displayNameFromEns(ens)
   return (
     <div
@@ -82,7 +82,7 @@ function Node({
         )}
       >
         <span className="relative inline-block">
-          <AvatarImage src={buildAvatarUrl(label)} ens={ens} size={24} />
+          <AvatarImage src={avatar} ens={ens} size={24} />
           {pulse ? (
             <motion.span
               aria-hidden

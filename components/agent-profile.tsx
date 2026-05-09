@@ -380,15 +380,9 @@ export function AvatarImage({
   size?: number
   className?: string
 }) {
-  const label = ens.split(".")[0] ?? ens
-  const fallbackUrl = buildAvatarUrl(label)
-  // Try the user-supplied src first, then a deterministic DiceBear avatar,
-  // then finally the initial-letter circle. Tracks attempt count instead of
-  // a boolean so a stale on-chain URL → DiceBear → initials all work.
-  const [attempt, setAttempt] = useState<0 | 1 | 2>(src ? 0 : 1)
-  const candidate = attempt === 0 ? src : attempt === 1 ? fallbackUrl : null
-  const initial = label.charAt(0).toUpperCase()
-  if (!candidate) {
+  const [errored, setErrored] = useState(false)
+  const initial = (ens.split(".")[0] ?? ens).charAt(0).toUpperCase()
+  if (!src || errored) {
     return (
       <span
         className={cn(
@@ -405,11 +399,11 @@ export function AvatarImage({
   return (
     // eslint-disable-next-line @next/next/no-img-element
     <img
-      src={candidate}
+      src={src}
       alt={`${ens} avatar`}
       width={size}
       height={size}
-      onError={() => setAttempt((prev) => (prev < 2 ? ((prev + 1) as 0 | 1 | 2) : 2))}
+      onError={() => setErrored(true)}
       className={cn("shrink-0 rounded-full bg-card object-cover", className)}
       style={{ width: size, height: size }}
     />

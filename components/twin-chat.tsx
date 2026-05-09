@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { AgentProfileDialog, AvatarImage } from "@/components/agent-profile"
 import { X402Flow } from "@/components/x402-flow"
-import { buildAvatarUrl } from "@/lib/twin-profile"
+import { useEnsAvatar } from "@/lib/use-ens-avatar"
 import { displayNameFromEns } from "@/lib/ens"
 import { cn } from "@/lib/utils"
 
@@ -70,10 +70,7 @@ export function TwinChat({ ensName, className, getAuthToken }: TwinChatProps) {
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const isStreaming = status === "submitted" || status === "streaming"
   const [profileOpen, setProfileOpen] = useState(false)
-  const avatarUrl = useMemo(() => {
-    const label = ensName.split(".")[0] ?? ensName
-    return buildAvatarUrl(label)
-  }, [ensName])
+  const avatarUrl = useEnsAvatar(ensName)
 
   useEffect(() => {
     const node = scrollRef.current
@@ -349,22 +346,7 @@ function AgentDetail({
     return (
       <ul className="ml-5 space-y-1.5 text-[11px] text-muted-foreground">
         {output.agents.map((a) => (
-          <li key={a.ens} className="flex items-center gap-2">
-            <AvatarImage src={buildAvatarUrl(a.ens.split(".")[0] ?? a.ens)} ens={a.ens} size={20} />
-            <span className="font-mono text-primary/80">
-              {displayNameFromEns(a.ens).displayName}
-            </span>
-            {a.ensip25Verified ? (
-              <ShieldCheck className="h-3 w-3 text-emerald-400" />
-            ) : (
-              <ShieldAlert className="h-3 w-3 text-amber-400" />
-            )}
-            {a.persona ? (
-              <span className="truncate text-muted-foreground/80">
-                — {a.persona}
-              </span>
-            ) : null}
-          </li>
+          <AgentRow key={a.ens} ens={a.ens} verified={a.ensip25Verified} persona={a.persona} />
         ))}
       </ul>
     )
@@ -374,13 +356,7 @@ function AgentDetail({
     return (
       <div className="ml-5 rounded-md border border-emerald-500/20 bg-emerald-500/5 px-2.5 py-1.5 text-[11px] text-emerald-100/90">
         <div className="flex items-center gap-2">
-          {agentEns ? (
-            <AvatarImage
-              src={buildAvatarUrl(agentEns.split(".")[0] ?? agentEns)}
-              ens={agentEns}
-              size={20}
-            />
-          ) : null}
+          {agentEns ? <EnsAvatar ens={agentEns} size={20} /> : null}
           <span className="font-mono text-[10px] text-emerald-300/80">
             {agentEns ? `${displayNameFromEns(agentEns).displayName} replied` : "agent replied"}
           </span>
@@ -433,6 +409,38 @@ function labelForState(state: string) {
     default:
       return state
   }
+}
+
+function EnsAvatar({ ens, size = 20 }: { ens: string; size?: number }) {
+  const avatar = useEnsAvatar(ens)
+  return <AvatarImage src={avatar} ens={ens} size={size} />
+}
+
+function AgentRow({
+  ens,
+  verified,
+  persona,
+}: {
+  ens: string
+  verified?: boolean
+  persona?: string
+}) {
+  return (
+    <li className="flex items-center gap-2">
+      <EnsAvatar ens={ens} size={20} />
+      <span className="font-mono text-primary/80">
+        {displayNameFromEns(ens).displayName}
+      </span>
+      {verified ? (
+        <ShieldCheck className="h-3 w-3 text-emerald-400" />
+      ) : (
+        <ShieldAlert className="h-3 w-3 text-amber-400" />
+      )}
+      {persona ? (
+        <span className="truncate text-muted-foreground/80">— {persona}</span>
+      ) : null}
+    </li>
+  )
 }
 
 function ThinkingDots() {

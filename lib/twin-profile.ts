@@ -48,10 +48,15 @@ export function defaultUrl(): string {
 /**
  * Build the full default profile record set for a new twin. The onboarding
  * route merges this with twin-specific records (persona, capabilities, etc.).
+ *
+ * No default `avatar` is written on-chain: we want the messenger / profile UI
+ * to show the initial-letter fallback until the user uploads or generates one
+ * themselves via the profile editor (which writes the avatar text record to
+ * ENS). That way every avatar visible in the app is one the user actually
+ * chose, not an auto-generated default.
  */
 export function buildDefaultProfileRecords(label: string): Record<string, string> {
   return {
-    avatar: buildAvatarUrl(label),
     description: defaultDescription(label),
     url: defaultUrl(),
   }
