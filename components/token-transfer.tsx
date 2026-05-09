@@ -2,7 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { motion } from "framer-motion"
+<<<<<<< HEAD
 import { ArrowUpRight, Coins, Loader2, Send, Users } from "lucide-react"
+=======
+import { ArrowUpRight, Coins, Loader2, Send, ShieldAlert, ShieldCheck, Users } from "lucide-react"
+>>>>>>> 1bf43d3fb61091e73ec2ec4c7f62f587315620b6
 import { toast } from "sonner"
 import {
   createPublicClient,
@@ -21,6 +25,12 @@ import { displayNameFromEns } from "@/lib/ens"
 import { cn } from "@/lib/utils"
 import { AgentProfileDialog } from "@/components/agent-profile"
 import { EnsAvatar } from "@/components/ens-avatar"
+<<<<<<< HEAD
+=======
+import { TxApprovalModal, type TxIntent } from "@/components/tx-approval-modal"
+import { useEnsName } from "@/lib/use-ens-name"
+import { describeTx } from "@/lib/tx-decoder"
+>>>>>>> 1bf43d3fb61091e73ec2ec4c7f62f587315620b6
 
 type AgentEntry = {
   ens: string
@@ -61,15 +71,52 @@ const TOKENS: { id: Token; label: string }[] = [
 
 const RECENT_KEY = "ethtwin.transfers.recent.v1"
 const MAX_RECENT = 10
+const BASE_SEPOLIA_CHAIN_ID = 84532
+const MAX_UINT256 =
+  115792089237316195423570985008687907853269984665640564039457584007913129639935n
+const RISKY_APPROVAL_SPENDER: Address = "0x000000000000000000000000000000000000dEaD"
 
 // Demo safety caps mirror /api/transfer's hard caps. Bigger sends would
 // require a code change — intentional to keep the demo wallet from draining.
 const MAX_ETH_WEI = parseEther("0.01")
 const MAX_USDC_RAW = parseUnits("1", 6)
 
+<<<<<<< HEAD
 // Public Sepolia client retained for any future forward-ENS resolution we
 // might want to do client-side; the actual send goes through /api/transfer
 // which resolves recipients server-side via lib/transfers.ts.
+=======
+// Base Sepolia USDC. Same address used in lib/transfers.ts + lib/payments.ts.
+const USDC_BASE_SEPOLIA: Address = "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
+
+// Minimal ERC-20 ABI for client-side calldata encoding used by the normal
+// transfer path and the non-executable risky approval demo.
+const ERC20_REVIEW_ABI = [
+  {
+    name: "transfer",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "to", type: "address" },
+      { name: "amount", type: "uint256" },
+    ],
+    outputs: [{ name: "", type: "bool" }],
+  },
+  {
+    name: "approve",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "spender", type: "address" },
+      { name: "amount", type: "uint256" },
+    ],
+    outputs: [{ name: "", type: "bool" }],
+  },
+] as const
+
+// Public Sepolia client for forward ENS resolution (`alice.ethtwin.eth` →
+// `0x…`). Our subnames live on Sepolia per CLAUDE.md.
+>>>>>>> 1bf43d3fb61091e73ec2ec4c7f62f587315620b6
 const sepoliaPublic = createPublicClient({
   chain: sepolia,
   transport: http(process.env.NEXT_PUBLIC_SEPOLIA_RPC ?? undefined),
@@ -94,9 +141,35 @@ export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTrans
   // work" is that the new KMS wallet has zero ETH for gas.
   const [twinAddress, setTwinAddress] = useState<string | null>(null)
 
+<<<<<<< HEAD
   // KMS-only signing path: every send goes through /api/transfer, which
   // resolves ENS → twin.kms-key-id → SpaceComputer KMS for the signature.
   // No client-side smart-wallet path, no approval modal.
+=======
+  // Tx approval modal state. Sourcify review is execution-agnostic: the modal
+  // opens before Base Sepolia sends whether the final executor is Privy today,
+  // a backend/dev-wallet fallback, or Space Computer KMS later.
+  const [pendingIntent, setPendingIntent] = useState<TxIntent | null>(null)
+  const [pendingMeta, setPendingMeta] = useState<{
+    chain: Chain
+    token: Token
+    recipientInput: string
+    amount: string
+    resolvedTo: Address
+  } | null>(null)
+  const [modalOpen, setModalOpen] = useState(false)
+
+  // Reverse-resolve ENS names for the modal. Per CLAUDE.md: tx approvals
+  // show ENS, never 0x… The hook returns null while loading / on miss; the
+  // modal already falls back to a truncated 0x… in that case.
+  const toEnsName = useEnsName(pendingMeta?.resolvedTo)
+  const fromEnsName = useEnsName(smartWalletAddress)
+
+  // Sourcify review is independent from Privy. Privy smart wallets are only
+  // one possible execution backend after the user approves the safety review.
+  const canReviewBeforeSend = chain === "base-sepolia"
+  const canUseSmartWallet = !!smartClient && chain === "base-sepolia"
+>>>>>>> 1bf43d3fb61091e73ec2ec4c7f62f587315620b6
 
   // Load agents + recent transfers on mount.
   const loadAgents = useCallback(async () => {
@@ -178,6 +251,54 @@ export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTrans
     })
   }
 
+  async function handleRiskyApprovalDemo() {
+    setSending(true)
+    try {
+      const data = encodeFunctionData({
+        abi: ERC20_REVIEW_ABI,
+        functionName: "approve",
+        args: [RISKY_APPROVAL_SPENDER, MAX_UINT256],
+      })
+      const decoded = await describeTx({
+        to: USDC_BASE_SEPOLIA,
+        data,
+        chainId: BASE_SEPOLIA_CHAIN_ID,
+      })
+      const intent: TxIntent = {
+        to: USDC_BASE_SEPOLIA,
+        value: "Unlimited USDC approval",
+        data,
+        chain: "base-sepolia",
+        demoOnly: true,
+        plainEnglish: `Demo: Maria is about to grant an unlimited USDC approval to a suspicious spender.\n\n${decoded.english}`,
+        sourceVerified: decoded.verification.sourceVerified,
+        sourceProvider: decoded.verification.sourceProvider,
+        sourceMatch: decoded.verification.match,
+        sourceUrl: decoded.verification.sourceUrl,
+        sourceWarning: decoded.verification.warning,
+        riskLevel: decoded.risk.level,
+        riskLabel: decoded.risk.label,
+        riskReasons: decoded.risk.reasons,
+        riskRecommendation: decoded.risk.recommendation,
+        riskPatternIds: decoded.risk.patternIds,
+      }
+      setPendingMeta({
+        chain: "base-sepolia",
+        token: "USDC",
+        recipientInput: "Risky approval demo",
+        amount: "∞",
+        resolvedTo: RISKY_APPROVAL_SPENDER,
+      })
+      setPendingIntent(intent)
+      setModalOpen(true)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Could not prepare risky approval demo"
+      toast.error(msg)
+    } finally {
+      setSending(false)
+    }
+  }
+
   async function handleSend() {
     if (!canSend) return
 
@@ -205,6 +326,7 @@ export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTrans
       return
     }
 
+<<<<<<< HEAD
     // ── KMS-signed path via /api/transfer ────────────────────────────
     // The server resolves the active twin's ENS → twin.kms-key-id text
     // record, signs via SpaceComputer KMS, and broadcasts. Funds come from
@@ -212,28 +334,117 @@ export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTrans
     // automatically with same-origin fetches), no Privy token needed.
     setSending(true)
     try {
+=======
+    // Base Sepolia uses the Sourcify safety review before execution. The
+    // actual executor is selected only after approval (smart wallet when
+    // available, otherwise the existing backend transfer route).
+    if (canReviewBeforeSend) {
+      setSending(true)
+      try {
+        const resolvedTo = await resolveRecipient(recip)
+        const data: Hex =
+          token2send === "USDC"
+            ? encodeFunctionData({
+                abi: ERC20_REVIEW_ABI,
+                functionName: "transfer",
+                args: [resolvedTo, requestedRaw],
+              })
+            : "0x"
+        const txTo = token2send === "USDC" ? USDC_BASE_SEPOLIA : resolvedTo
+        const decoded = await describeTx({
+          to: txTo,
+          value: token2send === "ETH" ? requestedRaw : undefined,
+          data,
+          chainId: BASE_SEPOLIA_CHAIN_ID,
+        })
+        const intent: TxIntent = {
+          to: txTo,
+          value: token2send === "ETH" ? `${amt} ETH` : `${amt} USDC`,
+          data,
+          chain: "base-sepolia",
+          plainEnglish:
+            token2send === "ETH"
+              ? `Send ${amt} ETH on Base Sepolia to ${recip}.\n\n${decoded.english}`
+              : decoded.english,
+          sourceVerified: decoded.verification.sourceVerified,
+          sourceProvider: decoded.verification.sourceProvider,
+          sourceMatch: decoded.verification.match,
+          sourceUrl: decoded.verification.sourceUrl,
+          sourceWarning: decoded.verification.warning,
+          riskLevel: decoded.risk.level,
+          riskLabel: decoded.risk.label,
+          riskReasons: decoded.risk.reasons,
+          riskRecommendation: decoded.risk.recommendation,
+          riskPatternIds: decoded.risk.patternIds,
+        }
+        setPendingMeta({
+          chain: chain2send,
+          token: token2send,
+          recipientInput: recip,
+          amount: amt,
+          resolvedTo,
+        })
+        setPendingIntent(intent)
+        setModalOpen(true)
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Could not prepare tx"
+        toast.error(msg)
+      } finally {
+        setSending(false)
+      }
+      return
+    }
+
+    await executeBackendTransfer({
+      chain: chain2send,
+      token: token2send,
+      recipientInput: recip,
+      amount: amt,
+    })
+  }
+
+  async function executeBackendTransfer(meta: {
+    chain: Chain
+    token: Token
+    recipientInput: string
+    amount: string
+  }): Promise<{ hash: `0x${string}` }> {
+    setSending(true)
+    try {
+      const authToken = await getAuthToken()
+      if (!authToken) {
+        throw new Error("Not authenticated. Sign in again.")
+      }
+>>>>>>> 1bf43d3fb61091e73ec2ec4c7f62f587315620b6
       const res = await fetch("/api/transfer", {
         method: "POST",
         credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+<<<<<<< HEAD
           chain: chain2send,
           token: token2send,
           to: recip,
           amount: amt,
           fromEns: myEnsName,
+=======
+          privyToken: authToken,
+          chain: meta.chain,
+          token: meta.token,
+          to: meta.recipientInput,
+          amount: meta.amount,
+>>>>>>> 1bf43d3fb61091e73ec2ec4c7f62f587315620b6
         }),
       })
       // Vercel function timeouts return plain text. Parse defensively.
       const ct = res.headers.get("content-type") ?? ""
       if (!ct.includes("application/json")) {
         const text = await res.text()
-        toast.error(
+        throw new Error(
           res.status === 504
             ? "Vercel timed out, but the tx may still be on-chain — refresh balance in ~30s."
             : `Server error ${res.status}: ${text.slice(0, 120)}`,
         )
-        return
       }
       const data = (await res.json()) as {
         ok: boolean
@@ -244,29 +455,29 @@ export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTrans
         amount?: string
       }
       if (!data.ok) {
-        toast.error(data.error ?? "Transfer failed")
         addHistoryEntry({
           kind: "transfer",
           status: "failed",
-          chain: chain2send,
-          summary: `Failed: ${amt} ${token2send} → ${recip}`,
+          chain: meta.chain,
+          summary: `Failed: ${meta.amount} ${meta.token} → ${meta.recipientInput}`,
           errorMessage: data.error,
           syncTo: { ens: myEnsName, getAuthToken },
         })
-        return
+        throw new Error(data.error ?? "Transfer failed")
       }
 
-      toast.success(`Sent ${data.amount} ${token2send} on ${chain2send}`, {
+      toast.success(`Sent ${data.amount} ${meta.token} on ${meta.chain}`, {
         description: data.blockExplorerUrl,
       })
 
+      const txHash = data.txHash ?? `${Date.now()}`
       pushRecent({
-        id: data.txHash ?? `${Date.now()}`,
-        chain: chain2send,
-        token: token2send,
-        to: data.to ?? recip,
-        recipientInput: recip,
-        amount: data.amount ?? amt,
+        id: txHash,
+        chain: meta.chain,
+        token: meta.token,
+        to: data.to ?? meta.recipientInput,
+        recipientInput: meta.recipientInput,
+        amount: data.amount ?? meta.amount,
         txHash: data.txHash ?? "",
         blockExplorerUrl: data.blockExplorerUrl ?? "",
         at: Math.floor(Date.now() / 1000),
@@ -275,32 +486,101 @@ export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTrans
       addHistoryEntry({
         kind: "transfer",
         status: "success",
-        chain: chain2send,
-        summary: `Sent ${data.amount} ${token2send} → ${recip}`,
+        chain: meta.chain,
+        summary: `Sent ${data.amount} ${meta.token} → ${meta.recipientInput}`,
         description: data.to ? `Resolved to ${data.to}` : undefined,
         txHash: data.txHash,
         explorerUrl: data.blockExplorerUrl,
         syncTo: { ens: myEnsName, getAuthToken },
       })
 
-      // Refresh balance after send.
       loadBalance()
+      return { hash: txHash as `0x${string}` }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Transfer failed"
       toast.error(msg)
       addHistoryEntry({
         kind: "transfer",
         status: "failed",
-        chain,
-        summary: `Failed: ${amount} ${token} → ${recipient.trim()}`,
+        chain: meta.chain,
+        summary: `Failed: ${meta.amount} ${meta.token} → ${meta.recipientInput}`,
         errorMessage: msg,
         syncTo: { ens: myEnsName, getAuthToken },
       })
+      throw err
     } finally {
       setSending(false)
     }
   }
 
+<<<<<<< HEAD
+=======
+  // Approval callback wired into TxApprovalModal. Sourcify review is separate
+  // from execution: use a Privy smart wallet if present, otherwise execute via
+  // the backend route. This keeps the review flow compatible with Space
+  // Computer KMS replacing the execution layer later.
+  async function handleReviewedTransferApprove(
+    intent: TxIntent,
+  ): Promise<{ hash: `0x${string}` }> {
+    if (intent.demoOnly) {
+      setModalOpen(false)
+      return { hash: "0x0" }
+    }
+    if (!pendingMeta) {
+      throw new Error("Missing tx context.")
+    }
+    const meta = pendingMeta
+
+    if (!smartClient) {
+      return executeBackendTransfer({
+        chain: meta.chain,
+        token: meta.token,
+        recipientInput: meta.recipientInput,
+        amount: meta.amount,
+      })
+    }
+
+    const value = meta.token === "ETH" ? parseEther(meta.amount) : 0n
+
+    // The smart-wallet client is already pinned to Base Sepolia via
+    // `SmartWalletsProvider` + `supportedChains` in `app/providers.tsx`,
+    // so we omit `chain` here. `Call` shape per `SendUserOperationParameters`
+    // is `{ to, value, data }`.
+    const hash = await smartClient.sendTransaction({
+      to: intent.to as Address,
+      value,
+      data: (intent.data as Hex) ?? "0x",
+    })
+    const explorerUrl = `https://sepolia.basescan.org/tx/${hash}`
+    pushRecent({
+      id: hash,
+      chain: meta.chain,
+      token: meta.token,
+      to: meta.resolvedTo,
+      recipientInput: meta.recipientInput,
+      amount: meta.amount,
+      txHash: hash,
+      blockExplorerUrl: explorerUrl,
+      at: Math.floor(Date.now() / 1000),
+    })
+    addHistoryEntry({
+      kind: "transfer",
+      status: "success",
+      chain: meta.chain,
+      summary: `Sent ${meta.amount} ${meta.token} → ${meta.recipientInput}`,
+      description: `Signed with ${myEnsName}'s smart wallet · ${meta.resolvedTo}`,
+      txHash: hash,
+      explorerUrl,
+      syncTo: { ens: myEnsName, getAuthToken },
+    })
+    toast.success(`Sent ${meta.amount} ${meta.token} on Base Sepolia`, {
+      description: explorerUrl,
+    })
+    loadBalance()
+    return { hash }
+  }
+
+>>>>>>> 1bf43d3fb61091e73ec2ec4c7f62f587315620b6
   return (
     <Card className={cn("grid h-[70dvh] grid-cols-[260px_1fr] overflow-hidden", className)}>
       {/* Sidebar — directory, identical pattern to messenger */}
@@ -497,6 +777,7 @@ export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTrans
               Demo cap: 0.01 ETH or 1 USDC per send. Signed by your twin's
               SpaceComputer KMS key.
             </p>
+<<<<<<< HEAD
             {/* Show the twin's KMS-bound on-chain address + a faucet hint
              *  when the balance is empty. This is the single biggest UX
              *  trap of the KMS-only flow: a freshly-minted twin's address
@@ -551,6 +832,13 @@ export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTrans
                   ) : null}
                 </div>
               </div>
+=======
+            {canReviewBeforeSend ? (
+              <p className="mt-1 flex items-center gap-1 font-mono text-[10px] text-primary/90">
+                <ShieldCheck className="h-3 w-3" />
+                Sourcify safety review runs before execution.
+              </p>
+>>>>>>> 1bf43d3fb61091e73ec2ec4c7f62f587315620b6
             ) : null}
           </div>
 
@@ -563,16 +851,37 @@ export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTrans
             {sending ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+<<<<<<< HEAD
                 Broadcasting…
+=======
+                {canReviewBeforeSend ? "Preparing review…" : "Broadcasting…"}
+>>>>>>> 1bf43d3fb61091e73ec2ec4c7f62f587315620b6
               </>
             ) : (
               <>
                 <Send className="mr-2 h-4 w-4" />
+<<<<<<< HEAD
                 Send {amount} {token} on{" "}
+=======
+                {canReviewBeforeSend ? "Review & send" : "Send"} {amount} {token} on{" "}
+>>>>>>> 1bf43d3fb61091e73ec2ec4c7f62f587315620b6
                 {chain === "sepolia" ? "Sepolia" : "Base Sepolia"}
               </>
             )}
           </Button>
+
+          {canReviewBeforeSend ? (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleRiskyApprovalDemo}
+              disabled={sending}
+              className="border-amber-500/40 bg-amber-500/10 text-amber-700 hover:bg-amber-500/15 dark:text-amber-300"
+            >
+              <ShieldAlert className="mr-2 h-4 w-4" />
+              Try risky approval demo
+            </Button>
+          ) : null}
 
           {/* Recent transfers */}
           {recent.length > 0 && (
@@ -611,6 +920,30 @@ export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTrans
         open={profileEns !== null}
         onOpenChange={(open) => !open && setProfileEns(null)}
       />
+<<<<<<< HEAD
+=======
+
+      <TxApprovalModal
+        intent={
+          pendingIntent
+            ? { ...pendingIntent, toEnsName, fromEnsName }
+            : null
+        }
+        open={modalOpen}
+        onOpenChange={(next) => {
+          setModalOpen(next)
+          if (!next) {
+            // Clear once the dialog finishes its close animation. Keeps
+            // ENS-resolution effects from firing again on stale state.
+            setTimeout(() => {
+              setPendingIntent(null)
+              setPendingMeta(null)
+            }, 200)
+          }
+        }}
+        onApprove={handleReviewedTransferApprove}
+      />
+>>>>>>> 1bf43d3fb61091e73ec2ec4c7f62f587315620b6
     </Card>
   )
 }

@@ -1,7 +1,7 @@
 // Server-side history store. File-based JSON, one file per agent ENS name.
 // Survives logout, syncs across devices, captures both successes and failures.
 //
-// Storage: <project>/.history/<sanitized-ens>.json
+// Storage: <writable-runtime-dir>/.history/<sanitized-ens>.json
 // Structure: { entries: HistoryEntry[] }
 // Cap: 100 entries per agent (rolling).
 //
@@ -10,6 +10,7 @@
 // for multi-region production you'd want a proper KV.
 
 import { promises as fs } from "node:fs"
+import os from "node:os"
 import path from "node:path"
 
 export type ServerHistoryStatus = "success" | "failed" | "pending"
@@ -33,7 +34,11 @@ export type ServerHistoryEntry = {
   errorMessage?: string
 }
 
-const ROOT = path.resolve(process.cwd(), ".history")
+// Vercel's deployment bundle is read-only. `/tmp` is writable during a
+// function instance lifetime, which is enough for hackathon review/history
+// state. Override with ETHTWIN_DATA_DIR when running a persistent server.
+const DATA_ROOT = process.env.ETHTWIN_DATA_DIR ?? path.join(os.tmpdir(), "ethtwin")
+const ROOT = path.join(DATA_ROOT, ".history")
 const MAX_ENTRIES = 100
 const locks = new Map<string, Promise<unknown>>()
 

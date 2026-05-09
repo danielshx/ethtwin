@@ -103,6 +103,19 @@ function walletTxToHistoryEntry(tx: WalletTx): HistoryEntry {
   }
 }
 
+function actionSnapshot(entry: HistoryEntry) {
+  return {
+    kind: entry.kind,
+    status: entry.status,
+    summary: entry.summary,
+    ...(entry.description !== undefined && { description: entry.description }),
+    ...(entry.txHash !== undefined && { txHash: entry.txHash }),
+    ...(entry.explorerUrl !== undefined && { explorerUrl: entry.explorerUrl }),
+    ...(entry.chain !== undefined && { chain: entry.chain }),
+    ...(entry.errorMessage !== undefined && { errorMessage: entry.errorMessage }),
+  }
+}
+
 export function History({ className, ensName, walletAddress, getAuthToken }: HistoryProps) {
   const localEntries = useHistory({ ens: ensName })
   const [walletTxs, setWalletTxs] = useState<WalletTx[]>([])
@@ -233,6 +246,7 @@ export function History({ className, ensName, walletAddress, getAuthToken }: His
             actionId: entry.id,
             rating,
             targetEns: entry.description?.endsWith(".eth") ? entry.description : undefined,
+            action: actionSnapshot(entry),
           }),
         })
         const data = (await res.json().catch(() => ({}))) as {
@@ -339,7 +353,7 @@ export function History({ className, ensName, walletAddress, getAuthToken }: His
                 key={e.id}
                 entry={e}
                 feedback={feedbackByAction[e.id]}
-                feedbackEnabled={!!ensName && !!getAuthToken && !e.id.startsWith("chain:")}
+                feedbackEnabled={!!ensName && !!getAuthToken}
                 onFeedback={(rating) => submitFeedback(e, rating)}
               />
             ))}

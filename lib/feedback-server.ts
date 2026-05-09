@@ -7,6 +7,7 @@
 // where signerAddress == addr(reviewerEns).
 
 import { promises as fs } from "node:fs"
+import os from "node:os"
 import path from "node:path"
 
 export type FeedbackRating = "up" | "down"
@@ -31,7 +32,11 @@ export type FeedbackSummary = {
   score: number
 }
 
-const ROOT = path.resolve(process.cwd(), ".feedback")
+// Vercel's deployment bundle is read-only. `/tmp` is writable during a
+// function instance lifetime, which is enough for hackathon demo feedback.
+// Override with ETHTWIN_DATA_DIR when running a persistent server.
+const DATA_ROOT = process.env.ETHTWIN_DATA_DIR ?? path.join(os.tmpdir(), "ethtwin")
+const ROOT = path.join(DATA_ROOT, ".feedback")
 const FEEDBACK_FILE = path.join(ROOT, "action-feedback.json")
 const locks = new Map<string, Promise<unknown>>()
 
