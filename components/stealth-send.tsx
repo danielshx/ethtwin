@@ -5,7 +5,7 @@
 // Flow timeline (visualized via CosmicOrb phases):
 //   idle      → user pickt recipient + amount
 //   fetching  → /api/cosmic-seed (orb spinning, particles)
-//   revealed  → cTRNG seed + attestation visible
+//   revealed  → cTRNG seed + attestation visible + Sourcify review prompt
 //   sending   → /api/stealth/send (USDC.transfer to one-time stealth addr)
 //   done      → block-explorer link, derived stealth address shown
 //
@@ -16,6 +16,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { motion } from "framer-motion"
+import { encodeFunctionData, parseUnits, type Address, type Hex } from "viem"
 import { ExternalLink, Lock, Loader2, ShieldCheck, Sparkles } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
@@ -27,6 +28,8 @@ import { CosmicOrb } from "@/components/cosmic-orb"
 import { AgentProfileDialog } from "@/components/agent-profile"
 import { EnsAvatar } from "@/components/ens-avatar"
 import { BountyTrail } from "@/components/bounty-trail"
+import { TxApprovalModal, type TxIntent } from "@/components/tx-approval-modal"
+import { describeTx } from "@/lib/tx-decoder"
 import { addHistoryEntry } from "@/lib/history"
 import { cn } from "@/lib/utils"
 
@@ -63,7 +66,27 @@ type StealthSendProps = {
   className?: string
 }
 
-type Phase = "idle" | "fetching" | "revealed" | "sending" | "done"
+type Phase = "idle" | "fetching" | "revealed" | "reviewing" | "sending" | "done"
+
+const BASE_SEPOLIA_CHAIN_ID = 84532
+const USDC_BASE_SEPOLIA: Address = "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
+// Deterministic preview-only address used for Sourcify calldata decoding before
+// the backend derives the real one-time stealth address. The modal copy makes
+// clear that the final address is generated server-side after approval.
+const STEALTH_PREVIEW_ADDRESS: Address = "0x1111111111111111111111111111111111111111"
+
+const ERC20_TRANSFER_ABI = [
+  {
+    name: "transfer",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "to", type: "address" },
+      { name: "amount", type: "uint256" },
+    ],
+    outputs: [{ name: "", type: "bool" }],
+  },
+] as const
 
 export function StealthSend({ myEnsName, getAuthToken, className }: StealthSendProps) {
   const [agents, setAgents] = useState<AgentEntry[]>([])
@@ -75,6 +98,8 @@ export function StealthSend({ myEnsName, getAuthToken, className }: StealthSendP
   const [result, setResult] = useState<SendResult | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [profileEns, setProfileEns] = useState<string | null>(null)
+  const [pendingIntent, setPendingIntent] = useState<TxIntent | null>(null)
+  const [modalOpen, setModalOpen] = useState(false)
 
   // Load agent directory once.
   const loadAgents = useCallback(async () => {
@@ -101,7 +126,7 @@ export function StealthSend({ myEnsName, getAuthToken, className }: StealthSendP
   }, [loadAgents])
 
   const canSend = useMemo(() => {
-    if (phase === "fetching" || phase === "sending") return false
+    if (phase === "fetching" || phase === "reviewing" || phase === "sending") return false
     return recipient.trim().length > 0 && Number(amount) > 0
   }, [phase, recipient, amount])
 
@@ -114,6 +139,43 @@ export function StealthSend({ myEnsName, getAuthToken, className }: StealthSendP
     setSample(null)
     setResult(null)
     setError(null)
+    setPendingIntent(null)
+    setModalOpen(false)
+  }
+
+  async function buildSourcifyReviewIntent(): Promise<TxIntent> {
+    const amountRaw = parseUnits(String(amount), 6)
+    const data = encodeFunctionData({
+      abi: ERC20_TRANSFER_ABI,
+      functionName: "transfer",
+      args: [STEALTH_PREVIEW_ADDRESS, amountRaw],
+    })
+    const decoded = await describeTx({
+      to: USDC_BASE_SEPOLIA,
+      data: data as Hex,
+      chainId: BASE_SEPOLIA_CHAIN_ID,
+    })
+
+    return {
+      to: USDC_BASE_SEPOLIA,
+      value: `${amount} USDC`,
+      data: data as Hex,
+      chain: "base-sepolia",
+      plainEnglish:
+        `Private send preview: EthTwin will send ${amount} USDC to a one-time stealth address derived for ${recipient.trim()}.\n\n` +
+        `The exact stealth address is generated after approval so the receiver relationship stays private. Sourcify still checks the public contract interaction: USDC.transfer(...).\n\n` +
+        decoded.english,
+      sourceVerified: decoded.verification.sourceVerified,
+      sourceProvider: decoded.verification.sourceProvider,
+      sourceMatch: decoded.verification.match,
+      sourceUrl: decoded.verification.sourceUrl,
+      sourceWarning: decoded.verification.warning,
+      riskLevel: decoded.risk.level,
+      riskLabel: decoded.risk.label,
+      riskReasons: decoded.risk.reasons,
+      riskRecommendation: decoded.risk.recommendation,
+      riskPatternIds: decoded.risk.patternIds,
+    }
   }
 
   async function handleSend() {
@@ -140,7 +202,22 @@ export function StealthSend({ myEnsName, getAuthToken, className }: StealthSendP
     setPhase("revealed")
     await new Promise((r) => setTimeout(r, 700))
 
-    // 2. Actual on-chain stealth send.
+    // 2. Sourcify contract-intelligence review before the actual stealth tx.
+    setPhase("reviewing")
+    try {
+      const intent = await buildSourcifyReviewIntent()
+      setPendingIntent(intent)
+      setModalOpen(true)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Could not prepare Sourcify review"
+      setError(msg)
+      toast.error(msg)
+      setPhase("idle")
+    }
+  }
+
+  async function executeStealthSend(): Promise<{ hash: `0x${string}` }> {
+    // 3. Actual on-chain stealth send.
     setPhase("sending")
     try {
       // Privy is optional — KMS-onboarded twins have no Privy session. Best-effort
@@ -169,7 +246,7 @@ export function StealthSend({ myEnsName, getAuthToken, className }: StealthSendP
           syncTo: { ens: myEnsName, getAuthToken },
         })
         setPhase("idle")
-        return
+        throw new Error(data.error ?? "stealth send failed")
       }
       setResult(data)
       setPhase("done")
@@ -186,11 +263,13 @@ export function StealthSend({ myEnsName, getAuthToken, className }: StealthSendP
         explorerUrl: data.blockExplorerUrl,
         syncTo: { ens: myEnsName, getAuthToken },
       })
+      return { hash: data.txHash }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       setError(msg)
       toast.error(msg)
       setPhase("idle")
+      throw err
     }
   }
 
@@ -204,7 +283,7 @@ export function StealthSend({ myEnsName, getAuthToken, className }: StealthSendP
           <div className="leading-tight">
             <div className="text-sm font-medium">Stealth Send</div>
             <div className="text-xs text-muted-foreground">
-              EIP-5564 · cosmic-seeded · Base Sepolia
+              EIP-5564 · Sourcify-reviewed · cosmic-seeded · Base Sepolia
             </div>
           </div>
         </div>
@@ -218,7 +297,7 @@ export function StealthSend({ myEnsName, getAuthToken, className }: StealthSendP
         {/* Hero column: cosmic orb */}
         <div className="flex flex-col items-center justify-center gap-3">
           <CosmicOrb
-            phase={phase === "sending" || phase === "done" ? "revealed" : phase === "idle" ? "idle" : phase}
+            phase={phase === "reviewing" || phase === "sending" || phase === "done" ? "revealed" : phase === "idle" ? "idle" : phase}
             sample={sample}
             size={220}
           />
@@ -235,7 +314,7 @@ export function StealthSend({ myEnsName, getAuthToken, className }: StealthSendP
               value={recipient}
               onChange={(e) => setRecipient(e.target.value)}
               placeholder="alice.ethtwin.eth"
-              disabled={phase === "fetching" || phase === "sending"}
+              disabled={phase === "fetching" || phase === "reviewing" || phase === "sending"}
               className="font-mono"
             />
             {agents.length > 0 ? (
@@ -274,9 +353,12 @@ export function StealthSend({ myEnsName, getAuthToken, className }: StealthSendP
               max="1"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
-              disabled={phase === "fetching" || phase === "sending"}
+              disabled={phase === "fetching" || phase === "reviewing" || phase === "sending"}
               className="font-mono"
             />
+            <p className="text-[11px] text-muted-foreground">
+              Flow: cTRNG seed → Sourcify contract review → private stealth transfer.
+            </p>
           </div>
 
           {error ? (
@@ -302,6 +384,10 @@ export function StealthSend({ myEnsName, getAuthToken, className }: StealthSendP
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" /> requesting cosmic seed…
                 </>
+              ) : phase === "reviewing" ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" /> opening Sourcify review…
+                </>
               ) : phase === "sending" ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" /> broadcasting on Base Sepolia…
@@ -312,7 +398,7 @@ export function StealthSend({ myEnsName, getAuthToken, className }: StealthSendP
                 </>
               ) : (
                 <>
-                  <Lock className="h-4 w-4" /> send privately
+                  <Lock className="h-4 w-4" /> review & send privately
                 </>
               )}
             </Button>
@@ -329,6 +415,20 @@ export function StealthSend({ myEnsName, getAuthToken, className }: StealthSendP
         ens={profileEns}
         open={profileEns !== null}
         onOpenChange={(open) => !open && setProfileEns(null)}
+      />
+      <TxApprovalModal
+        intent={pendingIntent}
+        open={modalOpen}
+        onOpenChange={(next) => {
+          setModalOpen(next)
+          if (!next && phase === "reviewing") {
+            setPhase("revealed")
+          }
+          if (!next) {
+            setTimeout(() => setPendingIntent(null), 200)
+          }
+        }}
+        onApprove={executeStealthSend}
       />
     </Card>
   )
@@ -349,6 +449,8 @@ function PhaseLabel({
         return "Pulling cTRNG entropy from Orbitport…"
       case "revealed":
         return "Cosmic seed locked in."
+      case "reviewing":
+        return "Sourcify is reviewing the contract call…"
       case "sending":
         return "Deriving stealth address & broadcasting…"
       case "done":
@@ -415,8 +517,8 @@ function ResultCard({
       <BountyTrail
         tags={
           result.cosmicSeeded
-            ? ["ens", "stealth", "ctrng", "kms"]
-            : ["ens", "stealth", "kms"]
+            ? ["ens", "stealth", "ctrng", "kms", "sourcify"]
+            : ["ens", "stealth", "kms", "sourcify"]
         }
         className="pt-1"
       />
