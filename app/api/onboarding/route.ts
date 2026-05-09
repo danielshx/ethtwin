@@ -163,10 +163,16 @@ export async function POST(req: Request) {
       "twin.version": "0.1.0",
       "stealth-meta-address": stealthKeys.stealthMetaAddressURI,
       [ensipKey]: "1",
-      // KMS provenance: when the twin's wallet is a SpaceComputer KMS key,
-      // publish the KeyId on chain so anyone resolving the ENS can verify
-      // the address is satellite-attested + look up the same key for sigs.
+      // KMS provenance — the ENS↔SpaceComputer-KMS bridge.
+      //   twin.kms-key-id      → opaque handle for SDK calls
+      //   twin.kms-public-key  → uncompressed secp256k1 public key, lets ANY
+      //                          reader resolve the ENS, verify that
+      //                          keccak256(pubkey)[12:] == addr, and
+      //                          authenticate signatures (e.g. the per-message
+      //                          KMS sigs in lib/messages.ts) without trusting
+      //                          our backend.
       ...(kmsKeyId ? { "twin.kms-key-id": kmsKeyId } : {}),
+      ...(kmsPublicKey ? { "twin.kms-public-key": kmsPublicKey } : {}),
       // Login hash — owners-only proof for /api/session POST.
       [LOGIN_HASH_TEXT_KEY]: loginHash,
     }

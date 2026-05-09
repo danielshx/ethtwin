@@ -38,6 +38,8 @@ import { ensResolverAbi, ensRegistryAbi } from "./abis"
 import { PARENT_DOMAIN, getDevWalletClient, sepoliaClient } from "./viem"
 import { sepolia as sepoliaChain } from "viem/chains"
 import { encryptMessage, decryptMessage, isStealthBlob } from "./message-crypto"
+import { kmsAccountForEns, kmsSignEIP191 } from "./kms"
+import { hashMessage, recoverAddress } from "viem"
 
 // ── Constants & shared types ────────────────────────────────────────────────
 
@@ -63,6 +65,11 @@ export type Message = {
   /** Kept for compatibility with older history rows; currently always "" under
    *  the ECDH-only encryption path. */
   cosmicAttestation: string
+  /** SpaceComputer KMS signature (EIP-191) over the canonical message
+   *  payload. Set when the sender twin had a KMS key at send time. */
+  kmsSig?: string | null
+  /** Whether the kmsSig recovered to the sender's twin.kms-public-key. */
+  kmsVerified?: boolean
 }
 
 // ── Chat subname derivation ─────────────────────────────────────────────────
@@ -148,6 +155,75 @@ type StoredMessage = {
   from: string
   body: string
   at: number
+  kmsSig?: string | null
+}
+
+/**
+ * Canonical message payload that gets KMS-signed (EIP-191). The sender's
+ * KMS proves authorship without the dev wallet (which actually pays gas)
+ * being able to forge a message in their name. Verifiers reconstruct this
+ * exact string from the on-chain msg.<i> fields, recover the address from
+ * the signature, and compare it to the `addr` text record on the sender's
+ * ENS — which is the same secp256k1 key published as twin.kms-public-key.
+ */
+function canonicalSignPayload(args: {
+  fromEns: string
+  chatEns: string
+  ciphertext: string
+  at: number
+  index: number
+}): string {
+  return [
+    "ethtwin/msg/v1",
+    args.fromEns.toLowerCase(),
+    args.chatEns.toLowerCase(),
+    String(args.index),
+    String(args.at),
+    args.ciphertext,
+  ].join("\n")
+}
+
+/**
+ * Verify a stored message's KMS signature. Recovers the EIP-191 signer
+ * from `kmsSig` and compares to the on-chain `addr` text record on the
+ * sender's ENS. Returns true iff they match.
+ */
+export async function verifyMessageKms(args: {
+  fromEns: string
+  chatEns: string
+  ciphertext: string
+  at: number
+  index: number
+  kmsSig: string
+}): Promise<boolean> {
+  if (!args.kmsSig || !args.kmsSig.startsWith("0x")) return false
+  try {
+    const payload = canonicalSignPayload({
+      fromEns: args.fromEns,
+      chatEns: args.chatEns,
+      ciphertext: args.ciphertext,
+      at: args.at,
+      index: args.index,
+    })
+    const digest = hashMessage(payload)
+    const recovered = await recoverAddress({
+      hash: digest,
+      signature: args.kmsSig as `0x${string}`,
+    })
+    // Compare to the sender's published `addr` (= the KMS-derived address).
+    const expectedAddr = await readTextRecordFast(args.fromEns, "addr").catch(
+      () => "",
+    )
+    // Some resolvers expose `addr` only via the addr() function, not as a
+    // text record. Read both.
+    const owner = await readSubnameOwner(args.fromEns).catch(() => "")
+    const candidates = [expectedAddr, owner]
+      .map((s) => (typeof s === "string" ? s.toLowerCase() : ""))
+      .filter(Boolean)
+    return candidates.includes(recovered.toLowerCase())
+  } catch {
+    return false
+  }
 }
 
 async function readStoredMessage(
@@ -165,7 +241,12 @@ async function readStoredMessage(
     ) {
       return null
     }
-    return { from: parsed.from, body: parsed.body, at: parsed.at }
+    return {
+      from: parsed.from,
+      body: parsed.body,
+      at: parsed.at,
+      kmsSig: typeof parsed.kmsSig === "string" ? parsed.kmsSig : null,
+    }
   } catch {
     return null
   }
@@ -195,6 +276,23 @@ export async function readChatThread(
   const stored = await Promise.all(
     indices.map((i) => readStoredMessage(chatEns, i)),
   )
+  // Verify KMS signatures in parallel — independent reads + ecrecover
+  // calls per message. We don't gate display on verification (a missing
+  // signature is fine for legacy messages); the UI just shows an extra
+  // badge when verification succeeds.
+  const verifications = await Promise.all(
+    stored.map(async (m, i) => {
+      if (!m?.kmsSig) return false
+      return verifyMessageKms({
+        fromEns: m.from,
+        chatEns,
+        ciphertext: m.body,
+        at: m.at,
+        index: i,
+        kmsSig: m.kmsSig,
+      })
+    }),
+  )
   const out: Message[] = []
   for (let i = 0; i < stored.length; i++) {
     const m = stored[i]
@@ -218,6 +316,8 @@ export async function readChatThread(
       at: m.at,
       stealth,
       cosmicAttestation: "",
+      kmsSig: m.kmsSig ?? null,
+      kmsVerified: verifications[i] ?? false,
     })
   }
   return out
@@ -335,11 +435,37 @@ export async function sendMessage(args: {
   const newIndex = messageCount
   const at = Math.floor(Date.now() / 1000)
 
+  // SpaceComputer KMS signature: the sender's KMS signs a canonical EIP-191
+  // payload over (fromEns, chatEns, index, at, ciphertext). The dev wallet
+  // still relays the on-chain write (gas), but the signature in msg.<i>
+  // proves the sender authored the message. Anyone can verify by resolving
+  // fromEns to its `addr` (= KMS-derived address) and recovering ecrecover.
+  let kmsSig: string | null = null
+  try {
+    const senderKms = await kmsAccountForEns(fromEns)
+    if (senderKms) {
+      const payload = canonicalSignPayload({
+        fromEns,
+        chatEns,
+        ciphertext: encrypted.ciphertext,
+        at,
+        index: newIndex,
+      })
+      kmsSig = await kmsSignEIP191(senderKms.keyId, payload)
+    }
+  } catch (err) {
+    console.warn(
+      `[messages] KMS signing failed for ${fromEns}; posting unsigned msg:`,
+      err instanceof Error ? err.message : err,
+    )
+  }
+
   const messageJson = JSON.stringify({
     from: fromEns,
     body: encrypted.ciphertext,
     at,
     nonce: encrypted.nonceHex,
+    ...(kmsSig ? { kmsSig } : {}),
   })
 
   // Step 1 (only on first message): mint the chat subname.

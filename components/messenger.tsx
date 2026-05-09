@@ -33,6 +33,9 @@ type Message = {
   at: number
   stealth?: boolean
   cosmicAttestation?: string
+  /** SpaceComputer KMS signature verified against sender's ENS-published key. */
+  kmsVerified?: boolean
+  kmsSig?: string | null
 }
 
 type MessengerProps = {
@@ -727,14 +730,27 @@ function MessageBubble({ message, mine }: { message: Message; mine: boolean }) {
         )}
       >
         <p className="whitespace-pre-wrap break-words leading-relaxed">{message.body}</p>
-        <p
+        <div
           className={cn(
-            "mt-0.5 text-right font-mono text-[9px]",
+            "mt-0.5 flex items-center justify-end gap-1.5 font-mono text-[9px]",
             mine ? "text-primary-foreground/70" : "text-muted-foreground",
           )}
         >
-          {time}
-        </p>
+          {message.kmsVerified ? (
+            <span
+              title="SpaceComputer KMS signature verified against sender's ENS-published public key"
+              className={cn(
+                "rounded-full px-1.5 py-px text-[8px] uppercase tracking-wider",
+                mine
+                  ? "bg-primary-foreground/15 text-primary-foreground/85"
+                  : "bg-purple-500/20 text-purple-300",
+              )}
+            >
+              KMS ✓
+            </span>
+          ) : null}
+          <span>{time}</span>
+        </div>
       </div>
     </div>
   )
