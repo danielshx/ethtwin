@@ -1,12 +1,15 @@
-// Read the user's recent on-chain transactions for History tab via Etherscan v2.
-// Etherscan's v2 unified API (https://api.etherscan.io/v2) handles every chain
-// by `chainid` param. Without an API key the rate limit is very low; with one
-// (free tier) it's 5/sec, 100k/day — plenty for demo.
+// Read the user's recent on-chain transactions for the History tab.
 //
-// Per chain we ask for the 20 most recent txs (account.txlist) and decorate
-// each with a parsed summary using lib/tx-decoder.
+// Two backends:
+//  1. PRIMARY — Alchemy `alchemy_getAssetTransfers` over the same RPC key
+//     hardcoded in lib/viem.ts. Works without any extra env config and is
+//     much more reliable than Etherscan without an API key.
+//  2. FALLBACK — Etherscan v2 unified API (account.txlist). Used when Alchemy
+//     returns nothing for a chain (e.g. Base Sepolia if the Alchemy app
+//     isn't configured for it).
 //
-// GET /api/wallet-history?address=0x…&chains=sepolia,base-sepolia&limit=20
+// GET /api/wallet-history?address=0x…&chains=sepolia,base-sepolia&limit=50
+// GET /api/wallet-history?ens=alice.ethtwin.eth&chains=sepolia,base-sepolia
 
 import { isAddress, getAddress, type Address, type Hex } from "viem"
 import { jsonError } from "@/lib/api-guard"
@@ -19,18 +22,24 @@ export const maxDuration = 15
 type ChainSpec = {
   chainId: number
   label: "sepolia" | "base-sepolia"
+  alchemyUrl: string | null
   explorer: (h: string) => string
 }
+
+// Same Alchemy key embedded in lib/viem.ts. Free tier — fine for the demo.
+const ALCHEMY_KEY = "VnDHq7fsAyloEY3w9oQGK"
 
 const CHAINS: Record<string, ChainSpec> = {
   sepolia: {
     chainId: 11155111,
     label: "sepolia",
+    alchemyUrl: `https://eth-sepolia.g.alchemy.com/v2/${ALCHEMY_KEY}`,
     explorer: (h) => `https://sepolia.etherscan.io/tx/${h}`,
   },
   "base-sepolia": {
     chainId: 84532,
     label: "base-sepolia",
+    alchemyUrl: `https://base-sepolia.g.alchemy.com/v2/${ALCHEMY_KEY}`,
     explorer: (h) => `https://sepolia.basescan.org/tx/${h}`,
   },
 }
@@ -62,7 +71,7 @@ type EtherscanTx = {
   txreceipt_status?: string
 }
 
-async function fetchTxsForChain(
+async function fetchTxsEtherscan(
   spec: ChainSpec,
   address: Address,
   limit: number,
@@ -109,6 +118,137 @@ async function fetchTxsForChain(
       explorerUrl: spec.explorer(tx.hash),
     }
   })
+}
+
+type AlchemyTransfer = {
+  hash: string
+  from: string
+  to: string | null
+  value: number | null
+  asset: string | null
+  category: string
+  blockNum: string
+  rawContract?: { address?: string | null; value?: string | null; decimal?: string | null }
+  metadata?: { blockTimestamp?: string }
+}
+
+async function alchemyCall(
+  url: string,
+  body: object,
+): Promise<unknown> {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, ...body }),
+    signal: AbortSignal.timeout(8_000),
+  })
+  if (!res.ok) return null
+  return res.json()
+}
+
+async function fetchTxsAlchemy(
+  spec: ChainSpec,
+  address: Address,
+  limit: number,
+): Promise<WalletHistoryEntry[]> {
+  if (!spec.alchemyUrl) return []
+  const max = `0x${Math.min(1000, limit).toString(16)}`
+  const baseParams = {
+    fromBlock: "0x0",
+    toBlock: "latest",
+    category: ["external", "erc20", "erc721", "erc1155"],
+    withMetadata: true,
+    excludeZeroValue: false,
+    maxCount: max,
+    order: "desc",
+  }
+
+  // Fetch outgoing AND incoming in parallel.
+  const [outgoingResp, incomingResp] = await Promise.all([
+    alchemyCall(spec.alchemyUrl, {
+      method: "alchemy_getAssetTransfers",
+      params: [{ ...baseParams, fromAddress: address }],
+    }),
+    alchemyCall(spec.alchemyUrl, {
+      method: "alchemy_getAssetTransfers",
+      params: [{ ...baseParams, toAddress: address }],
+    }),
+  ])
+
+  type AlchemyResp = { result?: { transfers?: AlchemyTransfer[] } }
+  const outgoing = (outgoingResp as AlchemyResp | null)?.result?.transfers ?? []
+  const incoming = (incomingResp as AlchemyResp | null)?.result?.transfers ?? []
+  // Dedupe by hash — Alchemy returns one row per transfer, so a single tx
+  // with multiple ERC20 logs may appear multiple times. Keep the first.
+  const seen = new Set<string>()
+  const all = [...outgoing, ...incoming].filter((t) => {
+    if (!t.hash) return false
+    const key = `${t.hash}-${t.category}-${t.rawContract?.address ?? ""}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+
+  return all
+    .map((t): WalletHistoryEntry | null => {
+      const tsStr = t.metadata?.blockTimestamp
+      const at = tsStr ? Math.floor(new Date(tsStr).getTime() / 1000) : 0
+      const isErc20 = t.category === "erc20" || t.category === "erc721" || t.category === "erc1155"
+      const valueStr = (() => {
+        if (isErc20 && t.rawContract?.value) return BigInt(t.rawContract.value).toString()
+        if (typeof t.value === "number") return BigInt(Math.floor(t.value * 1e18)).toString()
+        return "0"
+      })()
+      let summary: string
+      if (isErc20) {
+        const symbol = t.asset ?? "tokens"
+        const amount = typeof t.value === "number" ? t.value : 0
+        summary = `${amount} ${symbol}`
+      } else {
+        const eth = typeof t.value === "number" ? t.value : 0
+        summary = `${eth} ETH`
+      }
+      let from: Address
+      let to: Address | null
+      try {
+        from = getAddress(t.from) as Address
+        to = t.to ? (getAddress(t.to) as Address) : null
+      } catch {
+        return null
+      }
+      return {
+        txHash: t.hash as `0x${string}`,
+        chain: spec.label,
+        from,
+        to,
+        value: valueStr,
+        at,
+        blockNumber: t.blockNum,
+        status: "success",
+        summary,
+        contractName: t.rawContract?.address
+          ? `${t.rawContract.address.slice(0, 6)}…${t.rawContract.address.slice(-4)}`
+          : t.category,
+        functionName: t.category,
+        explorerUrl: spec.explorer(t.hash),
+      }
+    })
+    .filter((e): e is WalletHistoryEntry => e !== null)
+    .slice(0, limit)
+}
+
+async function fetchTxsForChain(
+  spec: ChainSpec,
+  address: Address,
+  limit: number,
+  apiKey?: string,
+): Promise<WalletHistoryEntry[]> {
+  // Try Alchemy first (works without env config). If it returns nothing,
+  // fall back to Etherscan — Etherscan covers a few cases Alchemy misses
+  // (contract self-deploys, some failed txs) and works as a true fallback.
+  const alchemy = await fetchTxsAlchemy(spec, address, limit).catch(() => [])
+  if (alchemy.length > 0) return alchemy
+  return fetchTxsEtherscan(spec, address, limit, apiKey).catch(() => [])
 }
 
 export async function GET(req: Request) {

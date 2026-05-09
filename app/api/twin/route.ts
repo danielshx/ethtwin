@@ -2,9 +2,10 @@ import { z } from "zod"
 import { anthropic } from "@ai-sdk/anthropic"
 import { openai } from "@ai-sdk/openai"
 import { convertToModelMessages, streamText, type UIMessage } from "ai"
+import type { Address } from "viem"
 import { buildTwinTools } from "@/lib/twin-tools"
 import { buildSystemPrompt } from "@/lib/prompts"
-import { readTwinRecords } from "@/lib/ens"
+import { readTwinRecords, readAddrFast } from "@/lib/ens"
 import { jsonError, parseJsonBody } from "@/lib/api-guard"
 
 export const runtime = "nodejs"
@@ -52,21 +53,25 @@ export async function POST(req: Request) {
     })
   }
 
-  let records = null
-  try {
-    records = await readTwinRecords(ensName)
-  } catch {
-    // Fresh twin without records — fall back to defaults.
-  }
+  // Resolve the twin's bound wallet + records in parallel so the model gets
+  // both as context. Both reads use the fast direct-resolver path so this
+  // adds <500ms even on Sepolia.
+  const [records, fromAddress] = await Promise.all([
+    readTwinRecords(ensName).catch(() => null),
+    readAddrFast(ensName).catch(() => null),
+  ])
 
   try {
     const messages = await convertToModelMessages(body.messages)
 
     const result = streamText({
       model,
-      system: buildSystemPrompt(records, ensName),
+      system: buildSystemPrompt(records, ensName, fromAddress),
       messages,
-      tools: buildTwinTools({ fromEns: ensName }),
+      tools: buildTwinTools({
+        fromEns: ensName,
+        ...(fromAddress ? { fromAddress: fromAddress as Address } : {}),
+      }),
     })
 
     return result.toUIMessageStreamResponse()

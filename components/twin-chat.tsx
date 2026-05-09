@@ -456,10 +456,10 @@ function ThinkingDots() {
 }
 
 const PROMPTS = [
-  "Show me what you know about my wallet",
-  "Send 5 USDC to vitalik.eth privately",
-  "Hire analyst.ethtwin.eth to summarise this address",
-  "Decode the last transaction I signed",
+  "What do you know about my wallet?",
+  "Who else is here on ethtwin.eth?",
+  "What's stored in my ENS profile right now?",
+  "Any new messages in my inbox?",
 ]
 
 function EmptyState({ onPick }: { onPick: (text: string) => void }) {

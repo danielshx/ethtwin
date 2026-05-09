@@ -16,6 +16,7 @@ import { getWalletSummary } from "./wallet-summary"
 import { sendToken, getTokenBalance, parseRecipient } from "./transfers"
 import { readAgentDirectory } from "./agents"
 import { sendMessage as sendEnsMessage } from "./messages"
+import { readInbox } from "./messages"
 
 export const twinTools = {
   getWalletSummary: tool({
@@ -246,6 +247,10 @@ export const twinTools = {
 export type TwinToolContext = {
   /** ENS name of the Twin running this conversation. Used as `from` for messenger sends + history scoping. */
   fromEns?: string
+  /** The on-chain address bound to fromEns (its `addr` text record). When set,
+   *  parameter-less tools like `inspectMyWallet` can summarize the user's
+   *  wallet without forcing the model to first resolve the ENS. */
+  fromAddress?: Address
 }
 
 /**
@@ -366,6 +371,123 @@ export function buildTwinTools(ctx: TwinToolContext = {}) {
   return {
     ...twinTools,
     hireAgent: buildHireAgentTool(ctx),
+
+    inspectMyWallet: tool({
+      description:
+        "Read the user's own twin wallet on-chain: ETH balances on Sepolia + Base Sepolia, ENS reverse-resolution, and a plain-English summary. Use IMMEDIATELY whenever the user asks about 'my wallet', 'my balance', 'what you know about me/my account', or any first-person on-chain question. Takes no arguments — uses the twin's session identity.",
+      inputSchema: z.object({}),
+      execute: async () => {
+        if (!ctx.fromAddress) {
+          return {
+            ok: false,
+            error:
+              "No wallet address resolved for this twin yet. Try again in a moment, or ask me to look up a specific address.",
+          }
+        }
+        try {
+          const summary = await getWalletSummary(ctx.fromAddress)
+          return {
+            ok: true,
+            ensName: ctx.fromEns ?? null,
+            address: summary.address,
+            shortAddress: summary.shortAddress,
+            sepoliaEth: summary.sepoliaEth,
+            baseSepoliaEth: summary.baseSepoliaEth,
+            reverseEnsName: summary.reverseEnsName,
+            plainEnglish: summary.plainEnglish,
+          }
+        } catch (err) {
+          return {
+            ok: false,
+            error: err instanceof Error ? err.message : String(err),
+          }
+        }
+      },
+    }),
+
+    readMyEnsRecords: tool({
+      description:
+        "Read the user's own twin ENS text records: avatar, description (bio), persona, declared capabilities, twin endpoint, version, stealth-meta-address. Use when the user asks about their own profile, identity, or what's stored in their ENS.",
+      inputSchema: z.object({}),
+      execute: async () => {
+        if (!ctx.fromEns) {
+          return { ok: false, error: "No twin ENS in this session." }
+        }
+        try {
+          const records = await readTwinRecords(ctx.fromEns)
+          return {
+            ok: true,
+            ensName: ctx.fromEns,
+            avatar: records["avatar"] ?? null,
+            description: records["description"] ?? null,
+            url: records["url"] ?? null,
+            persona: records["twin.persona"] ?? null,
+            capabilities: records["twin.capabilities"] ?? null,
+            endpoint: records["twin.endpoint"] ?? null,
+            version: records["twin.version"] ?? null,
+            stealthMetaAddress: records["stealth-meta-address"] ?? null,
+          }
+        } catch (err) {
+          return { ok: false, error: err instanceof Error ? err.message : String(err) }
+        }
+      },
+    }),
+
+    readMyMessages: tool({
+      description:
+        "Read recent on-chain messages addressed to the user's own twin (their ENS inbox). Each message is a sub-subname under the twin's ENS with from/body/at text records on Sepolia. Use when the user asks about their messages, who has contacted them, or recent inbox activity.",
+      inputSchema: z.object({
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(10)
+          .optional()
+          .describe("Max messages to return (default 5, capped at 10)."),
+      }),
+      execute: async ({ limit }) => {
+        if (!ctx.fromEns) {
+          return { ok: false, error: "No twin ENS in this session." }
+        }
+        try {
+          const messages = await readInbox(ctx.fromEns, limit ?? 5)
+          return {
+            ok: true,
+            ensName: ctx.fromEns,
+            count: messages.length,
+            messages: messages.map((m) => ({
+              from: m.from,
+              body: m.body,
+              at: m.at,
+            })),
+          }
+        } catch (err) {
+          return { ok: false, error: err instanceof Error ? err.message : String(err) }
+        }
+      },
+    }),
+
+    listAgentDirectory: tool({
+      description:
+        "List all peer twins currently registered under ethtwin.eth. Use when the user asks who else is around, who they can message, or who they can hire. Lighter than findAgents — does not run ENSIP-25 verification per-agent.",
+      inputSchema: z.object({}),
+      execute: async () => {
+        try {
+          const directory = await readAgentDirectory()
+          return {
+            ok: true,
+            count: directory.length,
+            agents: directory.map((d) => ({
+              ens: d.ens,
+              addedAt: d.addedAt,
+            })),
+          }
+        } catch (err) {
+          return { ok: false, error: err instanceof Error ? err.message : String(err) }
+        }
+      },
+    }),
+
     sendMessage: tool({
       description:
         "Send an on-chain ENS message to another twin. Each message becomes a child subname (msg-<ts>-<seq>.<recipient>) carrying from/body/at text records on Sepolia ENS. Use when the user asks the Twin to message, ping, or write to another agent.",

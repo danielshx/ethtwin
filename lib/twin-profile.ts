@@ -1,40 +1,34 @@
 // Default profile records for newly minted twins.
 //
-// avatar — generated via Pollinations.ai. The prompt is intentionally generic
-// ("profile avatar of <label>...") so it works whether the label is a name
-// ("daniel", "alice"), an animal ("tiger", "owl"), an object ("lighthouse"),
-// or anything in between. The seed is a deterministic hash of the label so
-// the same name always renders the same image.
+// avatar — generated via DiceBear (avataaars style). DiceBear renders a unique
+// cartoon profile picture deterministically from any seed string, in <50ms.
+// Previously we used Pollinations.ai but it generates on-demand (5–15s) and
+// frequently times out, causing every twin to fall back to a letter initial.
 //
 // url — defaults to the public ethtwin.eth gateway. Override per-deploy via
 // NEXT_PUBLIC_APP_URL.
 
 const DEFAULT_BASE_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://ethtwin.eth.limo"
 
-function seedFromLabel(label: string): number {
-  let h = 0
-  for (let i = 0; i < label.length; i++) {
-    h = (h * 31 + label.charCodeAt(i)) >>> 0
-  }
-  // Pollinations accepts a wide seed range; keep it small for short URLs.
-  return h % 100_000
+/**
+ * Build a deterministic DiceBear avatar URL for an ENS label.
+ * Same label → same picture, every time, anywhere.
+ *   buildAvatarUrl("daniel")     → cartoon-person seeded by "daniel"
+ *   buildAvatarUrl("cato")       → cartoon-person seeded by "cato"
+ *   buildAvatarUrl("lighthouse") → cartoon-person seeded by "lighthouse"
+ */
+export function buildAvatarUrl(label: string): string {
+  const seed = label.toLowerCase().trim() || "twin"
+  return `https://api.dicebear.com/9.x/avataaars/svg?seed=${encodeURIComponent(seed)}&backgroundType=gradientLinear&backgroundColor=b4a7ff,d9b3ff,a78bfa,c4a8ff`
 }
 
 /**
- * Build a deterministic Pollinations.ai image URL for an ENS label.
- * Examples:
- *   buildAvatarUrl("daniel")     → portrait of a person named daniel
- *   buildAvatarUrl("tiger")      → tiger illustration
- *   buildAvatarUrl("lighthouse") → stylized lighthouse
- *
- * The prompt is generic enough that the model handles all three classes well.
+ * DiceBear is so reliable we use it as both the *primary* avatar source AND
+ * as a graceful fallback when an arbitrary user-supplied avatar URL (e.g.
+ * a stale Pollinations link saved to an ENS text record) fails to load.
  */
-export function buildAvatarUrl(label: string): string {
-  const cleaned = label.replace(/-/g, " ").trim()
-  const prompt = `profile avatar of ${cleaned}, illustrated, vibrant pastel colors, centered composition, clean simple background, digital art portrait`
-  const seed = seedFromLabel(label)
-  // nologo=true strips the Pollinations watermark; enhance=true cleans up details
-  return `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=400&height=400&nologo=true&seed=${seed}`
+export function buildAvatarFallbackUrl(label: string): string {
+  return buildAvatarUrl(label)
 }
 
 /**
