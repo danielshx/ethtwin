@@ -16,6 +16,9 @@ const TWIN_TEXT_KEYS = [
   "twin.endpoint",
   "twin.version",
   "stealth-meta-address",
+  // SpaceComputer KMS key handle. Present iff the twin's wallet is
+  // satellite-attested via Orbitport KMS.
+  "twin.kms-key-id",
 ] as const
 type TwinKey = (typeof TWIN_TEXT_KEYS)[number]
 
@@ -60,6 +63,7 @@ export async function GET(
       endpoint: recordMap["twin.endpoint"],
       stealthMeta: recordMap["stealth-meta-address"],
       version: recordMap["twin.version"],
+      kmsKeyId: recordMap["twin.kms-key-id"],
     })
   } catch (error) {
     return jsonError(

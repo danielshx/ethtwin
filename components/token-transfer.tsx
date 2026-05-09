@@ -2,21 +2,15 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { motion } from "framer-motion"
-import { ArrowUpRight, Coins, Loader2, Send, ShieldCheck, Users } from "lucide-react"
+import { ArrowUpRight, Coins, Loader2, Send, Users } from "lucide-react"
 import { toast } from "sonner"
 import {
   createPublicClient,
-  encodeFunctionData,
-  getAddress,
   http,
-  isAddress,
   parseEther,
   parseUnits,
-  type Address,
-  type Hex,
 } from "viem"
 import { sepolia } from "viem/chains"
-import { useSmartWallets } from "@privy-io/react-auth/smart-wallets"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -27,8 +21,6 @@ import { displayNameFromEns } from "@/lib/ens"
 import { cn } from "@/lib/utils"
 import { AgentProfileDialog } from "@/components/agent-profile"
 import { EnsAvatar } from "@/components/ens-avatar"
-import { TxApprovalModal, type TxIntent } from "@/components/tx-approval-modal"
-import { useEnsName } from "@/lib/use-ens-name"
 
 type AgentEntry = {
   ens: string
@@ -75,48 +67,16 @@ const MAX_RECENT = 10
 const MAX_ETH_WEI = parseEther("0.01")
 const MAX_USDC_RAW = parseUnits("1", 6)
 
-// Base Sepolia USDC. Same address used in lib/transfers.ts + lib/payments.ts.
-const USDC_BASE_SEPOLIA: Address = "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
-
-// Minimal ERC-20 transfer ABI for client-side calldata encoding.
-const ERC20_TRANSFER_ABI = [
-  {
-    name: "transfer",
-    type: "function",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "to", type: "address" },
-      { name: "amount", type: "uint256" },
-    ],
-    outputs: [{ name: "", type: "bool" }],
-  },
-] as const
-
-// Public Sepolia client for forward ENS resolution (`alice.ethtwin.eth` →
-// `0x…`). Our subnames live on Sepolia per CLAUDE.md.
+// Public Sepolia client retained for any future forward-ENS resolution we
+// might want to do client-side; the actual send goes through /api/transfer
+// which resolves recipients server-side via lib/transfers.ts.
 const sepoliaPublic = createPublicClient({
   chain: sepolia,
   transport: http(process.env.NEXT_PUBLIC_SEPOLIA_RPC ?? undefined),
 })
-
-async function resolveRecipient(input: string): Promise<Address> {
-  const trimmed = input.trim()
-  if (isAddress(trimmed)) return getAddress(trimmed)
-  if (!trimmed.includes(".")) {
-    throw new Error(`"${trimmed}" is neither a 0x address nor an ENS name.`)
-  }
-  const resolved = await sepoliaPublic.getEnsAddress({ name: trimmed })
-  if (!resolved) {
-    throw new Error(`Could not resolve ENS name "${trimmed}" on Sepolia.`)
-  }
-  return getAddress(resolved)
-}
+void sepoliaPublic
 
 export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTransferProps) {
-  const smart = useSmartWallets()
-  const smartClient = smart.client
-  const smartWalletAddress = smartClient?.account?.address ?? null
-
   const [agents, setAgents] = useState<AgentEntry[]>([])
   const [agentsLoading, setAgentsLoading] = useState(true)
   const [recipient, setRecipient] = useState("")
@@ -128,29 +88,15 @@ export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTrans
   const [sending, setSending] = useState(false)
   const [recent, setRecent] = useState<RecentTransfer[]>([])
   const [profileEns, setProfileEns] = useState<string | null>(null)
+  // The on-chain `addr` record for our twin (= KMS-derived address when the
+  // KMS path was used at mint). We surface it so the user can copy it into a
+  // faucet without leaving the page — the most common reason "send doesn't
+  // work" is that the new KMS wallet has zero ETH for gas.
+  const [twinAddress, setTwinAddress] = useState<string | null>(null)
 
-  // Tx approval modal state — populated when the user clicks Send and we
-  // have a Privy smart wallet ready to sign client-side.
-  const [pendingIntent, setPendingIntent] = useState<TxIntent | null>(null)
-  const [pendingMeta, setPendingMeta] = useState<{
-    chain: Chain
-    token: Token
-    recipientInput: string
-    amount: string
-    resolvedTo: Address
-  } | null>(null)
-  const [modalOpen, setModalOpen] = useState(false)
-
-  // Reverse-resolve ENS names for the modal. Per CLAUDE.md: tx approvals
-  // show ENS, never 0x… The hook returns null while loading / on miss; the
-  // modal already falls back to a truncated 0x… in that case.
-  const toEnsName = useEnsName(pendingMeta?.resolvedTo)
-  const fromEnsName = useEnsName(smartWalletAddress)
-
-  // Smart-wallet sign path is Base Sepolia only — that's the chain our
-  // `SmartWalletsProvider` is configured for. Any other chain falls back
-  // to the dev-wallet `/api/transfer` route, which is fine for the demo.
-  const canUseSmartWallet = !!smartClient && chain === "base-sepolia"
+  // KMS-only signing path: every send goes through /api/transfer, which
+  // resolves ENS → twin.kms-key-id → SpaceComputer KMS for the signature.
+  // No client-side smart-wallet path, no approval modal.
 
   // Load agents + recent transfers on mount.
   const loadAgents = useCallback(async () => {
@@ -174,7 +120,23 @@ export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTrans
       const raw = localStorage.getItem(RECENT_KEY)
       if (raw) setRecent(JSON.parse(raw) as RecentTransfer[])
     } catch {}
-  }, [loadAgents])
+    // Resolve our twin's on-chain wallet address (the KMS-derived address
+    // when the KMS path was used at mint). One-time read on mount; the value
+    // doesn't change for the lifetime of a twin.
+    let cancelled = false
+    fetch(`/api/agent/${encodeURIComponent(myEnsName)}`)
+      .then((r) => r.json())
+      .then((data: { ok?: boolean; addr?: string | null }) => {
+        if (cancelled) return
+        if (data.ok && data.addr) setTwinAddress(data.addr)
+      })
+      .catch(() => {
+        // best-effort UI hint; not fatal
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [loadAgents, myEnsName])
 
   // Refresh the current agent's balance whenever chain/token changes.
   const loadBalance = useCallback(async () => {
@@ -243,66 +205,23 @@ export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTrans
       return
     }
 
-    // Branch: if a Privy smart wallet exists and we're on Base Sepolia,
-    // open the approval modal so the user signs client-side. Otherwise
-    // fall back to the dev-wallet `/api/transfer` route.
-    if (canUseSmartWallet) {
-      setSending(true)
-      try {
-        const resolvedTo = await resolveRecipient(recip)
-        const data: Hex =
-          token2send === "USDC"
-            ? encodeFunctionData({
-                abi: ERC20_TRANSFER_ABI,
-                functionName: "transfer",
-                args: [resolvedTo, requestedRaw],
-              })
-            : "0x"
-        const intent: TxIntent = {
-          to: token2send === "USDC" ? USDC_BASE_SEPOLIA : resolvedTo,
-          value: token2send === "ETH" ? `${amt} ETH` : `${amt} USDC`,
-          data,
-          chain: "base-sepolia",
-          plainEnglish:
-            token2send === "ETH"
-              ? `Send ${amt} ETH on Base Sepolia to ${recip}.`
-              : `Send ${amt} USDC on Base Sepolia to ${recip}.`,
-        }
-        setPendingMeta({
-          chain: chain2send,
-          token: token2send,
-          recipientInput: recip,
-          amount: amt,
-          resolvedTo,
-        })
-        setPendingIntent(intent)
-        setModalOpen(true)
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : "Could not prepare tx"
-        toast.error(msg)
-      } finally {
-        setSending(false)
-      }
-      return
-    }
-
-    // ── Fallback: dev-wallet path via /api/transfer ─────────────────────
+    // ── KMS-signed path via /api/transfer ────────────────────────────
+    // The server resolves the active twin's ENS → twin.kms-key-id text
+    // record, signs via SpaceComputer KMS, and broadcasts. Funds come from
+    // the twin's KMS-derived address. Auth is the session cookie (sent
+    // automatically with same-origin fetches), no Privy token needed.
     setSending(true)
     try {
-      const authToken = await getAuthToken()
-      if (!authToken) {
-        toast.error("Not authenticated. Sign in again.")
-        return
-      }
       const res = await fetch("/api/transfer", {
         method: "POST",
+        credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          privyToken: authToken,
           chain: chain2send,
           token: token2send,
           to: recip,
           amount: amt,
+          fromEns: myEnsName,
         }),
       })
       // Vercel function timeouts return plain text. Parse defensively.
@@ -380,63 +299,6 @@ export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTrans
     } finally {
       setSending(false)
     }
-  }
-
-  // Approve callback wired into TxApprovalModal. Calls Privy's
-  // smart-wallet `sendTransaction` directly — the user signs in their
-  // own embedded wallet, no dev wallet involved. Per CLAUDE.md, this is
-  // the path that gives us a *real* user-signed tx for T1-15.
-  async function handleSmartWalletApprove(
-    intent: TxIntent,
-  ): Promise<{ hash: `0x${string}` }> {
-    if (!smartClient) {
-      throw new Error("Smart wallet client unavailable.")
-    }
-    if (!pendingMeta) {
-      throw new Error("Missing tx context.")
-    }
-    const meta = pendingMeta
-    const value =
-      meta.token === "ETH" ? parseEther(meta.amount) : 0n
-    // The smart-wallet client is already pinned to Base Sepolia via
-    // `SmartWalletsProvider` + `supportedChains` in `app/providers.tsx`,
-    // so we omit `chain` here. (Passing it tripped a viem 2.47 vs 2.48
-    // dual-version type clash — Privy bundles 2.47.) `Call` shape per
-    // `SendUserOperationParameters` is `{ to, value, data }`.
-    const hash = await smartClient.sendTransaction({
-      to: intent.to as Address,
-      value,
-      data: (intent.data as Hex) ?? "0x",
-    })
-    const explorerUrl = `https://sepolia.basescan.org/tx/${hash}`
-    pushRecent({
-      id: hash,
-      chain: meta.chain,
-      token: meta.token,
-      to: meta.resolvedTo,
-      recipientInput: meta.recipientInput,
-      amount: meta.amount,
-      txHash: hash,
-      blockExplorerUrl: explorerUrl,
-      at: Math.floor(Date.now() / 1000),
-    })
-    addHistoryEntry({
-      kind: "transfer",
-      status: "success",
-      chain: meta.chain,
-      summary: `Sent ${meta.amount} ${meta.token} → ${meta.recipientInput}`,
-      description: `Signed with ${myEnsName}'s smart wallet · ${meta.resolvedTo}`,
-      txHash: hash,
-      explorerUrl,
-      syncTo: { ens: myEnsName, getAuthToken },
-    })
-    toast.success(`Sent ${meta.amount} ${meta.token} on Base Sepolia`, {
-      description: explorerUrl,
-    })
-    // Refresh balance once the user closes the modal — but kick it off
-    // immediately so the next "open" shows fresh numbers.
-    loadBalance()
-    return { hash }
   }
 
   return (
@@ -632,13 +494,63 @@ export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTrans
               disabled={sending}
             />
             <p className="mt-1 font-mono text-[10px] text-muted-foreground">
-              Demo cap: 0.01 ETH or 1 USDC per send.
+              Demo cap: 0.01 ETH or 1 USDC per send. Signed by your twin's
+              SpaceComputer KMS key.
             </p>
-            {canUseSmartWallet ? (
-              <p className="mt-1 flex items-center gap-1 font-mono text-[10px] text-primary/90">
-                <ShieldCheck className="h-3 w-3" />
-                You'll sign with your own smart wallet on Base Sepolia.
-              </p>
+            {/* Show the twin's KMS-bound on-chain address + a faucet hint
+             *  when the balance is empty. This is the single biggest UX
+             *  trap of the KMS-only flow: a freshly-minted twin's address
+             *  has zero ETH for gas and the first send fails confusingly.
+             */}
+            {twinAddress ? (
+              <div className="mt-2 rounded-md border border-border/60 bg-card/40 px-3 py-2 text-[10px]">
+                <div className="flex items-center justify-between gap-2 font-mono">
+                  <span className="text-muted-foreground">funding wallet</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(twinAddress).catch(() => {})
+                      toast.success("Wallet address copied")
+                    }}
+                    className="truncate text-foreground hover:underline"
+                    title="Copy address"
+                  >
+                    {twinAddress}
+                  </button>
+                </div>
+                {!balanceLoading && (balance === null || balance === "0" || balance === "0.0") ? (
+                  <p className="mt-1 leading-relaxed text-amber-300/90">
+                    This wallet has 0 {token} on{" "}
+                    {chain === "sepolia" ? "Sepolia" : "Base Sepolia"}. Fund it
+                    first — copy the address above, paste it into a faucet, and
+                    retry. ETH is needed for gas even when sending USDC.
+                  </p>
+                ) : null}
+                <div className="mt-1 flex flex-wrap gap-2 text-primary/80">
+                  <a
+                    href={
+                      chain === "sepolia"
+                        ? "https://www.alchemy.com/faucets/ethereum-sepolia"
+                        : "https://www.alchemy.com/faucets/base-sepolia"
+                    }
+                    target="_blank"
+                    rel="noreferrer"
+                    className="hover:underline"
+                  >
+                    Alchemy faucet ↗
+                  </a>
+                  {chain === "sepolia" ? (
+                    <a
+                      href="https://sepoliafaucet.com"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="hover:underline"
+                    >
+                      sepoliafaucet.com ↗
+                    </a>
+                  ) : null}
+                </div>
+              </div>
             ) : null}
           </div>
 
@@ -651,12 +563,12 @@ export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTrans
             {sending ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                {canUseSmartWallet ? "Preparing…" : "Broadcasting…"}
+                Broadcasting…
               </>
             ) : (
               <>
                 <Send className="mr-2 h-4 w-4" />
-                {canUseSmartWallet ? "Review & sign" : "Send"} {amount} {token} on{" "}
+                Send {amount} {token} on{" "}
                 {chain === "sepolia" ? "Sepolia" : "Base Sepolia"}
               </>
             )}
@@ -698,27 +610,6 @@ export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTrans
         ens={profileEns}
         open={profileEns !== null}
         onOpenChange={(open) => !open && setProfileEns(null)}
-      />
-
-      <TxApprovalModal
-        intent={
-          pendingIntent
-            ? { ...pendingIntent, toEnsName, fromEnsName }
-            : null
-        }
-        open={modalOpen}
-        onOpenChange={(next) => {
-          setModalOpen(next)
-          if (!next) {
-            // Clear once the dialog finishes its close animation. Keeps
-            // ENS-resolution effects from firing again on stale state.
-            setTimeout(() => {
-              setPendingIntent(null)
-              setPendingMeta(null)
-            }, 200)
-          }
-        }}
-        onApprove={handleSmartWalletApprove}
       />
     </Card>
   )

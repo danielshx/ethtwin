@@ -26,6 +26,7 @@ import {
   sepoliaClient,
 } from "./viem"
 import { readAddrFast, resolveEnsAddress } from "./ens"
+import { kmsAccount, kmsAccountForEns } from "./kms"
 
 export type SupportedChain = "sepolia" | "base-sepolia"
 export type SupportedToken = "ETH" | "USDC"
@@ -138,6 +139,10 @@ export type SendTokenResult = {
   txHash: Hash
   blockNumber: bigint
   blockExplorerUrl: string
+  /** True when the tx was signed by a SpaceComputer KMS-managed key bound
+   *  to the sender's twin (ENS → twin.kms-key-id). False for the legacy
+   *  dev-wallet path. */
+  viaKms: boolean
 }
 
 export async function sendToken(args: {
@@ -145,6 +150,10 @@ export async function sendToken(args: {
   token: SupportedToken
   to: string // ENS name or raw 0x...
   amount: string | number // human-readable
+  /** Sender's twin ENS. When set + the twin has a `twin.kms-key-id` text
+   *  record, the tx is signed by KMS — funds come out of the twin's
+   *  satellite-attested address, not the dev wallet. */
+  fromEns?: string
 }): Promise<SendTokenResult> {
   const spec = CHAINS[args.chain]
   if (!spec) throw new Error(`Unsupported chain: ${args.chain}`)
@@ -157,7 +166,30 @@ export async function sendToken(args: {
   }
 
   const recipient = await parseRecipient(args.to)
-  const { account } = getDevWalletClient(spec.chain)
+
+  // Pick the signing identity: if the sender twin has a KMS key, use a
+  // KMS-backed viem account; otherwise fall back to the dev wallet (legacy /
+  // testing). Both expose the same `signTransaction` surface so the rest of
+  // the function is identical regardless of the path.
+  let account: ReturnType<typeof getDevWalletClient>["account"] | ReturnType<typeof kmsAccount>
+  let viaKms = false
+  if (args.fromEns) {
+    const kms = await kmsAccountForEns(args.fromEns).catch(() => null)
+    if (kms) {
+      account = kmsAccount(kms)
+      viaKms = true
+      console.log(
+        `[transfers] KMS-signing tx — ENS=${args.fromEns} key=${kms.keyId} from=${kms.address}`,
+      )
+    } else {
+      console.log(
+        `[transfers] no twin.kms-key-id on ${args.fromEns} — falling back to dev wallet`,
+      )
+      account = getDevWalletClient(spec.chain).account
+    }
+  } else {
+    account = getDevWalletClient(spec.chain).account
+  }
 
   // Pre-flight: confirm sender has enough of the requested asset + gas.
   const decimals = args.token === "ETH" ? 18 : 6
@@ -169,12 +201,23 @@ export async function sendToken(args: {
     token: args.token,
     address: account.address,
   })
+  // Use a chain-agnostic faucet pointer in the error so a freshly-minted
+  // KMS twin's owner knows exactly what to do — funding is the single most
+  // common reason a brand-new twin can't send.
+  const faucetHint =
+    args.chain === "sepolia"
+      ? "https://sepoliafaucet.com or https://www.alchemy.com/faucets/ethereum-sepolia"
+      : "https://www.alchemy.com/faucets/base-sepolia"
   if (balance.raw < amount) {
     throw new Error(
-      `Insufficient ${args.token} on ${args.chain}: have ${balance.human}, need ${formatUnits(
+      `Sender ${account.address} has ${balance.human} ${args.token} on ${args.chain}, needs ${formatUnits(
         amount,
         decimals,
-      )}`,
+      )}. ${
+        viaKms
+          ? `This twin's KMS-managed wallet has no balance yet — fund the address from a faucet (${faucetHint}) and retry.`
+          : ""
+      }`,
     )
   }
   // For ERC-20 transfers we also need ETH for gas.
@@ -182,7 +225,11 @@ export async function sendToken(args: {
     const gasBalance = await spec.client.getBalance({ address: account.address })
     if (gasBalance === 0n) {
       throw new Error(
-        `Sender has 0 ETH on ${args.chain} — no gas available for the ${args.token} transfer.`,
+        `Sender ${account.address} has 0 ETH on ${args.chain} — no gas to broadcast the ${args.token} transfer. ${
+          viaKms
+            ? `Send a small amount of Sepolia ETH to that address (faucet: ${faucetHint}) so the KMS-signed tx has gas.`
+            : ""
+        }`,
       )
     }
   }
@@ -240,5 +287,6 @@ export async function sendToken(args: {
     txHash,
     blockNumber: 0n, // not waited for; UI can fetch explorer for confirmation
     blockExplorerUrl: `${spec.blockExplorer}/tx/${txHash}`,
+    viaKms,
   }
 }

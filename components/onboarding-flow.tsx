@@ -1,8 +1,8 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useRef, useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { CheckCircle2, KeyRound, Loader2, Sparkles, Wallet } from "lucide-react"
+import { CheckCircle2, Copy, Loader2, Sparkles } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
@@ -15,10 +15,18 @@ import { cn } from "@/lib/utils"
 export type OnboardingResult = {
   ensName: string
   username: string
+  /** The KMS-derived EVM address bound to the twin's ENS `addr` record. */
   smartWalletAddress: `0x${string}` | string
   cosmicAttestation: string
+  /** SpaceComputer KMS KeyId for this twin's signing key. */
+  kmsKeyId?: string | null
+  /** One-time recovery code emitted at mint — required to log in from a new
+   *  browser. Stored in localStorage on this device. */
+  recoveryCode?: string | null
 }
 
+// Retained for backwards compatibility with old call sites; the KMS-only
+// flow has no auth methods — the server mints + signs.
 export type AuthMethod = "any" | "passkey" | "wallet"
 
 type Step = "intro" | "username" | "cosmic" | "minting" | "done"
@@ -26,111 +34,76 @@ type Step = "intro" | "username" | "cosmic" | "minting" | "done"
 type OnboardingFlowProps = {
   parentDomain?: string
   defaultUsername?: string
-  smartWalletAddress?: `0x${string}` | string | null
-  onAuthenticate: (
-    method?: AuthMethod,
-  ) => Promise<{ smartWalletAddress: `0x${string}` | string } | void> | void
   onMint: (input: {
     username: string
     smartWalletAddress: `0x${string}` | string
     cosmicAttestation: string
-  }) => Promise<{ ensName: string }>
+  }) => Promise<{
+    ensName: string
+    walletAddress?: string
+    kmsKeyId?: string | null
+    recoveryCode?: string
+  }>
   onComplete: (result: OnboardingResult) => void
-  isAuthenticated?: boolean
   className?: string
 }
 
 export function OnboardingFlow({
   parentDomain = "ethtwin.eth",
   defaultUsername = "",
-  smartWalletAddress,
-  onAuthenticate,
   onMint,
   onComplete,
-  isAuthenticated = false,
   className,
 }: OnboardingFlowProps) {
-  const [step, setStep] = useState<Step>(
-    isAuthenticated ? "username" : "intro",
-  )
+  const [step, setStep] = useState<Step>("intro")
   const [username, setUsername] = useState(defaultUsername)
   const [error, setError] = useState<string | null>(null)
-  const [authBusy, setAuthBusy] = useState(false)
-  const [walletAddr, setWalletAddr] = useState<string | null>(
-    smartWalletAddress ?? null,
-  )
+  // Captured from the mint response so the "done" step can surface it for
+  // the user to write down — only handed back to onComplete after they
+  // explicitly continue.
+  const [recoveryCode, setRecoveryCode] = useState<string | null>(null)
+  const [recoveryAcknowledged, setRecoveryAcknowledged] = useState(false)
+  // Stash the rest of the mint result so the user-driven "I saved it"
+  // continue can fire onComplete without re-minting.
+  const mintCtxRef = useRef<{
+    ensName: string
+    effectiveAddress: string
+    kmsKeyId: string | null
+    recoveryCode: string | null
+  } | null>(null)
   const cosmic = useCosmicSeed()
 
-  useEffect(() => {
-    if (isAuthenticated && step === "intro") setStep("username")
-  }, [isAuthenticated, step])
-
-  useEffect(() => {
-    if (smartWalletAddress) setWalletAddr(smartWalletAddress)
-  }, [smartWalletAddress])
-
-  async function handleAuth(method: AuthMethod = "any") {
-    setAuthBusy(true)
+  async function handleStart() {
     setError(null)
-    try {
-      const result = await onAuthenticate(method)
-      if (result?.smartWalletAddress) setWalletAddr(result.smartWalletAddress)
-      setStep("username")
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "login failed")
-    } finally {
-      setAuthBusy(false)
-    }
+    setStep("username")
   }
 
   async function handleCosmic() {
-    if (!walletAddr) {
-      setError("connect a wallet first")
-      return
-    }
     setError(null)
 
-    // Pre-flight: is this username already taken?
+    // Pre-flight: is this username already taken? With KMS-only auth there's
+    // no wallet to compare against the existing owner — if the name is
+    // taken we just ask for a different one. Re-entry to an existing twin
+    // happens via the "Already have a twin?" login on the home page.
     try {
       const res = await fetch(`/api/check-username?u=${encodeURIComponent(username)}`)
       const data = (await res.json()) as {
         ok: boolean
         taken: boolean
-        ownerAddr: string | null
         ensName: string
         error?: string
       }
       if (data.ok && data.taken) {
-        const ownerLower = (data.ownerAddr ?? "").toLowerCase()
-        const meLower = walletAddr.toLowerCase()
-        if (ownerLower && ownerLower === meLower) {
-          // Same wallet — skip mint, sign them straight in.
-          toast.success(`Welcome back to ${data.ensName}`)
-          setStep("done")
-          setTimeout(() => {
-            onComplete({
-              ensName: data.ensName,
-              username,
-              smartWalletAddress: walletAddr,
-              cosmicAttestation: cosmic.sample?.attestation ?? "mock-attestation",
-            })
-          }, 600)
-          return
-        }
-        // Different wallet — block + error popup.
-        const ownerShort = data.ownerAddr ? shortAddr(data.ownerAddr) : "another wallet"
-        toast.error(`${data.ensName} is already taken`, {
-          description: `Owned by ${ownerShort}. Pick a different username.`,
-        })
-        setError(`${data.ensName} is already taken by ${ownerShort}. Pick a different name.`)
+        setError(
+          `${data.ensName} is already taken. Pick a different name, or sign in to it from the home page.`,
+        )
         return
       }
     } catch {
-      // If the check-username route fails, fall through and let the mint route
-      // produce the canonical error. We don't want network blips to block onboarding.
+      // Network blip — fall through and let the mint route surface the
+      // canonical error if the name really is taken.
     }
 
-    // Free name — proceed with cosmic + mint.
     setStep("cosmic")
     const sample = await cosmic.fetchSeed()
     if (!sample) {
@@ -139,21 +112,24 @@ export function OnboardingFlow({
   }
 
   async function handleMint() {
-    if (!walletAddr) {
-      setError("connect a wallet first")
-      return
-    }
     setStep("minting")
     setError(null)
     try {
-      const { ensName } = await onMint({
+      // The server mints a KMS-managed key for the new twin and returns its
+      // derived EVM address. We pass empty string for smartWalletAddress
+      // because the KMS path ignores it — the server is in charge.
+      const mintResult = await onMint({
         username,
-        smartWalletAddress: walletAddr,
+        smartWalletAddress: "",
         cosmicAttestation: cosmic.sample?.attestation ?? "mock-attestation",
       })
-      // Server returned within seconds after broadcasting. Poll until the addr
-      // record actually lands on-chain (~24-30s on Sepolia).
-      const ready = await pollUntilTwinReady(username, walletAddr, {
+      const effectiveAddress = mintResult.walletAddress ?? null
+      if (!effectiveAddress) {
+        throw new Error(
+          "Mint succeeded but the server didn't return a wallet address — KMS may be misconfigured.",
+        )
+      }
+      const ready = await pollUntilTwinReady(username, effectiveAddress, {
         timeoutMs: 90_000,
         intervalMs: 3_000,
       })
@@ -162,19 +138,49 @@ export function OnboardingFlow({
           "Mint is taking longer than expected. Sepolia might be congested — try again in a minute.",
         )
       }
+      // Capture the recovery code so the "done" step can surface it. We
+      // delay onComplete until the user acknowledges they saved it (or
+      // skip the gate when no code came back, e.g. legacy server build).
+      setRecoveryCode(mintResult.recoveryCode ?? null)
       setStep("done")
-      setTimeout(() => {
-        onComplete({
-          ensName,
-          username,
-          smartWalletAddress: walletAddr,
-          cosmicAttestation: cosmic.sample?.attestation ?? "mock-attestation",
-        })
-      }, 900)
+      if (!mintResult.recoveryCode) {
+        setTimeout(() => {
+          onComplete({
+            ensName: mintResult.ensName,
+            username,
+            smartWalletAddress: effectiveAddress,
+            cosmicAttestation: cosmic.sample?.attestation ?? "mock-attestation",
+            kmsKeyId: mintResult.kmsKeyId ?? null,
+            recoveryCode: null,
+          })
+        }, 900)
+      }
+      // Stash the rest of the mint result on the closure for the user-driven
+      // continue button to use.
+      mintCtxRef.current = {
+        ensName: mintResult.ensName,
+        effectiveAddress,
+        kmsKeyId: mintResult.kmsKeyId ?? null,
+        recoveryCode: mintResult.recoveryCode ?? null,
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "mint failed")
       setStep("cosmic")
     }
+  }
+
+  function continueAfterRecovery() {
+    const ctx = mintCtxRef.current
+    if (!ctx) return
+    setRecoveryAcknowledged(true)
+    onComplete({
+      ensName: ctx.ensName,
+      username,
+      smartWalletAddress: ctx.effectiveAddress,
+      cosmicAttestation: cosmic.sample?.attestation ?? "mock-attestation",
+      kmsKeyId: ctx.kmsKeyId,
+      recoveryCode: ctx.recoveryCode,
+    })
   }
 
   return (
@@ -195,8 +201,8 @@ export function OnboardingFlow({
               </h2>
               <p className="text-base text-muted-foreground">
                 Your personal assistant for sending money, talking to friends,
-                and keeping things private. No seed phrase. Just you, your face,
-                and a name.
+                and keeping things private. No seed phrase, no wallet — your
+                twin's key lives in space, on a SpaceComputer satellite.
               </p>
               <div className="my-2 grid gap-2.5 text-sm">
                 <Bullet>Send money by saying a name out loud</Bullet>
@@ -206,45 +212,14 @@ export function OnboardingFlow({
 
               <div className="mt-2 grid gap-3">
                 <Button
-                  onClick={() => handleAuth("any")}
-                  disabled={authBusy}
+                  onClick={handleStart}
                   size="lg"
                   className="relative h-14 overflow-hidden rounded-2xl bg-primary text-primary-foreground text-base font-semibold shadow-lg shadow-primary/20 transition hover:shadow-primary/30"
                 >
-                  {authBusy ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Connecting…
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles className="mr-2 h-4 w-4" /> Get started
-                    </>
-                  )}
+                  <Sparkles className="mr-2 h-4 w-4" /> Mint a new twin
                 </Button>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <Button
-                    onClick={() => handleAuth("passkey")}
-                    disabled={authBusy}
-                    variant="outline"
-                    size="lg"
-                    className="h-12 rounded-xl border-border bg-card hover:border-primary/40 hover:bg-primary/5"
-                  >
-                    <KeyRound className="mr-2 h-4 w-4" /> Use Face ID
-                  </Button>
-                  <Button
-                    onClick={() => handleAuth("wallet")}
-                    disabled={authBusy}
-                    variant="outline"
-                    size="lg"
-                    className="h-12 rounded-xl border-border bg-card hover:border-primary/40 hover:bg-primary/5"
-                  >
-                    <Wallet className="mr-2 h-4 w-4" /> I have a wallet
-                  </Button>
-                </div>
-
                 <p className="text-center text-xs text-muted-foreground">
-                  Already have a twin? Tap Get started — we&apos;ll bring you back.
+                  Already have a twin? Use the &ldquo;Log in&rdquo; box below.
                 </p>
               </div>
             </StepShell>
@@ -273,12 +248,9 @@ export function OnboardingFlow({
                     .{parentDomain}
                   </span>
                 </div>
-                {walletAddr && (
-                  <p className="text-xs text-muted-foreground">
-                    Wallet:{" "}
-                    <span className="font-mono">{shortAddr(walletAddr)}</span>
-                  </p>
-                )}
+                <p className="text-[11px] text-muted-foreground">
+                  A new SpaceComputer KMS key is minted for your twin on Sepolia.
+                </p>
               </div>
               <Button
                 onClick={handleCosmic}
@@ -348,8 +320,47 @@ export function OnboardingFlow({
                   </p>
                 </div>
                 <Badge variant="secondary" className="font-mono text-[10px]">
-                  ENSIP-25 · stealth-meta-address set
+                  ENSIP-25 · stealth-meta-address set · KMS-signed
                 </Badge>
+                {recoveryCode ? (
+                  <div className="mt-2 w-full max-w-md rounded-lg border border-primary/40 bg-primary/5 p-4 text-left">
+                    <div className="mb-1.5 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-primary">
+                      <Sparkles className="h-3 w-3" /> Recovery code
+                    </div>
+                    <p className="mb-2 text-xs text-muted-foreground">
+                      Save this somewhere you trust. You&apos;ll need it to log
+                      back into <span className="font-mono">{username}.{parentDomain}</span>{" "}
+                      from a different browser. We can&apos;t recover it for you
+                      — there&apos;s no email, no password reset.
+                    </p>
+                    <div className="flex items-stretch gap-2">
+                      <code className="flex-1 break-all rounded-md border border-border/60 bg-background/60 px-3 py-2 font-mono text-sm">
+                        {recoveryCode}
+                      </code>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          navigator.clipboard.writeText(recoveryCode).catch(() => {})
+                          toast.success("Recovery code copied")
+                        }}
+                        className="px-3"
+                      >
+                        <Copy className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                    <Button
+                      type="button"
+                      onClick={continueAfterRecovery}
+                      disabled={recoveryAcknowledged}
+                      size="lg"
+                      className="mt-3 w-full"
+                    >
+                      I saved it — continue
+                    </Button>
+                  </div>
+                ) : null}
               </div>
             </StepShell>
           )}
@@ -414,16 +425,10 @@ function isValid(v: string) {
   return /^[a-z0-9][a-z0-9-]{1,23}$/.test(v)
 }
 
-function shortAddr(addr: string) {
-  if (!addr) return ""
-  if (addr.length < 14) return addr
-  return `${addr.slice(0, 6)}…${addr.slice(-4)}`
-}
-
 /**
  * Polls /api/check-username until the new twin's addr record on-chain matches
- * the user's wallet (= both createSubname and the resolver multicall mined).
- * Returns true once ready, false on timeout.
+ * the freshly-minted KMS-derived address. Returns true once ready, false on
+ * timeout.
  */
 async function pollUntilTwinReady(
   username: string,

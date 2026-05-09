@@ -21,12 +21,17 @@ type AgentEntry = {
   avatar?: string | null
   description?: string | null
 }
+// Message shape returned by /api/messages — matches lib/messages.ts. The
+// chat-as-ENS-subname architecture means a message's identity within its
+// thread is `(chatEns, index)`, not a per-message ENS label.
 type Message = {
-  label: string
-  ens: string
+  index: number
+  chatEns: string
   from: string
   body: string
   at: number
+  stealth?: boolean
+  cosmicAttestation?: string
 }
 
 type MessengerProps = {
@@ -35,7 +40,14 @@ type MessengerProps = {
   className?: string
 }
 
-const POLL_INTERVAL_MS = 15_000
+// Two cadences:
+//   - SLOW: steady-state polling once we know the chat exists on-chain.
+//   - FAST: the first 60s after a send, while the records-multicall is mining.
+//     The chat thread can take ~12-24s on Sepolia; without a fast cadence the
+//     sender stares at an empty thread for a full SLOW interval.
+const POLL_INTERVAL_SLOW_MS = 15_000
+const POLL_INTERVAL_FAST_MS = 3_000
+const FAST_POLL_DURATION_MS = 60_000
 
 const SAVED_CHATS_KEY = (ens: string) => `ethtwin.savedChats.${ens.toLowerCase()}`
 
@@ -66,13 +78,20 @@ export function Messenger({ myEnsName, getAuthToken, className }: MessengerProps
   const [agentsLoading, setAgentsLoading] = useState(true)
   const [selected, setSelected] = useState<string | null>(null)
   const [manualInput, setManualInput] = useState("")
-  const [myInbox, setMyInbox] = useState<Message[]>([])
-  const [theirInbox, setTheirInbox] = useState<Message[]>([])
+  // On-chain messages for the currently selected pair — read directly from
+  // chat-subname `msg.<i>` records, no chats.list lookup needed.
+  const [chainMessages, setChainMessages] = useState<Message[]>([])
+  // Optimistic messages waiting for the on-chain version to land. Keyed by
+  // a synthetic local id; we drop them once a matching message (same body +
+  // sender + within ±60s) appears in chainMessages.
+  const [pendingMessages, setPendingMessages] = useState<Message[]>([])
   const [threadLoading, setThreadLoading] = useState(false)
   const [composing, setComposing] = useState("")
   const [sending, setSending] = useState(false)
   const [profileEns, setProfileEns] = useState<string | null>(null)
   const [savedChats, setSavedChats] = useState<string[]>([])
+  // Timestamp of the last send. Drives the fast-polling window.
+  const [lastSendAt, setLastSendAt] = useState<number | null>(null)
 
   // Load saved chats from localStorage on mount / when ens changes.
   useEffect(() => {
@@ -110,17 +129,12 @@ export function Messenger({ myEnsName, getAuthToken, className }: MessengerProps
     [agents, selected],
   )
 
-  // Combined thread between me and selected agent, sorted oldest → newest.
+  // Combined thread = on-chain messages + any optimistic pending messages
+  // not yet confirmed on-chain. Oldest → newest.
   const thread = useMemo<Message[]>(() => {
     if (!selected) return []
-    const fromThemToMe = myInbox.filter(
-      (m) => m.from.toLowerCase() === selected.toLowerCase(),
-    )
-    const fromMeToThem = theirInbox.filter(
-      (m) => m.from.toLowerCase() === myEnsName.toLowerCase(),
-    )
-    return [...fromThemToMe, ...fromMeToThem].sort((a, b) => a.at - b.at)
-  }, [myInbox, theirInbox, selected, myEnsName])
+    return [...chainMessages, ...pendingMessages].sort((a, b) => a.at - b.at)
+  }, [chainMessages, pendingMessages, selected])
 
   // Load agent directory once on mount.
   const loadAgents = useCallback(async () => {
@@ -145,17 +159,29 @@ export function Messenger({ myEnsName, getAuthToken, className }: MessengerProps
     loadAgents()
   }, [loadAgents])
 
-  // Reload thread whenever the selected contact changes, then poll.
+  // Reload thread whenever the selected contact changes, then poll. Reads
+  // the chat thread directly via the deterministic chat-subname for the
+  // pair — skips `chats.list` so the *very first* message on a brand-new
+  // chat is visible as soon as the multicall lands, without waiting for the
+  // chats.list update on either twin.
   const loadThread = useCallback(async () => {
     if (!selected) return
     setThreadLoading(true)
     try {
-      const [mine, theirs] = await Promise.all([
-        fetch(`/api/messages?for=${encodeURIComponent(myEnsName)}`).then((r) => r.json()),
-        fetch(`/api/messages?for=${encodeURIComponent(selected)}`).then((r) => r.json()),
-      ])
-      if (mine.ok) setMyInbox(mine.messages as Message[])
-      if (theirs.ok) setTheirInbox(theirs.messages as Message[])
+      const res = await fetch(
+        `/api/messages?between=${encodeURIComponent(myEnsName)}&and=${encodeURIComponent(selected)}`,
+      )
+      const data = (await res.json()) as { ok: boolean; messages?: Message[] }
+      if (data.ok && Array.isArray(data.messages)) {
+        // Only commit a non-empty result OR an empty result when we don't
+        // already have on-chain messages. Prevents a brief 502 / racy read
+        // from blanking the thread the user is staring at.
+        if (data.messages.length > 0) {
+          setChainMessages(data.messages)
+        } else {
+          setChainMessages((prev) => (prev.length === 0 ? [] : prev))
+        }
+      }
     } catch {
       // silent — keep last known state
     } finally {
@@ -163,18 +189,43 @@ export function Messenger({ myEnsName, getAuthToken, className }: MessengerProps
     }
   }, [selected, myEnsName])
 
+  // Drop any optimistic pending message that now appears in the on-chain
+  // thread — match on (from, body) since timestamps differ slightly between
+  // optimistic local time and the on-chain `at` field.
+  useEffect(() => {
+    if (pendingMessages.length === 0 || chainMessages.length === 0) return
+    setPendingMessages((prev) =>
+      prev.filter(
+        (p) =>
+          !chainMessages.some(
+            (c) =>
+              c.from.toLowerCase() === p.from.toLowerCase() &&
+              c.body === p.body &&
+              Math.abs(c.at - p.at) < 120,
+          ),
+      ),
+    )
+  }, [chainMessages, pendingMessages.length])
+
   useEffect(() => {
     if (!selected) return
     loadThread()
-    const id = setInterval(loadThread, POLL_INTERVAL_MS)
+    // Use the fast cadence while a recent send is still propagating, then
+    // fall back to the slow cadence. A tiny clock-driven re-eval makes this
+    // self-healing if the user sends multiple messages.
+    const interval =
+      lastSendAt && Date.now() - lastSendAt < FAST_POLL_DURATION_MS
+        ? POLL_INTERVAL_FAST_MS
+        : POLL_INTERVAL_SLOW_MS
+    const id = setInterval(loadThread, interval)
     return () => clearInterval(id)
-  }, [selected, loadThread])
+  }, [selected, loadThread, lastSendAt])
 
   const selectAgent = useCallback(
     (ens: string) => {
       setSelected(ens)
-      setMyInbox([])
-      setTheirInbox([])
+      setChainMessages([])
+      setPendingMessages([])
       saveChat(ens)
     },
     [saveChat],
@@ -218,11 +269,9 @@ export function Messenger({ myEnsName, getAuthToken, className }: MessengerProps
     if (!body || !selected || sending) return
     setSending(true)
     try {
-      const token = await getAuthToken()
-      if (!token) {
-        toast.error("Not authenticated. Sign in again.")
-        return
-      }
+      // Privy access token is best-effort — the KMS-onboarded flow doesn't
+      // have one, and the server treats it as optional. Don't gate the send.
+      const token = await getAuthToken().catch(() => null)
       const res = await fetch("/api/messages", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -264,7 +313,7 @@ export function Messenger({ myEnsName, getAuthToken, className }: MessengerProps
         return
       }
       setComposing("")
-      toast.success("Message landed on-chain", {
+      toast.success("Message broadcast — landing on-chain", {
         description: data.blockExplorerUrl,
       })
       addHistoryEntry({
@@ -279,10 +328,16 @@ export function Messenger({ myEnsName, getAuthToken, className }: MessengerProps
         explorerUrl: data.blockExplorerUrl,
         syncTo: { ens: myEnsName, getAuthToken },
       })
-      // Optimistic append + refresh.
+      // Optimistic: keep the message visible until the polling read picks
+      // up the confirmed on-chain version. The dedupe effect drops it once
+      // a matching (from, body, ±120s) entry appears in chainMessages.
       if (data.message) {
-        setTheirInbox((prev) => [data.message!, ...prev])
+        setPendingMessages((prev) => [...prev, data.message!])
       }
+      // Trigger fast-polling for the next 60s.
+      setLastSendAt(Date.now())
+      // Don't await — the multicall may not be mined yet, the polling
+      // cadence will catch it.
       loadThread()
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Send failed"
@@ -573,7 +628,7 @@ function renderThreadWithDateSeparators(thread: Message[], myEnsName: string) {
     }
     items.push(
       <MessageBubble
-        key={m.label}
+        key={`${m.chatEns}-${m.index}`}
         message={m}
         mine={m.from.toLowerCase() === myEnsName.toLowerCase()}
       />,

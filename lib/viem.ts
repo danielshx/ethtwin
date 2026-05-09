@@ -73,7 +73,13 @@ function urlsForChain(chain: Chain): string[] {
 function transportForChain(chain: Chain) {
   const urls = urlsForChain(chain)
   if (urls.length === 0) return http()
-  if (urls.length === 1) return http(urls[0])
+  // Sepolia (where ENS lives) is the only chain we both read AND write
+  // against in tight sequence. A `fallback` transport can route the
+  // receipt-wait to one RPC and the post-receipt read to another that
+  // hasn't synced — we end up reading stale state right after writing
+  // it. Pin Sepolia to a single RPC for consistency; other chains keep
+  // the fallback because they're read-mostly.
+  if (chain.id === sepolia.id || urls.length === 1) return http(urls[0])
   return fallback(
     urls.map((url) => http(url)),
     { rank: false, retryCount: 1 },

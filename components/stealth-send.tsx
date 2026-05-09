@@ -142,12 +142,9 @@ export function StealthSend({ myEnsName, getAuthToken, className }: StealthSendP
     // 2. Actual on-chain stealth send.
     setPhase("sending")
     try {
-      const authToken = await getAuthToken()
-      if (!authToken) {
-        setError("not authenticated")
-        setPhase("idle")
-        return
-      }
+      // Privy is optional — KMS-onboarded twins have no Privy session. Best-effort
+      // fetch the token; the API verifies it only when present.
+      const authToken = await getAuthToken().catch(() => null)
       const res = await fetch("/api/stealth/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

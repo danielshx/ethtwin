@@ -20,7 +20,8 @@ export const maxDuration = 60
 const MAX_USDC = parseUnits("1", 6)
 
 const stealthSendBodySchema = z.object({
-  privyToken: z.string().min(1),
+  // Privy auth optional — KMS-onboarded twins have no Privy token.
+  privyToken: z.string().nullable().optional(),
   recipientEnsName: z.string().min(1),
   amountUsdc: z.union([z.string(), z.number()]),
 })
@@ -30,13 +31,15 @@ export async function POST(req: Request) {
   if (!parsed.ok) return parsed.response
   const { privyToken, recipientEnsName, amountUsdc } = parsed.data
 
-  try {
-    await verifyAuthToken(privyToken)
-  } catch (error) {
-    return jsonError(
-      error instanceof Error ? error.message : "Privy token verification failed",
-      401,
-    )
+  if (privyToken) {
+    try {
+      await verifyAuthToken(privyToken)
+    } catch (error) {
+      return jsonError(
+        error instanceof Error ? error.message : "Privy token verification failed",
+        401,
+      )
+    }
   }
 
   const amountWei = parseUnits(String(amountUsdc), 6)

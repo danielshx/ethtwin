@@ -455,6 +455,50 @@ export function buildTwinTools(ctx: TwinToolContext = {}) {
     ...twinTools,
     hireAgent: buildHireAgentTool(ctx),
 
+    // Override the static sendToken so the sender's twin ENS is forwarded.
+    // When the twin has a `twin.kms-key-id` text record on chain, the
+    // transfers layer signs via SpaceComputer KMS — funds come out of the
+    // twin's satellite-attested address instead of the dev wallet.
+    sendToken: tool({
+      description:
+        "Send native ETH or USDC on Sepolia or Base Sepolia. Recipient can be an ENS name (e.g. alice.ethtwin.eth) or a 0x address. Returns the on-chain tx hash + block-explorer link. Use this immediately when the user explicitly asks to send, transfer, or pay a token and provides chain, token, recipient, and amount. Default chain is **sepolia** for both ETH and USDC unless the user explicitly says Base / Base Sepolia.",
+      inputSchema: z.object({
+        chain: z
+          .enum(["sepolia", "base-sepolia"])
+          .describe("DEFAULT: sepolia. Switch only when the user says 'Base' or 'Base Sepolia'."),
+        token: z.enum(["ETH", "USDC"]).describe("Native ETH or USDC ERC-20"),
+        to: z
+          .string()
+          .describe("Recipient ENS name (resolved on Sepolia) or 0x... address"),
+        amount: z
+          .union([z.string(), z.number()])
+          .describe("Human-readable amount, e.g. 0.001 (ETH) or 0.5 (USDC)"),
+      }),
+      execute: async (input) => {
+        try {
+          const result = await sendToken({
+            ...input,
+            ...(ctx.fromEns ? { fromEns: ctx.fromEns } : {}),
+          })
+          return {
+            ok: true,
+            chain: result.chain,
+            token: result.token,
+            from: result.from,
+            to: result.to,
+            recipientInput: result.recipientInput,
+            amount: `${result.amountHuman} ${result.token}`,
+            txHash: result.txHash,
+            blockNumber: result.blockNumber.toString(),
+            blockExplorerUrl: result.blockExplorerUrl,
+            viaKms: result.viaKms,
+          }
+        } catch (err) {
+          return { ok: false, error: err instanceof Error ? err.message : String(err) }
+        }
+      },
+    }),
+
     // Override the static sendStealthUsdc so a successful send to another
     // ethtwin.eth twin triggers a deterministic thank-you reply. Demo-payoff
     // for Maria→Tom; in production this is harmless (capped to twins under
@@ -660,8 +704,9 @@ export function buildTwinTools(ctx: TwinToolContext = {}) {
             ok: true,
             fromEns: ctx.fromEns,
             toEns,
-            messageEns: result.message.ens,
-            label: result.message.label,
+            chatEns: result.chatEns,
+            messageIndex: result.message.index,
+            createdChat: result.createdChat,
             at: result.message.at,
             txHash: result.recordsMulticallTx,
             blockExplorerUrl: result.blockExplorerUrl,

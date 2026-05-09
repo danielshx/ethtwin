@@ -1,14 +1,12 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
-import { useConnectWallet, usePrivy, useWallets } from "@privy-io/react-auth"
-import { useSmartWallets } from "@privy-io/react-auth/smart-wallets"
+import { useState } from "react"
 import { motion } from "framer-motion"
-import { Eye, EyeOff, LogOut, Sparkles } from "lucide-react"
+import { Eye, EyeOff, LogIn, LogOut, Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
 import { Card } from "@/components/ui/card"
-import { OnboardingFlow, type AuthMethod, type OnboardingResult } from "@/components/onboarding-flow"
+import { Input } from "@/components/ui/input"
+import { OnboardingFlow, type OnboardingResult } from "@/components/onboarding-flow"
 import { TwinChat } from "@/components/twin-chat"
 import { Messenger } from "@/components/messenger"
 import { TokenTransfer } from "@/components/token-transfer"
@@ -20,132 +18,123 @@ import { MariaShell } from "@/components/maria-shell"
 import { ContrastCard } from "@/components/contrast-card"
 import { addHistoryEntry } from "@/lib/history"
 import { useDemoMode } from "@/lib/use-demo-mode"
+import { useSession, type Session } from "@/lib/use-session"
 import { Toaster } from "@/components/ui/sonner"
 import { toast } from "sonner"
 
 const PARENT_DOMAIN = process.env.NEXT_PUBLIC_PARENT_DOMAIN ?? "ethtwin.eth"
-const PRIVY_CONFIGURED = !!process.env.NEXT_PUBLIC_PRIVY_APP_ID
-const STORAGE_KEY = "ethtwin.session.v1"
-const DEV_WALLET_FALLBACK = (process.env.NEXT_PUBLIC_DEV_WALLET_ADDRESS ??
-  "0x4E09c220BD556396Bc255A4DD24F858Bafeba6f5") as `0x${string}`
 
-type SessionState = {
-  ensName: string
-  username: string
-  smartWalletAddress: string
-  cosmicAttestation: string
+// Per-twin recovery code is the bare-minimum ownership proof the user needs
+// to log back in from a new browser. We persist it in localStorage so the
+// SAME browser (the one that minted) auto-fills the field at login.
+const RECOVERY_KEY = (ens: string) => `ethtwin.recovery.${ens.toLowerCase()}`
+
+function persistRecoveryCode(ens: string, code: string) {
+  if (typeof window === "undefined") return
+  try {
+    window.localStorage.setItem(RECOVERY_KEY(ens), code)
+  } catch {
+    // ignore — best-effort
+  }
 }
+
+function readRecoveryCode(ens: string): string | null {
+  if (typeof window === "undefined") return null
+  try {
+    return window.localStorage.getItem(RECOVERY_KEY(ens))
+  } catch {
+    return null
+  }
+}
+
+// Components downstream still expect a `getAuthToken` prop because the demo
+// historically forwarded a Privy access token to API routes. The KMS-only
+// stack doesn't need one — same-origin requests carry the session cookie
+// automatically — so we hand them a constant null-resolver. Removing the
+// prop entirely is a separate cleanup pass.
+const NO_AUTH_TOKEN = () => Promise.resolve<string | null>(null)
 
 export default function HomePage() {
   return (
     <main className="relative min-h-dvh overflow-hidden bg-background">
       <BackgroundGlow />
-      {PRIVY_CONFIGURED ? <App /> : <MissingEnv />}
+      <App />
       <Toaster />
     </main>
   )
 }
 
 function App() {
-  const privy = usePrivy()
-  const { wallets } = useWallets()
-  const smart = useSmartWallets()
-  const { connectWallet } = useConnectWallet()
-  const [session, setSession] = useState<SessionState | null>(null)
-  const [hydrated, setHydrated] = useState(false)
+  const { session, hydrated, login, logout, adoptServerSession } = useSession()
   const [demoMode, setDemoMode] = useDemoMode()
-
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY)
-      if (raw) setSession(JSON.parse(raw) as SessionState)
-    } catch {}
-    setHydrated(true)
-  }, [])
-
-  const smartWalletAddress = useMemo(() => {
-    const smartAccount = smart.client?.account?.address
-    if (smartAccount) return smartAccount
-    const embedded = wallets.find((w) => w.walletClientType === "privy")
-    if (embedded?.address) return embedded.address
-    if (wallets[0]?.address) return wallets[0].address
-    if (privy.authenticated) return DEV_WALLET_FALLBACK
-    return null
-  }, [smart.client?.account?.address, wallets, privy.authenticated])
-
-  async function handleAuthenticate(method: AuthMethod = "any") {
-    if (!privy.authenticated) {
-      if (method === "wallet") {
-        connectWallet()
-      } else if (method === "passkey") {
-        privy.login({ loginMethods: ["passkey"] })
-      } else {
-        privy.login()
-      }
-    }
-    return { smartWalletAddress: smartWalletAddress ?? DEV_WALLET_FALLBACK }
-  }
 
   async function handleMint(input: {
     username: string
     smartWalletAddress: string
     cosmicAttestation: string
   }) {
-    const token = await privy.getAccessToken().catch(() => null)
     const res = await fetch("/api/onboarding", {
       method: "POST",
+      credentials: "same-origin",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        privyToken: token,
         username: input.username,
-        smartWalletAddress: input.smartWalletAddress,
+        // No wallet pinned — the server mints a per-twin KMS-managed
+        // ETHEREUM key and uses its derived address. No Privy token to
+        // forward; auth is now cookie-based.
         stealthMetaAddress: `st:eth:0x${input.cosmicAttestation
           .replace(/[^a-f0-9]/gi, "")
           .padEnd(128, "0")
           .slice(0, 128)}`,
         twinAgentId: input.username,
+        useKms: true,
       }),
     })
     if (!res.ok) {
       const text = await res.text()
       throw new Error(text || `mint failed (${res.status})`)
     }
-    const data = (await res.json()) as { ensName: string }
-    return { ensName: data.ensName }
+    const data = (await res.json()) as {
+      ensName: string
+      walletAddress?: string
+      kmsKeyId?: string | null
+      recoveryCode?: string
+    }
+    // Persist the recovery code right after mint — this is the artefact
+    // the user needs to log back in from a different browser.
+    if (data.recoveryCode) {
+      persistRecoveryCode(data.ensName, data.recoveryCode)
+    }
+    // The onboarding route already wrote the session cookie, so mirror it
+    // into client state without a second round-trip.
+    adoptServerSession({
+      ens: data.ensName,
+      kmsKeyId: data.kmsKeyId ?? null,
+      exp: Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60,
+    })
+    return {
+      ensName: data.ensName,
+      walletAddress: data.walletAddress,
+      kmsKeyId: data.kmsKeyId ?? null,
+      recoveryCode: data.recoveryCode,
+    }
   }
 
   function handleComplete(result: OnboardingResult) {
-    const next: SessionState = {
-      ensName: result.ensName,
-      username: result.username,
-      smartWalletAddress: String(result.smartWalletAddress),
-      cosmicAttestation: result.cosmicAttestation,
-    }
-    setSession(next)
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
-    } catch {}
-    toast.success(`${next.ensName} is live`)
+    toast.success(`${result.ensName} is live`)
     addHistoryEntry({
       kind: "mint",
       status: "success",
       chain: "sepolia",
-      summary: `Twin minted: ${next.ensName}`,
-      description: `Linked to wallet ${next.smartWalletAddress}`,
-      explorerUrl: `https://sepolia.app.ens.domains/${next.ensName}`,
-      syncTo: {
-        ens: next.ensName,
-        getAuthToken: () => privy.getAccessToken().catch(() => null),
-      },
+      summary: `Twin minted: ${result.ensName}`,
+      description: `Linked to wallet ${result.smartWalletAddress}`,
+      explorerUrl: `https://sepolia.app.ens.domains/${result.ensName}`,
+      syncTo: { ens: result.ensName, getAuthToken: NO_AUTH_TOKEN },
     })
   }
 
-  function handleSignOut() {
-    privy.logout?.()
-    setSession(null)
-    try {
-      localStorage.removeItem(STORAGE_KEY)
-    } catch {}
+  async function handleSignOut() {
+    await logout().catch(() => {})
   }
 
   if (!hydrated) return null
@@ -170,7 +159,7 @@ function App() {
             <>
               {!demoMode ? (
                 <span className="hidden font-mono text-xs text-muted-foreground sm:inline">
-                  {session.ensName}
+                  {session.ens}
                 </span>
               ) : null}
               <Button variant="ghost" size="sm" onClick={handleSignOut}>
@@ -187,12 +176,10 @@ function App() {
             <Hero demoMode={demoMode} />
             <OnboardingFlow
               parentDomain={PARENT_DOMAIN}
-              isAuthenticated={privy.authenticated}
-              smartWalletAddress={smartWalletAddress}
-              onAuthenticate={handleAuthenticate}
               onMint={handleMint}
               onComplete={handleComplete}
             />
+            <ExistingTwinLogin parentDomain={PARENT_DOMAIN} login={login} />
             <div className="w-full max-w-4xl space-y-4 pt-10">
               <div className="text-center">
                 <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">
@@ -207,44 +194,157 @@ function App() {
           </>
         ) : demoMode ? (
           <MariaShell
-            ensName={session.ensName}
-            walletAddress={smartWalletAddress ?? session.smartWalletAddress}
-            getAuthToken={() => privy.getAccessToken().catch(() => null)}
+            ensName={session.ens}
+            walletAddress={""}
+            getAuthToken={NO_AUTH_TOKEN}
           />
         ) : (
-          <SignedInTabs
-            session={session}
-            privy={privy}
-            walletAddress={smartWalletAddress}
-            onTwinDeleted={handleSignOut}
-          />
+          <SignedInTabs session={session} onTwinDeleted={handleSignOut} />
         )}
       </section>
       {session && !demoMode ? (
-        <NotificationPanel
-          ensName={session.ensName}
-          walletAddress={smartWalletAddress ?? session.smartWalletAddress}
-        />
+        <NotificationPanel ensName={session.ens} walletAddress={""} />
       ) : null}
     </>
   )
 }
 
+function ExistingTwinLogin({
+  parentDomain,
+  login,
+}: {
+  parentDomain: string
+  login: (ens: string, recoveryCode?: string) => Promise<Session>
+}) {
+  const [input, setInput] = useState("")
+  const [recovery, setRecovery] = useState("")
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [needsRecovery, setNeedsRecovery] = useState(false)
+
+  async function attemptLogin(ens: string, code: string | null) {
+    return login(ens, code ?? undefined)
+  }
+
+  async function handle() {
+    if (!input.trim()) return
+    setBusy(true)
+    setError(null)
+    try {
+      const candidate = input.toLowerCase().trim()
+      const ens = candidate.endsWith(`.${parentDomain}`)
+        ? candidate
+        : `${candidate}.${parentDomain}`
+
+      // Try the persisted recovery code from the same browser first — most
+      // users won't ever see the second-factor field.
+      const stored = readRecoveryCode(ens)
+      const code = recovery.trim() || stored
+      try {
+        await attemptLogin(ens, code)
+        // If the form-typed code worked, persist it so we can auto-fill
+        // next time on this browser.
+        if (recovery.trim()) {
+          persistRecoveryCode(ens, recovery.trim())
+        }
+        toast.success(`Welcome back, ${ens}`)
+        setNeedsRecovery(false)
+        setRecovery("")
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "login failed"
+        // Server says we need a code (either missing or wrong). Surface
+        // the second-factor field instead of just printing the error.
+        if (
+          /recovery code/i.test(msg) ||
+          msg.includes("401") ||
+          msg.includes("403")
+        ) {
+          setNeedsRecovery(true)
+          setError(
+            recovery.trim()
+              ? "Recovery code didn't match. Double-check the value you saved at mint."
+              : "This twin needs a recovery code. Paste the one shown when you minted it.",
+          )
+        } else {
+          throw e
+        }
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "login failed"
+      setError(msg)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Card className="w-full max-w-xl border-border/60 bg-card/70 px-6 py-5">
+      <div className="flex flex-col gap-3">
+        <div>
+          <h3 className="text-base font-semibold">Already have a twin?</h3>
+          <p className="text-xs text-muted-foreground">
+            Type its ENS name. From this browser the recovery code is auto-filled;
+            from a new browser you&apos;ll need to paste the code shown at mint.
+          </p>
+        </div>
+        <div className="flex items-stretch gap-2">
+          <div className="flex flex-1 items-stretch overflow-hidden rounded-md border border-border/60 bg-secondary/50">
+            <Input
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault()
+                  handle()
+                }
+              }}
+              placeholder="daniel"
+              className="border-0 bg-transparent text-sm focus-visible:ring-0"
+              disabled={busy}
+            />
+            <span className="flex items-center pr-3 font-mono text-xs text-muted-foreground">
+              .{parentDomain}
+            </span>
+          </div>
+          <Button onClick={handle} disabled={busy || !input.trim()}>
+            <LogIn className="mr-1.5 h-3.5 w-3.5" />
+            Log in
+          </Button>
+        </div>
+        {needsRecovery ? (
+          <Input
+            value={recovery}
+            onChange={(e) => setRecovery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault()
+                handle()
+              }
+            }}
+            placeholder="Recovery code (paste the value shown at mint)"
+            className="font-mono text-xs"
+            disabled={busy}
+            autoFocus
+          />
+        ) : null}
+        {error ? (
+          <p className="text-xs text-destructive">{error}</p>
+        ) : null}
+      </div>
+    </Card>
+  )
+}
+
 function SignedInTabs({
   session,
-  privy,
-  walletAddress,
   onTwinDeleted,
 }: {
-  session: SessionState
-  privy: ReturnType<typeof usePrivy>
-  walletAddress: string | null
+  session: Session
   onTwinDeleted?: () => void
 }) {
   const [tab, setTab] = useState<
     "chat" | "voice" | "messenger" | "transfer" | "stealth" | "history"
   >("chat")
-  const getAuthToken = () => privy.getAccessToken().catch(() => null)
   return (
     <div className="flex w-full max-w-3xl flex-col gap-4">
       <SegmentedTabs
@@ -261,41 +361,41 @@ function SignedInTabs({
       />
       {tab === "chat" ? (
         <TwinChat
-          ensName={session.ensName}
-          getAuthToken={getAuthToken}
+          ensName={session.ens}
+          getAuthToken={NO_AUTH_TOKEN}
           onTwinDeleted={onTwinDeleted}
           className="h-[70dvh] w-full border-border/60 bg-card shadow-sm"
         />
       ) : tab === "voice" ? (
         <VoiceTwin
-          ensName={session.ensName}
-          getAuthToken={getAuthToken}
+          ensName={session.ens}
+          getAuthToken={NO_AUTH_TOKEN}
           onSwitchToChat={() => setTab("chat")}
           className="w-full border-border/60 bg-card shadow-sm"
         />
       ) : tab === "messenger" ? (
         <Messenger
-          myEnsName={session.ensName}
-          getAuthToken={getAuthToken}
+          myEnsName={session.ens}
+          getAuthToken={NO_AUTH_TOKEN}
           className="w-full border-border/60 bg-card shadow-sm"
         />
       ) : tab === "transfer" ? (
         <TokenTransfer
-          myEnsName={session.ensName}
-          getAuthToken={getAuthToken}
+          myEnsName={session.ens}
+          getAuthToken={NO_AUTH_TOKEN}
           className="w-full border-border/60 bg-card shadow-sm"
         />
       ) : tab === "stealth" ? (
         <StealthSend
-          myEnsName={session.ensName}
-          getAuthToken={getAuthToken}
+          myEnsName={session.ens}
+          getAuthToken={NO_AUTH_TOKEN}
           className="w-full border-border/60 bg-card shadow-sm"
         />
       ) : (
         <History
-          ensName={session.ensName}
-          walletAddress={walletAddress ?? session.smartWalletAddress}
-          getAuthToken={getAuthToken}
+          ensName={session.ens}
+          walletAddress={""}
+          getAuthToken={NO_AUTH_TOKEN}
           className="w-full border-border/60 bg-card shadow-sm"
         />
       )}
@@ -384,24 +484,6 @@ function SegmentedTabs<T extends string>({
         )
       })}
     </div>
-  )
-}
-
-function MissingEnv() {
-  return (
-    <section className="relative z-10 mx-auto flex min-h-dvh w-full max-w-3xl flex-col items-center justify-center gap-6 px-6 text-center">
-      <Hero />
-      <Card className="max-w-md border-border/60 bg-card/95 p-6 text-left text-sm">
-        <p className="font-medium text-foreground">Privy not configured</p>
-        <p className="mt-1 text-muted-foreground">
-          Set <code className="font-mono text-xs">NEXT_PUBLIC_PRIVY_APP_ID</code> in
-          <code className="ml-1 font-mono text-xs">.env.local</code> to enable login,
-          smart wallet, and onboarding. See{" "}
-          <code className="font-mono text-xs">.env.example</code> and{" "}
-          <code className="font-mono text-xs">docs/09-Setup.md</code>.
-        </p>
-      </Card>
-    </section>
   )
 }
 

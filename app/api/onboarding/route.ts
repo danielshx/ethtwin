@@ -7,6 +7,14 @@ import { ENS_REGISTRY, readSubnameOwner } from "@/lib/ens"
 import { ensRegistryAbi, ensResolverAbi } from "@/lib/abis"
 import { buildDefaultProfileRecords } from "@/lib/twin-profile"
 import { encodeFunctionData, keccak256, namehash, toBytes } from "viem"
+import { createTwinKey, isKmsConfigured } from "@/lib/kms"
+import { setSessionCookie } from "@/lib/session"
+import { deriveTwinStealthKeys } from "@/lib/stealth"
+import {
+  LOGIN_HASH_TEXT_KEY,
+  generateRecoveryCode,
+  hashRecoveryCode,
+} from "@/lib/recovery"
 import {
   ensLabelSchema,
   ethereumAddressSchema,
@@ -32,11 +40,23 @@ const SEPOLIA_MAX_FEE_PER_GAS = 5_000_000_000n // 5 gwei
 const SEPOLIA_MAX_PRIORITY_FEE_PER_GAS = 1_500_000_000n // 1.5 gwei
 
 const onboardingBodySchema = z.object({
+  // Privy was the previous auth provider; the body field is retained for
+  // backwards-compat with old clients but is ignored — the route is now
+  // session-cookie based and signs everything via SpaceComputer KMS.
   privyToken: z.string().nullable().optional(),
   username: ensLabelSchema,
-  smartWalletAddress: ethereumAddressSchema,
-  stealthMetaAddress: z.string().min(1, "stealthMetaAddress is required"),
+  // Now optional: when omitted (or set to the dev fallback) we mint a fresh
+  // KMS-managed Ethereum key and use ITS address as the twin's wallet.
+  smartWalletAddress: ethereumAddressSchema.optional(),
+  // Now derived server-side from the twin ENS + master secret. Field is
+  // accepted for backwards-compat but ignored — see deriveTwinStealthKeys
+  // in lib/stealth.ts.
+  stealthMetaAddress: z.string().min(1).optional(),
   twinAgentId: z.string().min(1, "twinAgentId is required"),
+  // Explicit opt-out for the rare case the caller wants to bind a specific
+  // wallet (e.g. an external EOA they already control). Default behaviour
+  // when KMS is configured is "always KMS".
+  useKms: z.boolean().optional(),
 })
 
 export async function POST(req: Request) {
@@ -52,7 +72,6 @@ export async function POST(req: Request) {
   const body = parsed.data
 
   const ensName = `${body.username}.${PARENT_DOMAIN}`
-  const walletAddress = getAddress(body.smartWalletAddress) as Address
   const interop = encodeInteropAddress(
     ERC8004_REGISTRY.baseSepolia,
     CHAIN_REFERENCE.baseSepolia,
@@ -63,6 +82,42 @@ export async function POST(req: Request) {
     log("start")
     const { account: devAccount } = getDevWalletClient()
     log("wallet ready")
+
+    // ── KMS integration ──────────────────────────────────────────────────
+    // Default behaviour: when SpaceComputer KMS credentials are configured
+    // (ORBITPORT_CLIENT_ID + ORBITPORT_CLIENT_SECRET) and the client didn't
+    // pass a specific wallet, mint a per-twin ETHEREUM key in KMS and use
+    // its derived EVM address as the twin's identity on-chain. This is the
+    // post-Privy-replacement path: the twin's wallet is satellite-attested,
+    // not held by Privy or by the user's MetaMask. The KMS KeyId is also
+    // published as a `twin.kms-key-id` text record so any reader can resolve
+    // ENS → KMS key → cryptographic provenance.
+    let kmsKeyId: string | null = null
+    let walletAddress: Address
+    const wantsKms =
+      body.useKms !== false &&
+      isKmsConfigured() &&
+      // If the client passed a wallet that isn't the dev fallback, respect it.
+      (!body.smartWalletAddress ||
+        body.smartWalletAddress.toLowerCase() ===
+          devAccount.address.toLowerCase())
+
+    if (wantsKms) {
+      log("creating KMS-managed ETHEREUM key…")
+      const kms = await createTwinKey(body.username)
+      kmsKeyId = kms.keyId
+      walletAddress = kms.address
+      log(`KMS key ${kmsKeyId} → ${walletAddress}`)
+    } else if (body.smartWalletAddress) {
+      // External wallet path (legacy / testing) — caller controls the address.
+      walletAddress = getAddress(body.smartWalletAddress) as Address
+      log(`using caller-supplied wallet ${walletAddress}`)
+    } else {
+      return jsonError(
+        "No wallet path available: KMS is not configured and no smartWalletAddress was supplied.",
+        400,
+      )
+    }
 
     // Only two reads: existing-owner check (to know if we need to create) and
     // current pending nonce (so we can sequence two txs without re-fetching).
@@ -77,6 +132,20 @@ export async function POST(req: Request) {
 
     const needsCreate = existingOwner === ZERO_ADDRESS
 
+    // Recovery code — the per-twin secret the user needs to log back in
+    // from a new browser. Plaintext is returned to the client (and only
+    // shown once); the HMAC is published as `twin.login-hash` so any
+    // caller can verify a supplied code without trusting the server.
+    const recoveryCode = generateRecoveryCode()
+    const loginHash = hashRecoveryCode(recoveryCode)
+
+    // Stealth meta-address is derived deterministically from the twin's
+    // ENS + dev master secret. Random per-mint keys would be lost the
+    // moment the page reloads (no client-side persistence) — derived
+    // keys let the recipient (or anyone with the master) re-scan inbound
+    // payments later. See lib/stealth.ts for the full caveat.
+    const stealthKeys = deriveTwinStealthKeys(ensName)
+
     // Build the multicall payload — addr + every text record on the new node.
     // Skip the agents.directory append for now to avoid an extra RPC read on
     // the hot path; a separate /api/agents/refresh can sync the directory later.
@@ -90,8 +159,14 @@ export async function POST(req: Request) {
       "twin.capabilities": JSON.stringify(["transact", "research", "stealth_send"]),
       "twin.endpoint": `${appUrl.value}/api/twin`,
       "twin.version": "0.1.0",
-      "stealth-meta-address": body.stealthMetaAddress,
+      "stealth-meta-address": stealthKeys.stealthMetaAddressURI,
       [ensipKey]: "1",
+      // KMS provenance: when the twin's wallet is a SpaceComputer KMS key,
+      // publish the KeyId on chain so anyone resolving the ENS can verify
+      // the address is satellite-attested + look up the same key for sigs.
+      ...(kmsKeyId ? { "twin.kms-key-id": kmsKeyId } : {}),
+      // Login hash — owners-only proof for /api/session POST.
+      [LOGIN_HASH_TEXT_KEY]: loginHash,
     }
     const ensNode = namehash(ensName)
     const calls: `0x${string}`[] = [
@@ -167,12 +242,22 @@ export async function POST(req: Request) {
     })
     log(`recordsTx broadcast: ${recordsTx}`)
 
+    // Issue a session cookie so the new twin is logged in immediately —
+    // replaces Privy's "you have an embedded wallet, you're authenticated"
+    // signal with our KMS-only equivalent.
+    await setSessionCookie({ ens: ensName, kmsKeyId })
+
     return Response.json({
       ok: true,
       ensName,
       status: "pending",
       createTx,
       recordsTx,
+      walletAddress,
+      kmsKeyId,
+      // Plaintext recovery code — the client must persist this and surface
+      // it to the user. Required to log back in from a different browser.
+      recoveryCode,
       pollUrl: `/api/check-username?u=${encodeURIComponent(body.username)}`,
     })
   } catch (error) {

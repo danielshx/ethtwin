@@ -114,7 +114,18 @@ function saveReplied(ens: string, ids: Set<string>) {
   }
 }
 
-type ApiMessage = { label?: string; from: string; body: string; at: number }
+type ApiMessage = {
+  // New chat-subname architecture: a message is identified by its chat ENS
+  // + its index within that chat's `msg.<i>` records. `label` was the
+  // per-message subname under the old layout — kept here for backwards
+  // compat with any in-flight messages from before the migration.
+  chatEns?: string
+  index?: number
+  label?: string
+  from: string
+  body: string
+  at: number
+}
 type ApiWalletTx = {
   txHash: `0x${string}`
   chain: string
@@ -192,8 +203,22 @@ export function useNotifications(
       // Inbox messages
       if (msgRes?.ok && Array.isArray(msgRes.messages)) {
         const nowSec = Math.floor(Date.now() / 1000)
+        const myEnsLower = ensName.toLowerCase()
         for (const m of msgRes.messages as ApiMessage[]) {
-          const id = `msg:${m.label ?? `${m.from}-${m.at}`}`
+          // Skip our own outgoing messages — the chat-subname inbox returns
+          // BOTH directions of every conversation (it's the sender's own
+          // chats.list pointing at the same chat record), and surfacing
+          // self-sent items as "New message from <me>" is jarring noise.
+          if (m.from.toLowerCase() === myEnsLower) continue
+
+          // Stable per-message id: prefer the new (chatEns, index) coordinate
+          // when present; fall back to the legacy label or the (from, at)
+          // pair so notifications still de-dupe across the migration.
+          const id = `msg:${
+            m.chatEns && typeof m.index === "number"
+              ? `${m.chatEns}#${m.index}`
+              : m.label ?? `${m.from}-${m.at}`
+          }`
           if (seenRef.current.has(id)) continue
           newItems.push({
             id,

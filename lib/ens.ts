@@ -23,8 +23,13 @@ const KNOWN_TEXT_KEYS: (keyof TwinTextRecords)[] = [
   "stealth-meta-address",
 ]
 
-const isSepolia = process.env.NEXT_PUBLIC_ENS_NETWORK === "sepolia"
-const client = isSepolia ? sepoliaClient : mainnetClient
+// Every twin lives on Sepolia ENS (we own ethtwin.eth on Sepolia, the
+// dev wallet mints subnames there, and KMS-derived addresses bind there).
+// There is no scenario in this app where ENS reads should hit mainnet —
+// the previous env-driven branch silently broke `readSubnameOwner` whenever
+// NEXT_PUBLIC_ENS_NETWORK wasn't explicitly set, because mainnet doesn't
+// know about ethtwin.eth and returned 0x0 for every owner check.
+const client = sepoliaClient
 
 // ENS Registry — same address on mainnet + Sepolia.
 export const ENS_REGISTRY: Address = "0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e"
@@ -358,7 +363,15 @@ export function shortenAddress(address: string, head = 6, tail = 4): string {
  *
  * Used everywhere we want WhatsApp-style "First Name" + small ENS underneath.
  */
-export function displayNameFromEns(ens: string): { displayName: string; suffix: string } {
+export function displayNameFromEns(
+  ens: string | null | undefined,
+): { displayName: string; suffix: string } {
+  // Guard against corrupted localStorage / missing-prop renders. Returning a
+  // placeholder here is far better than throwing during the React tree walk
+  // and bringing down the whole shell.
+  if (typeof ens !== "string" || ens.length === 0) {
+    return { displayName: "Twin", suffix: "" }
+  }
   const parts = ens.split(".")
   const label = parts[0] ?? ens
   const suffix = parts.slice(1).join(".") || ""

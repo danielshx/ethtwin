@@ -1,35 +1,13 @@
 "use client"
 
-import { PrivyProvider } from "@privy-io/react-auth"
-import { SmartWalletsProvider } from "@privy-io/react-auth/smart-wallets"
-import { baseSepolia } from "viem/chains"
+// Providers shell.
+//
+// Privy + SmartWallets used to live here; both are gone. Authentication is
+// now a server-issued HMAC cookie (see lib/session.ts) and signing happens
+// server-side via SpaceComputer KMS (see lib/kms.ts). The shell is a
+// passthrough — kept for future client-side providers (theme, analytics,
+// websocket clients, etc.) without touching app/layout.tsx.
 
 export function Providers({ children }: { children: React.ReactNode }) {
-  const appId = process.env.NEXT_PUBLIC_PRIVY_APP_ID
-
-  if (!appId) {
-    return <>{children}</>
-  }
-
-  return (
-    <PrivyProvider
-      appId={appId}
-      config={{
-        loginMethods: ["email", "passkey", "wallet"],
-        embeddedWallets: {
-          ethereum: {
-            createOnLogin: "users-without-wallets",
-          },
-        },
-        defaultChain: baseSepolia,
-        supportedChains: [baseSepolia],
-        appearance: {
-          theme: "dark",
-          accentColor: "#7c5cff",
-        },
-      }}
-    >
-      <SmartWalletsProvider>{children}</SmartWalletsProvider>
-    </PrivyProvider>
-  )
+  return <>{children}</>
 }

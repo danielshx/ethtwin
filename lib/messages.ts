@@ -1,22 +1,34 @@
-// On-chain ENS messenger.
+// On-chain ENS messenger — chat-as-ENS-subname architecture.
 //
-// Each message is a child subname of the recipient's twin:
-//   msg-<unix-ts>-<seq>.<recipient>.ethtwin.eth
-// The subname carries three text records:
-//   from = sender ENS name (e.g. "alice.ethtwin.eth")
-//   body = message text (UTF-8)
-//   at   = unix-seconds string
+// Each pair of twins gets ONE chat subname under the parent:
+//   chat-<labelA>-<labelB>.ethtwin.eth   (labels sorted lexically)
 //
-// The recipient's subname carries a `messages.list` text record holding a JSON
-// array of message labels for ordering + enumeration (ENS doesn't natively
-// support enumerating subnames).
+// Every message in that chat is a TEXT RECORD on the chat subname:
+//   chat.participants                  → JSON [aEns, bEns]
+//   messages.count                      → "<N>" (string of total count)
+//   msg.<i>                             → JSON { from, body (stealth), at,
+//                                          stealth.cosmic-attestation, stealth.nonce }
 //
-// Send: createSubname + Resolver.multicall(setText × 4) → 2 txs (~24s on Sepolia).
-// Read: 1 RPC for the list + N parallel RPCs for each message's text records.
+// Each participant ALSO carries a `chats.list` text record on their own
+// twin ENS — a JSON array of chat subnames they're a part of. That's what
+// the inbox-view uses to enumerate threads.
 //
-// All txs are signed by the dev wallet, which owns ethtwin.eth + all subnames.
+// Why this shape (vs one-subname-per-message):
+//   - Cleaner: 1 chat = 1 ENS name. The subname itself is a meaningful
+//     ENS identity ("daniel-tom.ethtwin.eth"-style) instead of a
+//     bracket-encoded labelhash that ENS apps can't display.
+//   - Cheaper: subsequent messages are 1 tx (just setText), not 2.
+//   - Stronger ENS-bounty story: each conversation IS an ENS name with
+//     stealth-encrypted records.
+//
+// Backwards compat: the public surface stays — `sendMessage`, `readInbox`,
+// `Message` shape — only the on-chain layout changes. Old messages stored
+// under the previous `msg-<ts>-<seq>.<recipient>` layout are unreadable
+// through this code path; the demo's existing test messages are fine to
+// abandon.
 
 import {
+  concat,
   encodeFunctionData,
   keccak256,
   namehash,
@@ -25,37 +37,90 @@ import {
   type Hash,
   type Hex,
 } from "viem"
-import { ENS_REGISTRY, readTextRecordFast } from "./ens"
+import { ENS_REGISTRY, readSubnameOwner, readTextRecordFast } from "./ens"
 import { ensResolverAbi, ensRegistryAbi } from "./abis"
-import { getDevWalletClient, sepoliaClient } from "./viem"
+import { PARENT_DOMAIN, getDevWalletClient, sepoliaClient } from "./viem"
 import { sepolia as sepoliaChain } from "viem/chains"
 import { encryptMessage, decryptMessage, isStealthBlob } from "./message-crypto"
 
-const MESSAGES_LIST_KEY = "messages.list"
-const MAX_LIST_ENTRIES = 200 // text record size cap
+// ── Constants & shared types ────────────────────────────────────────────────
+
+const PARENT_RESOLVER: `0x${string}` = "0xE99638b40E4Fff0129D56f03b55b6bbC4BBE49b5"
+const SEPOLIA_MAX_FEE_PER_GAS = 5_000_000_000n
+const SEPOLIA_MAX_PRIORITY_FEE_PER_GAS = 1_500_000_000n
+const CREATE_SUBNAME_GAS = 200_000n
+const RESOLVER_MULTICALL_GAS = 1_000_000n
+const ZERO_ADDRESS: Address = "0x0000000000000000000000000000000000000000"
+
+const CHATS_LIST_KEY = "chats.list"
+const PARTICIPANTS_KEY = "chat.participants"
+const MESSAGES_COUNT_KEY = "messages.count"
+const MAX_MESSAGES_PER_CHAT = 200 // keeps msg.<i> records bounded
 
 export type Message = {
-  label: string // e.g. "msg-1701234567-0"
-  ens: string // full ENS name of the message subname
-  from: string // sender ENS
+  /** Index within the chat (matches `msg.<i>` text record key). */
+  index: number
+  /** ENS of the chat subname this message belongs to. Lets the UI thread
+   *  messages by chat without re-deriving the pair. */
+  chatEns: string
+  /** Sender twin ENS. */
+  from: string
+  /** Decrypted plaintext body (or `[encrypted — could not decrypt]` on key
+   *  derivation failure). */
   body: string
-  at: number // unix seconds
-  /** True when the on-chain `body` text record is a stealth ciphertext that
-   *  we successfully decrypted (or attempted to). False / undefined for
-   *  legacy plaintext messages sent before stealth encryption shipped. */
-  stealth?: boolean
-  /** Orbitport cTRNG attestation hash (or "mock-attestation") associated
-   *  with this message's encryption nonce. Set when the recipient subname
-   *  carries a `stealth.cosmic-attestation` text record. */
-  cosmicAttestation?: string
+  /** Unix-seconds timestamp from the on-chain JSON. */
+  at: number
+  /** Always true on the new architecture (every body is stealth-encrypted). */
+  stealth: boolean
+  /** Orbitport cTRNG attestation (or `mock-attestation` when no key set). */
+  cosmicAttestation: string
 }
 
-// ── Read side ────────────────────────────────────────────────────────────────
+// ── Chat subname derivation ─────────────────────────────────────────────────
 
-/** Read a recipient's `messages.list` (JSON array of message labels). */
-export async function readMessageList(recipientEns: string): Promise<string[]> {
+/**
+ * Deterministic chat subname for a pair of twins. Both sides resolve the
+ * same name regardless of who sends first — labels are sorted before
+ * concatenation.
+ *
+ * Rules:
+ *   - Both inputs must end in `.<PARENT_DOMAIN>` (otherwise they're not
+ *     twins under our parent and we'd be writing to a name we don't own).
+ *   - The chat label is `chat-<a>-<b>` where (a, b) are sorted lowercase
+ *     ASCII labels.
+ *   - The result lives directly under the parent: `chat-<a>-<b>.<PARENT>`.
+ */
+export function chatSubnameFor(aEns: string, bEns: string): string {
+  const aLabel = labelOf(aEns)
+  const bLabel = labelOf(bEns)
+  const [lo, hi] = [aLabel, bLabel].sort()
+  return `chat-${lo}-${hi}.${PARENT_DOMAIN}`
+}
+
+function labelOf(ens: string): string {
+  const parts = ens.toLowerCase().split(".")
+  if (parts.length === 0) throw new Error(`Invalid ENS name: "${ens}"`)
+  // Must be a direct child of the parent: <label>.<parent>
+  const expectedSuffix = `.${PARENT_DOMAIN.toLowerCase()}`
+  if (!ens.toLowerCase().endsWith(expectedSuffix)) {
+    throw new Error(
+      `Refusing to derive chat subname for "${ens}" — must end in .${PARENT_DOMAIN}`,
+    )
+  }
+  const label = parts[0]!
+  if (!/^[a-z0-9-]+$/.test(label)) {
+    throw new Error(
+      `Twin label "${label}" contains characters that aren't ENS-normalizable (a-z, 0-9, -).`,
+    )
+  }
+  return label
+}
+
+// ── Read side ───────────────────────────────────────────────────────────────
+
+async function readChatList(twinEns: string): Promise<string[]> {
   try {
-    const raw = await readTextRecordFast(recipientEns, MESSAGES_LIST_KEY)
+    const raw = await readTextRecordFast(twinEns, CHATS_LIST_KEY)
     if (!raw) return []
     const parsed = JSON.parse(raw) as unknown
     if (!Array.isArray(parsed)) return []
@@ -65,120 +130,201 @@ export async function readMessageList(recipientEns: string): Promise<string[]> {
   }
 }
 
-// (single-message read via individual fast calls — kept for completeness;
-// readInbox below uses a single multicall3 batch instead, which is the path
-// that actually fits Vercel's function timeout.)
-async function readSingleMessage(
-  messageEns: string,
-  label: string,
-  recipientEns: string,
-): Promise<Message | null> {
+async function readChatMessageCount(chatEns: string): Promise<number> {
   try {
-    const [from, rawBody, at, attestation] = await Promise.all([
-      readTextRecordFast(messageEns, "from"),
-      readTextRecordFast(messageEns, "body"),
-      readTextRecordFast(messageEns, "at"),
-      readTextRecordFast(messageEns, "stealth.cosmic-attestation").catch(() => ""),
-    ])
-    if (!from || !rawBody || !at) return null
-    // If the body is a stealth blob, decrypt with the per-pair key. Falls
-    // through to plaintext if it's a legacy unencrypted message — backwards
-    // compatible with any messages sent before this change landed.
-    let body = rawBody
-    let stealth = false
-    if (isStealthBlob(rawBody)) {
-      stealth = true
-      const plain = decryptMessage({
-        senderEns: from,
-        recipientEns,
-        ciphertext: rawBody,
-      })
-      if (plain != null) {
-        body = plain
-      } else {
-        // We can't read it (probably a key derivation mismatch — e.g. the
-        // dev wallet rotated). Surface the situation rather than hiding it.
-        body = "[encrypted — could not decrypt]"
-      }
+    const raw = await readTextRecordFast(chatEns, MESSAGES_COUNT_KEY)
+    if (!raw) return 0
+    const n = Number.parseInt(raw, 10)
+    return Number.isFinite(n) && n >= 0 ? n : 0
+  } catch {
+    return 0
+  }
+}
+
+/** Read the chat.participants text record, returning the two-ENS array.
+ *  Set on first message of every chat, so any non-empty chat has it. */
+async function readChatParticipants(
+  chatEns: string,
+): Promise<[string, string] | null> {
+  try {
+    const raw = await readTextRecordFast(chatEns, PARTICIPANTS_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as unknown
+    if (!Array.isArray(parsed) || parsed.length !== 2) return null
+    const [a, b] = parsed
+    if (typeof a !== "string" || typeof b !== "string") return null
+    return [a, b]
+  } catch {
+    return null
+  }
+}
+
+type StoredMessage = {
+  from: string
+  body: string // stealth blob
+  at: number
+  cosmicAttestation: string
+  // nonce is part of the blob; we still publish it for verifier clarity
+}
+
+async function readStoredMessage(
+  chatEns: string,
+  index: number,
+): Promise<StoredMessage | null> {
+  try {
+    const raw = await readTextRecordFast(chatEns, `msg.${index}`)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as Partial<StoredMessage>
+    if (
+      typeof parsed.from !== "string" ||
+      typeof parsed.body !== "string" ||
+      typeof parsed.at !== "number"
+    ) {
+      return null
     }
     return {
-      label,
-      ens: messageEns,
-      from,
-      body,
-      at: Number(at),
-      stealth,
-      ...(attestation ? { cosmicAttestation: attestation } : {}),
+      from: parsed.from,
+      body: parsed.body,
+      at: parsed.at,
+      cosmicAttestation: parsed.cosmicAttestation ?? "",
     }
   } catch {
     return null
   }
 }
 
-// Multicall3 + the fast resolver = the entire inbox in ONE RPC roundtrip.
-const MULTICALL3_ADDRESS: `0x${string}` = "0xcA11bde05977b3631167028862bE2a173976CA11"
-const PARENT_RESOLVER: `0x${string}` = "0xE99638b40E4Fff0129D56f03b55b6bbC4BBE49b5"
-const RESOLVER_TEXT_VIEW_ABI = [
-  {
-    name: "text",
-    type: "function",
-    stateMutability: "view",
-    inputs: [
-      { name: "node", type: "bytes32" },
-      { name: "key", type: "string" },
-    ],
-    outputs: [{ name: "", type: "string" }],
-  },
-] as const
-
-// Hard cap at 3 messages per inbox load. Each is 3 fast reads (single
-// eth_call each via direct resolver). 9 RPC roundtrips total — fits Vercel
-// even on slow Sepolia. The frontend can re-fetch with a higher limit on
-// demand, or the user can scroll.
-const DEFAULT_INBOX_LIMIT = 3
-
-/** Full inbox read for a recipient ENS, sorted newest-first. Hard-capped. */
-export async function readInbox(
-  recipientEns: string,
-  limit: number = DEFAULT_INBOX_LIMIT,
+/** Read every message in a single chat, decrypting the stealth bodies. */
+export async function readChatThread(
+  chatEns: string,
+  myEns: string,
 ): Promise<Message[]> {
-  const labels = await readMessageList(recipientEns)
-  const recent = labels.slice(-Math.max(1, Math.min(limit, DEFAULT_INBOX_LIMIT)))
-  if (recent.length === 0) return []
-  const messages = await Promise.all(
-    recent.map((label) =>
-      readSingleMessage(`${label}.${recipientEns}`, label, recipientEns),
-    ),
-  )
-  return messages.filter((m): m is Message => m !== null).sort((a, b) => b.at - a.at)
+  // Pull count + participants in parallel — both are tiny text reads on the
+  // chat node. The participants record (set on first message) is what lets
+  // us derive the same per-pair HMAC key the sender used; without it,
+  // decryption silently fails because pairKey(myEns, myEns) ≠
+  // pairKey(myEns, peerEns).
+  const [count, participants] = await Promise.all([
+    readChatMessageCount(chatEns),
+    readChatParticipants(chatEns),
+  ])
+  if (count === 0) return []
+
+  // Identify the peer (the other participant). Falls back to a label-parse
+  // for chats that pre-date the participants record, then to myEns as a
+  // last resort (which produces the wrong key but at least doesn't throw).
+  const peer =
+    pickPeerFromParticipants(participants, myEns) ??
+    pickPeerFromChatLabel(chatEns, myEns) ??
+    myEns
+
+  const indices = Array.from({ length: count }, (_, i) => i)
+  const stored = await Promise.all(indices.map((i) => readStoredMessage(chatEns, i)))
+  const out: Message[] = []
+  for (let i = 0; i < stored.length; i++) {
+    const m = stored[i]
+    if (!m) continue
+    let body = m.body
+    let stealth = false
+    if (isStealthBlob(m.body)) {
+      stealth = true
+      // pairKey sorts its two inputs, so we just need the unordered pair
+      // {myEns, peerEns} to match what the sender used. Pass them in any
+      // order — pairKey(a, b) === pairKey(b, a).
+      const plain = decryptMessage({
+        senderEns: myEns,
+        recipientEns: peer,
+        ciphertext: m.body,
+      })
+      body = plain ?? "[encrypted — could not decrypt]"
+    }
+    out.push({
+      index: i,
+      chatEns,
+      from: m.from,
+      body,
+      at: m.at,
+      stealth,
+      cosmicAttestation: m.cosmicAttestation,
+    })
+  }
+  return out
 }
 
-// ── Send side ────────────────────────────────────────────────────────────────
+function pickPeerFromParticipants(
+  participants: [string, string] | null,
+  myEns: string,
+): string | null {
+  if (!participants) return null
+  const me = myEns.toLowerCase()
+  if (participants[0].toLowerCase() === me) return participants[1]
+  if (participants[1].toLowerCase() === me) return participants[0]
+  // Neither participant matches me — odd, but fall through to other strategies.
+  return null
+}
+
+/** Best-effort fallback when chat.participants isn't available: parse the
+ *  chat label "chat-<a>-<b>" and reconstruct the peer ENS. Ambiguous when
+ *  either label contains a dash, so this is only a last resort. */
+function pickPeerFromChatLabel(chatEns: string, myEns: string): string | null {
+  const dot = chatEns.indexOf(".")
+  if (dot < 0) return null
+  const label = chatEns.slice(0, dot)
+  const suffix = chatEns.slice(dot + 1)
+  if (!label.startsWith("chat-")) return null
+  const myLabel = myEns.toLowerCase().split(".")[0]
+  if (!myLabel) return null
+  const inner = label.slice(5) // strip "chat-"
+  // Two cases for unambiguous parsing:
+  //   inner = "<myLabel>-<peer>"  → peer = inner.slice(myLabel.length + 1)
+  //   inner = "<peer>-<myLabel>"  → peer = inner.slice(0, -myLabel.length - 1)
+  if (inner.startsWith(`${myLabel}-`)) {
+    const peerLabel = inner.slice(myLabel.length + 1)
+    if (peerLabel) return `${peerLabel}.${suffix}`
+  }
+  if (inner.endsWith(`-${myLabel}`)) {
+    const peerLabel = inner.slice(0, -myLabel.length - 1)
+    if (peerLabel) return `${peerLabel}.${suffix}`
+  }
+  return null
+}
+
+/**
+ * Aggregate inbox view: every message across every chat the twin is in,
+ * sorted newest-first. Hard-capped per call.
+ */
+export async function readInbox(
+  recipientEns: string,
+  limit = 30,
+): Promise<Message[]> {
+  const chats = await readChatList(recipientEns)
+  if (chats.length === 0) return []
+  const threads = await Promise.all(
+    chats.map((chat) => readChatThread(chat, recipientEns)),
+  )
+  const flat = threads.flat()
+  flat.sort((a, b) => b.at - a.at)
+  return flat.slice(0, Math.max(1, limit))
+}
+
+// ── Send side ──────────────────────────────────────────────────────────────
 
 export type SendMessageResult = {
   message: Message
-  createSubnameTx: Hash
+  chatEns: string
+  /** True iff this send minted a fresh chat subname (vs appended to an
+   *  existing thread). UI can label "started a new conversation" once. */
+  createdChat: boolean
+  createSubnameTx: Hash | null
   recordsMulticallTx: Hash
   blockExplorerUrl: string
-  /** Orbitport cTRNG attestation that seeded the AES nonce — also written
-   *  on chain so anyone reading the message subname can verify provenance. */
   cosmicAttestation: string
-  /** True when cosmicAttestation came from a real Orbitport call. */
   cosmicSeeded: boolean
 }
 
 /**
- * Send a message from `fromEns` to `toEns`. Both must be subnames under
- * the parent that the dev wallet controls. Performs:
- *   1. createSubname → msg-<seq>.<toEns>
- *   2. Resolver.multicall: set msg.from/body/at + recipient's messages.list
+ * Send a stealth-encrypted message from `fromEns` to `toEns`. Mints the
+ * pair's chat subname on first message, otherwise appends.
  */
-// (PARENT_RESOLVER hoisted above for the read path; reused here for sends.)
-const SEPOLIA_MAX_FEE_PER_GAS = 5_000_000_000n
-const SEPOLIA_MAX_PRIORITY_FEE_PER_GAS = 1_500_000_000n
-const CREATE_SUBNAME_GAS = 200_000n
-const RESOLVER_MULTICALL_GAS = 1_000_000n
-
 export async function sendMessage(args: {
   fromEns: string
   toEns: string
@@ -189,108 +335,177 @@ export async function sendMessage(args: {
   if (body.length > 1000) throw new Error("Message body exceeds 1000 chars.")
 
   const { account } = getDevWalletClient()
+  const chatEns = chatSubnameFor(fromEns, toEns)
+  const chatLabel = chatEns.split(".")[0]!
+  const parentNode = namehash(PARENT_DOMAIN)
+  const chatNode = namehash(chatEns)
+  const fromNode = namehash(fromEns)
+  const toNode = namehash(toEns)
 
-  // Stealth-encrypt the body using a per-twin-pair key derived from the dev
-  // wallet master key, with the AES-GCM nonce seeded from Orbitport cTRNG.
-  // Anyone reading the on-chain `body` text record sees a cipher blob; only
-  // the sender or the recipient (when reading via the dev wallet) can derive
-  // the same key and decrypt. The cTRNG attestation is also written to the
-  // message subname so observers can cross-check cosmic provenance.
+  // Sanity: the node setSubnodeRecord will create equals
+  // keccak256(parentNode || labelhash). The same node has to be what
+  // namehash(chatEns) produces; otherwise reads and writes target
+  // different storage slots and the chat looks empty forever.
+  const labelHash = keccak256(toBytes(chatLabel))
+  const expectedChatNode = keccak256(concat([parentNode, labelHash]))
+  if (expectedChatNode !== chatNode) {
+    throw new Error(
+      `chatNode namehash mismatch: setSubnodeRecord would create ${expectedChatNode}, ` +
+        `but namehash(${chatEns}) = ${chatNode}. Reads and writes target different nodes.`,
+    )
+  }
+
+  // Encrypt body — same crypto as before; we just store on the chat node.
   const encrypted = await encryptMessage({
     senderEns: fromEns,
     recipientEns: toEns,
     body,
   })
 
-  const [existingList, startingNonce] = await Promise.all([
-    readMessageList(toEns),
-    sepoliaClient.getTransactionCount({
+  // Read existing state in parallel: does the chat exist? what's the count?
+  // Each twin's current chats.list (so we can append the chat ENS).
+  const [chatOwner, messageCount, fromChats, toChats, startingNonce] =
+    await Promise.all([
+      readSubnameOwner(chatEns).catch(() => ZERO_ADDRESS),
+      readChatMessageCount(chatEns),
+      readChatList(fromEns),
+      readChatList(toEns),
+      sepoliaClient.getTransactionCount({
+        address: account.address,
+        blockTag: "pending",
+      }),
+    ])
+
+  const needsCreate = chatOwner === ZERO_ADDRESS
+  if (messageCount >= MAX_MESSAGES_PER_CHAT) {
+    throw new Error(
+      `Chat ${chatEns} reached the ${MAX_MESSAGES_PER_CHAT}-message cap. (Demo limit; bump MAX_MESSAGES_PER_CHAT to lift.)`,
+    )
+  }
+  const at = Math.floor(Date.now() / 1000)
+  const newIndex = messageCount
+
+  // The single message JSON written to the on-chain `msg.<i>` record. Carries
+  // the stealth ciphertext — anyone reading on-chain sees `body` as a
+  // `stl1:<base64url>` blob, not plaintext.
+  const messageJson = JSON.stringify({
+    from: fromEns,
+    body: encrypted.ciphertext,
+    at,
+    cosmicAttestation: encrypted.cosmic.attestation,
+    nonce: encrypted.nonceHex,
+  })
+
+  // Step 1 (only on first message of this pair): mint the chat subname.
+  // We MUST wait for this to land before broadcasting the records multicall —
+  // the multicall's setText calls revert if chatNode has no registry owner,
+  // and the receipt of a reverted multicall isn't always status="reverted"
+  // under all RPCs (we've seen success-status receipts where the inner state
+  // never actually applied). Waiting eliminates the entire class of bugs.
+  let createSubnameTx: Hash | null = null
+  let recordsNonce = startingNonce
+  if (needsCreate) {
+    const createData = encodeFunctionData({
+      abi: ensRegistryAbi,
+      functionName: "setSubnodeRecord",
+      args: [
+        parentNode,
+        labelHash,
+        account.address,
+        PARENT_RESOLVER,
+        0n,
+      ],
+    })
+    const signedCreate = await account.signTransaction({
+      chainId: sepoliaChain.id,
+      type: "eip1559",
+      to: ENS_REGISTRY,
+      data: createData,
+      nonce: startingNonce,
+      gas: CREATE_SUBNAME_GAS,
+      maxFeePerGas: SEPOLIA_MAX_FEE_PER_GAS,
+      maxPriorityFeePerGas: SEPOLIA_MAX_PRIORITY_FEE_PER_GAS,
+      value: 0n,
+    })
+    createSubnameTx = await sepoliaClient.sendRawTransaction({
+      serializedTransaction: signedCreate,
+    })
+    const createReceipt = await sepoliaClient.waitForTransactionReceipt({
+      hash: createSubnameTx,
+      timeout: 60_000,
+      pollingInterval: 1_500,
+      // Two confirmations means the parent block has another block on top —
+      // shallow reorgs (which we've seen on Sepolia) won't pull the rug.
+      confirmations: 2,
+    })
+    if (createReceipt.status !== "success") {
+      throw new Error(
+        `createSubname reverted on-chain (block ${createReceipt.blockNumber}). ` +
+          `tx=${createSubnameTx}`,
+      )
+    }
+    // Re-read the pending nonce so the records multicall picks the right
+    // value even after the create mined and the dev wallet account moved on.
+    recordsNonce = await sepoliaClient.getTransactionCount({
       address: account.address,
       blockTag: "pending",
-    }),
-  ])
+    })
+  }
 
-  const at = Math.floor(Date.now() / 1000)
-  const seq = existingList.length
-  const label = `msg-${at}-${seq}`
-  const messageEns = `${label}.${toEns}`
-
-  // Step 1: broadcast createSubname via raw tx (no viem wrapper to avoid
-  // hidden RPC calls that hang on Vercel-Sepolia).
-  const createData = encodeFunctionData({
-    abi: ensRegistryAbi,
-    functionName: "setSubnodeRecord",
-    args: [
-      namehash(toEns),
-      keccak256(toBytes(label)),
-      account.address,
-      PARENT_RESOLVER,
-      0n,
-    ],
-  })
-  const signedCreate = await account.signTransaction({
-    chainId: sepoliaChain.id,
-    type: "eip1559",
-    to: ENS_REGISTRY,
-    data: createData,
-    nonce: startingNonce,
-    gas: CREATE_SUBNAME_GAS,
-    maxFeePerGas: SEPOLIA_MAX_FEE_PER_GAS,
-    maxPriorityFeePerGas: SEPOLIA_MAX_PRIORITY_FEE_PER_GAS,
-    value: 0n,
-  })
-  const createSubnameTx = await sepoliaClient.sendRawTransaction({
-    serializedTransaction: signedCreate,
-  })
-
-  // Step 2: broadcast multicall with nonce N+1. Both txs settle in the next
-  // block(s); multicall executes after createSubname per nonce ordering, so
-  // the resolver's owner-check passes.
-  const messageNode = namehash(messageEns)
-  const recipientNode = namehash(toEns)
-  const updatedList = [...existingList, label].slice(-MAX_LIST_ENTRIES)
-
+  // Step 2: multicall on the parent resolver. One tx contains:
+  //   - the new message record (msg.<i>)
+  //   - bumped messages.count
+  //   - chat.participants (only on first message)
+  //   - chats.list update on each twin (only when adding a new chat to them)
   const calls: Hex[] = [
     encodeFunctionData({
       abi: ensResolverAbi,
       functionName: "setText",
-      args: [messageNode, "from", fromEns],
-    }),
-    // The `body` record carries the stealth ciphertext (`stl1:<base64url>`),
-    // not the plaintext. Readers detect the prefix and decrypt locally.
-    encodeFunctionData({
-      abi: ensResolverAbi,
-      functionName: "setText",
-      args: [messageNode, "body", encrypted.ciphertext],
+      args: [chatNode, `msg.${newIndex}`, messageJson],
     }),
     encodeFunctionData({
       abi: ensResolverAbi,
       functionName: "setText",
-      args: [messageNode, "at", String(at)],
-    }),
-    // Cosmic provenance: anyone resolving this message can pull the
-    // attestation hash and verify the AES-GCM nonce was seeded by Orbitport
-    // cTRNG (or see "mock-attestation" if we fell back).
-    encodeFunctionData({
-      abi: ensResolverAbi,
-      functionName: "setText",
-      args: [
-        messageNode,
-        "stealth.cosmic-attestation",
-        encrypted.cosmic.attestation,
-      ],
-    }),
-    encodeFunctionData({
-      abi: ensResolverAbi,
-      functionName: "setText",
-      args: [messageNode, "stealth.nonce", encrypted.nonceHex],
-    }),
-    encodeFunctionData({
-      abi: ensResolverAbi,
-      functionName: "setText",
-      args: [recipientNode, MESSAGES_LIST_KEY, JSON.stringify(updatedList)],
+      args: [chatNode, MESSAGES_COUNT_KEY, String(newIndex + 1)],
     }),
   ]
+
+  if (needsCreate) {
+    calls.push(
+      encodeFunctionData({
+        abi: ensResolverAbi,
+        functionName: "setText",
+        args: [
+          chatNode,
+          PARTICIPANTS_KEY,
+          JSON.stringify([fromEns.toLowerCase(), toEns.toLowerCase()].sort()),
+        ],
+      }),
+    )
+  }
+  // Update chats.list on each twin's ENS — once per pair, on the first message.
+  if (!fromChats.includes(chatEns)) {
+    calls.push(
+      encodeFunctionData({
+        abi: ensResolverAbi,
+        functionName: "setText",
+        args: [
+          fromNode,
+          CHATS_LIST_KEY,
+          JSON.stringify([...fromChats, chatEns]),
+        ],
+      }),
+    )
+  }
+  if (!toChats.includes(chatEns)) {
+    calls.push(
+      encodeFunctionData({
+        abi: ensResolverAbi,
+        functionName: "setText",
+        args: [toNode, CHATS_LIST_KEY, JSON.stringify([...toChats, chatEns])],
+      }),
+    )
+  }
 
   const multicallData = encodeFunctionData({
     abi: ensResolverAbi,
@@ -302,7 +517,7 @@ export async function sendMessage(args: {
     type: "eip1559",
     to: PARENT_RESOLVER,
     data: multicallData,
-    nonce: startingNonce + 1,
+    nonce: recordsNonce,
     gas: RESOLVER_MULTICALL_GAS,
     maxFeePerGas: SEPOLIA_MAX_FEE_PER_GAS,
     maxPriorityFeePerGas: SEPOLIA_MAX_PRIORITY_FEE_PER_GAS,
@@ -312,16 +527,80 @@ export async function sendMessage(args: {
     serializedTransaction: signedRecords,
   })
 
+  // Wait for the records-multicall to mine so the caller's immediate refresh
+  // (and the recipient's first inbox read) actually sees the new message.
+  // Without this, the chat-subname multicall is only "broadcast" — there's a
+  // ~12-30s window where reading `messages.count` returns the old value and
+  // a follow-up send writes msg.<i> with a stale i, overwriting the previous
+  // message. 60s is generous for Sepolia's ~12s block time.
+  let mined = false
+  try {
+    const receipt = await sepoliaClient.waitForTransactionReceipt({
+      hash: recordsMulticallTx,
+      timeout: 60_000,
+      pollingInterval: 1_500,
+    })
+    if (receipt.status !== "success") {
+      throw new Error(
+        `Records multicall reverted on-chain (block ${receipt.blockNumber}). ` +
+          `Likely cause: dev wallet doesn't own one of the nodes being written. ` +
+          `tx=${recordsMulticallTx}`,
+      )
+    }
+    mined = true
+  } catch (err) {
+    throw err instanceof Error
+      ? err
+      : new Error(`Records multicall failed: ${String(err)}`)
+  }
+
+  // RPC consistency dance: viem's fallback transport routes each request
+  // to whichever RPC is up. Receipt confirmation can come from one node
+  // while a follow-up read hits another that's still syncing — so a
+  // second send sees a stale count and overwrites msg.<i>. Poll the
+  // count text record until it matches what we just wrote (or until we
+  // run out of patience and surface the inconsistency).
+  if (mined) {
+    const expectedCount = String(newIndex + 1)
+    let observed = ""
+    for (let i = 0; i < 60; i++) {
+      observed = await readTextRecordFast(chatEns, MESSAGES_COUNT_KEY).catch(() => "")
+      if (observed === expectedCount) break
+      await new Promise((r) => setTimeout(r, 1_000))
+    }
+    if (observed !== expectedCount) {
+      // Surface enough state to diagnose. Pull the resolver / owner via
+      // the same fallback transport so we know whether the createSubname
+      // even landed on the RPC we're reading from.
+      const [chatOwnerNow, msg0, participants] = await Promise.all([
+        readSubnameOwner(chatEns).catch(() => "<unreadable>"),
+        readTextRecordFast(chatEns, `msg.${newIndex}`).catch(() => "<unreadable>"),
+        readTextRecordFast(chatEns, PARTICIPANTS_KEY).catch(() => "<unreadable>"),
+      ])
+      throw new Error(
+        `Send mined but RPC reads still return count="${observed}" after 60s ` +
+          `(expected ${expectedCount}).\n` +
+          `  tx=${recordsMulticallTx}\n` +
+          `  chatEns=${chatEns}\n` +
+          `  owner=${chatOwnerNow}\n` +
+          `  msg.${newIndex}=${typeof msg0 === "string" ? msg0.slice(0, 80) : msg0}\n` +
+          `  participants=${participants}`,
+      )
+    }
+  }
+
   return {
     message: {
-      label,
-      ens: messageEns,
+      index: newIndex,
+      chatEns,
       from: fromEns,
-      body, // the plaintext, not the on-chain ciphertext, for UI/history
+      body, // plaintext — for the UI/history. on-chain stays as ciphertext.
       at,
       stealth: true,
       cosmicAttestation: encrypted.cosmic.attestation,
     },
+    chatEns,
+    createdChat: needsCreate,
     createSubnameTx,
     recordsMulticallTx,
     blockExplorerUrl: `https://sepolia.etherscan.io/tx/${recordsMulticallTx}`,
