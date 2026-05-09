@@ -24,12 +24,13 @@ const stealthSendBodySchema = z.object({
   privyToken: z.string().nullable().optional(),
   recipientEnsName: z.string().min(1),
   amountUsdc: z.union([z.string(), z.number()]),
+  chain: z.enum(["sepolia", "base-sepolia"]).optional(),
 })
 
 export async function POST(req: Request) {
   const parsed = await parseJsonBody(req, stealthSendBodySchema)
   if (!parsed.ok) return parsed.response
-  const { privyToken, recipientEnsName, amountUsdc } = parsed.data
+  const { privyToken, recipientEnsName, amountUsdc, chain } = parsed.data
 
   if (privyToken) {
     try {
@@ -51,7 +52,11 @@ export async function POST(req: Request) {
   }
 
   try {
-    const result = await sendStealthUSDC({ recipientEnsName, amountUsdc })
+    const result = await sendStealthUSDC({
+      recipientEnsName,
+      amountUsdc,
+      ...(chain ? { chain } : {}),
+    })
     return Response.json({
       ok: true,
       recipientEnsName: result.recipient.ens,
@@ -63,9 +68,13 @@ export async function POST(req: Request) {
       attestation: result.stealth.attestation,
       mocked: result.stealth.mocked,
       amountHuman: result.amountHuman,
+      chain: result.chain,
       txHash: result.txHash,
+      announceTxHash: result.announceTxHash,
+      announced: result.announced,
       blockNumber: result.blockNumber.toString(),
       blockExplorerUrl: result.blockExplorerUrl,
+      announceExplorerUrl: result.announceExplorerUrl,
     })
   } catch (error) {
     return jsonError(

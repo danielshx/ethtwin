@@ -120,6 +120,41 @@ export const ensRegistryAbi = [
   },
 ] as const satisfies Abi
 
+/**
+ * ERC-5564 Announcer — canonical contract at 0x55649E01B5Df198D18D95b5cc5051630cfD45564
+ * (deterministic deploy across mainnet, Sepolia, Base Sepolia, etc.).
+ *
+ * Emits the Announcement event that lets recipients scan the chain for
+ * inbound stealth payments WITHOUT any off-chain coordination. Without this,
+ * a stealth send is just an opaque ERC-20 transfer to a random-looking
+ * address and the recipient can't find it.
+ */
+export const erc5564AnnouncerAbi = [
+  {
+    name: "announce",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "schemeId", type: "uint256" },
+      { name: "stealthAddress", type: "address" },
+      { name: "ephemeralPubKey", type: "bytes" },
+      { name: "metadata", type: "bytes" },
+    ],
+    outputs: [],
+  },
+  {
+    name: "Announcement",
+    type: "event",
+    inputs: [
+      { name: "schemeId", type: "uint256", indexed: true },
+      { name: "stealthAddress", type: "address", indexed: true },
+      { name: "caller", type: "address", indexed: true },
+      { name: "ephemeralPubKey", type: "bytes", indexed: false },
+      { name: "metadata", type: "bytes", indexed: false },
+    ],
+  },
+] as const satisfies Abi
+
 export const ensResolverAbi = [
   {
     name: "text",

@@ -46,6 +46,8 @@ type CosmicSample = {
   fetchedAt: number
 }
 
+type StealthChain = "sepolia" | "base-sepolia"
+
 type SendResult = {
   recipientEnsName: string
   stealthAddress: `0x${string}`
@@ -55,9 +57,14 @@ type SendResult = {
   attestation: string
   mocked: boolean
   amountHuman: string
+  chain: StealthChain
   txHash: `0x${string}`
+  /** ERC-5564 announcer tx hash — null if announcer isn't on this chain. */
+  announceTxHash: `0x${string}` | null
+  announced: boolean
   blockNumber: string
   blockExplorerUrl: string
+  announceExplorerUrl: string | null
 }
 
 type StealthSendProps = {
@@ -93,6 +100,7 @@ export function StealthSend({ myEnsName, getAuthToken, className }: StealthSendP
   const [agentsLoading, setAgentsLoading] = useState(true)
   const [recipient, setRecipient] = useState("")
   const [amount, setAmount] = useState("0.05")
+  const [chain, setChain] = useState<StealthChain>("base-sepolia")
   const [phase, setPhase] = useState<Phase>("idle")
   const [sample, setSample] = useState<CosmicSample | null>(null)
   const [result, setResult] = useState<SendResult | null>(null)
@@ -212,6 +220,7 @@ export function StealthSend({ myEnsName, getAuthToken, className }: StealthSendP
           privyToken: authToken,
           recipientEnsName: recipient.trim(),
           amountUsdc: amount,
+          chain,
         }),
       })
       const data = (await res.json()) as { ok: boolean; error?: string } & SendResult
@@ -324,6 +333,27 @@ export function StealthSend({ myEnsName, getAuthToken, className }: StealthSendP
 
           <div className="flex flex-col gap-2">
             <label className="text-xs uppercase tracking-wider text-muted-foreground">
+              Chain
+            </label>
+            <div className="flex gap-2">
+              {(["base-sepolia", "sepolia"] as const).map((c) => (
+                <Button
+                  key={c}
+                  type="button"
+                  variant={chain === c ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setChain(c)}
+                  disabled={phase === "fetching" || phase === "reviewing" || phase === "sending"}
+                  className="flex-1"
+                >
+                  {c === "sepolia" ? "Sepolia" : "Base Sepolia"}
+                </Button>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <label className="text-xs uppercase tracking-wider text-muted-foreground">
               Amount (USDC, max 1)
             </label>
             <Input
@@ -337,7 +367,8 @@ export function StealthSend({ myEnsName, getAuthToken, className }: StealthSendP
               className="font-mono"
             />
             <p className="text-[11px] text-muted-foreground">
-              Flow: cTRNG seed → Sourcify contract review → private stealth transfer.
+              Sourcify contract review → USDC.transfer(stealthAddr) → ERC-5564
+              Announcement on the canonical announcer.
             </p>
           </div>
 
@@ -466,7 +497,8 @@ function ResultCard({
     >
       <div className="flex items-center justify-between">
         <span className="font-medium text-emerald-300">
-          ✓ {result.amountHuman} USDC sent privately
+          ✓ {result.amountHuman} USDC sent privately on{" "}
+          {result.chain === "sepolia" ? "Sepolia" : "Base Sepolia"}
         </span>
         <a
           href={result.blockExplorerUrl}
@@ -474,7 +506,8 @@ function ResultCard({
           rel="noreferrer"
           className="inline-flex items-center gap-1 text-primary hover:underline"
         >
-          basescan <ExternalLink className="h-3 w-3" />
+          {result.chain === "sepolia" ? "etherscan" : "basescan"}{" "}
+          <ExternalLink className="h-3 w-3" />
         </a>
       </div>
       <div className="grid gap-1 font-mono text-[10px] text-muted-foreground">
@@ -487,9 +520,22 @@ function ResultCard({
         </button>
         <span>stealth addr · {short(result.stealthAddress)}</span>
         <span>view tag · {result.viewTag}</span>
-        {result.cosmicSeeded ? (
-          <span>attestation · {short(result.attestation, 6)}</span>
-        ) : null}
+        {result.announceTxHash ? (
+          <a
+            href={result.announceExplorerUrl ?? "#"}
+            target="_blank"
+            rel="noreferrer"
+            className="text-primary hover:underline"
+            title="ERC-5564 Announcement event — recipient can scan to find this payment"
+          >
+            erc-5564 announce · {short(result.announceTxHash)} ↗
+          </a>
+        ) : (
+          <span className="text-amber-300">
+            ⚠ ERC-5564 Announcer not on this chain — recipient needs the API
+            response to find the payment
+          </span>
+        )}
         {result.mocked ? (
           <span className="text-amber-300">⚠ stealth SDK fell back to mock</span>
         ) : null}
