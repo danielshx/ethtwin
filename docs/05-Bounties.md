@@ -150,11 +150,16 @@ await setEnsText({
 | Privacy primitives | ✅ Stealth + cosmic seed |
 
 ### Pitch-Angle
-> *"Wir haben gezeigt: ENS kann mehr als nur address lookup. Es kann Privacy-Infrastruktur sein. Stealth-Meta-Addresses leben in ENS Text Records — jeder Sender kann privat zahlen, ohne jemals deine Hauptadresse zu kennen. Das ist ein neuer Standard den wir hier vorschlagen."*
+> *"Wir haben gezeigt: ENS kann mehr als nur address lookup. Es kann Privacy-Infrastruktur sein. Stealth-Meta-Addresses leben in ENS Text Records — jeder Sender kann privat zahlen, ohne jemals deine Hauptadresse zu kennen. Plus: ein kompletter Messaging-Layer auf ENS Sub-Subnames. Zwei neue Patterns die wir hier vorschlagen."*
 
 ---
 
 ## 4. Apify — x402 Integration ($1k Visa + $1k Credits 1st place)
+
+> **Status: 🟡 Code-fertig, live-Tx ausstehend.**
+> - `lib/x402-client.ts` mit v1+v2 SDK dispatch (ExactEvmScheme + ExactEvmSchemeV1, CAIP-2 + chain slugs), receipt-parsing inline
+> - Mock-Test grün: `pnpm test:x402-mock` → 402-challenge → signed X-PAYMENT → 200
+> - **Fehlt:** funded mainnet wallet (~$5 USDC on Base) + x402-enabled Apify actor slug + live tx
 
 ### ⚠️ Verified Reality Check
 - **Minimum payment: $1 USDC per request**
@@ -181,6 +186,8 @@ await setEnsText({
 
 ## 5. SpaceComputer — Best Use of Space-Powered Tech ($6k Pool)
 
+> **Status: 🟡 Wrapper grün, live API key ausstehend.** `lib/cosmic.ts` (`getCosmicSeed()`, `warmCache()`) hat rolling cache, attestation passthrough, mock fallback. Cosmic-Orb UI animiert + reveal'd Hash on stealth-send. **Fehlt:** `ORBITPORT_API_KEY` in `.env.local` + Vercel — sonst zeigt Mock-Attestation.
+
 ### Anforderung (Track 3: Space-Powered Security APIs)
 "Use cTRNG and KMS in real applications. Verifiable randomness, secure signing."
 
@@ -199,41 +206,50 @@ await setEnsText({
 
 ## 6. ETHPrague — Best UX Flow
 
-| Ihre Checkliste | Wie wir's machen |
-|---|---|
-| **Anti-Blind Signing** | Plain English Tx Summary vor jedem Sign (Claude 4.6 decoder) |
-| Gradual Disclosure | Privy Passkey only, no seed phrase |
-| Gas/Chain Abstraction | Privy Smart Wallet + Paymaster (gasless option) |
-| ENS over hex | Niemals 0x... in UI. Immer Reverse-Resolved |
-| Fear of Loss | Twin warnt bei riskantem Tx |
-| Global Accessibility | Voice-Interface + Localized Plain English |
+> **Status: 🟢 LIVE (minus Voice).** Voice gedroppt per Drop-Decision Punkt 1 — Chat-only Demo locked-in. Alles andere live auf https://ethtwin-woad.vercel.app.
+
+| Ihre Checkliste | Status | Wie wir's machen |
+|---|---|---|
+| **Anti-Blind Signing** | ✅ | Plain English Tx Summary via `lib/tx-decoder.ts` + `components/tx-approval-modal.tsx` (used by token-transfer) |
+| Gradual Disclosure | ✅ | Privy Passkey + Email + Wallet, no seed phrase |
+| Gas/Chain Abstraction | ✅ | Privy Smart Wallet on Base Sepolia, dev-wallet relays user txs gasless |
+| ENS over hex | ✅ | `withEnsName(addr)` + `useEnsName` hook + `AvatarImage` fallback to short 0x… everywhere |
+| Fear of Loss | 🟡 | Tx approval modal shows the action; no explicit "risk warning" UI yet |
+| Global Accessibility | 🔴 | Voice gedroppt; Plain English layer in place |
 
 ---
 
 ## 7. ETHPrague — Best Privacy by Design
 
-- **Stealth Addresses by Default** — nicht Toggle, nicht Premium, sondern Default
-- **No User Data Collected** — Privy custodied Wallet (TEE + sharding)
-- **Cosmic Randomness als Trust-Anchor** — niemand kann Stealth-Source vorhersagen
-- **Zero Metadata Leak** — Tx-History on-chain ist Noise auf Empfänger-Seite
+> **Status: 🟢 LIVE.** End-to-end stealth send works in the **Stealth Send** tab. `lib/payments.ts:sendStealthUSDC()` → `lib/stealth.ts:generatePrivateAddress()` (real ScopeLift SDK, mocked-flag visible) → on-chain USDC.transfer to a one-time stealth address. Verified via `pnpm send:stealth-usdc`.
+
+- ✅ **Stealth Addresses by Default** — Sealth Send is a top-level tab, not a hidden setting
+- ✅ **No User Data Collected** — Privy custodied wallet (TEE + sharding); server only stores Privy user ID + ENS name
+- 🟡 **Cosmic Randomness als Trust-Anchor** — wired through `lib/cosmic.ts`, currently mock fallback in deploy until `ORBITPORT_API_KEY` is set
+- ✅ **Zero Metadata Leak on receiver side** — every send goes to a fresh stealth address derived from the recipient's `stealth-meta-address` text record; no on-chain link between sender and recipient
 
 > *"Privacy ist nicht Feature in EthTwin. Privacy IST das Default."*
 
 ---
 
-## 📊 Score-Matrix für Self-Assessment
+## 📊 Score-Matrix für Self-Assessment (refreshed 2026-05-09)
 
-| Bounty | Confidence (1-10) | Risk |
+| Bounty | Confidence | Was hochpushen würde |
 |---|---|---|
-| Umia | 7 | Pitch muss sitzen |
-| ENS for Agents | **9** | ENSIP-25 + ERC-8004 = strongest claim |
-| ENS Creative | **8** | stealth-meta-address Pattern = novel |
-| Apify x402 | 7 | Live-Tx ($1+ USDC) muss klappen |
-| SpaceComputer | 7 | cTRNG live + saubere Story |
-| Best UX | 7 | Voice ist Bonus, Plain English ist must |
-| Best Privacy | 8 | Stealth + cosmic = strong story |
+| Umia | **6** | Pitch + Slides — Code-seitig 100%, Story-seitig 0% |
+| ENS for Agents | **9** | nichts technisch; just polish the demo flow |
+| ENS Creative | **9** | doppelter Hit (stealth-meta-address + ENS-Messenger) — strongest claim |
+| Apify x402 | **5** | live tx auf Base Mainnet muss endlich laufen — sonst nur Mock-Story |
+| SpaceComputer | **5** | `ORBITPORT_API_KEY` setzen = sofort 8 |
+| Best UX | **7** | Voice gedroppt, aber Anti-Blind-Sign + ENS-Reverse + No-Seed-Phrase sitzen |
+| Best Privacy | **8** | Stealth-Send läuft live; cosmic-seed wäre kosmetischer Boost |
 
-**Erwarteter Cash-Output:** $8-12k (Median ~$10k mit ENSIP-25 boost).
+**Erwarteter Cash-Output realistic:** $4-7k floor (ENS×2 + Privacy + UX = solid). $8-12k stretch (wenn Umia-Pitch + Apify-Live-Tx + Orbitport-Key am Demo-Tag landen).
+
+**Quick wins to close the gap:**
+1. Set `ORBITPORT_API_KEY` (10 min) → SpaceComputer geht von 5 → 8
+2. Fund Base Mainnet wallet w/ $5 USDC + pick x402-actor (30 min) → Apify geht von 5 → 7
+3. Write 3-min pitch script (60 min) → Umia geht von 6 → 8
 
 ---
 
