@@ -447,6 +447,7 @@ export function AgentProfileDialog({
              *  see nothing. Editable=true is also a guard so this never
              *  appears when looking at someone else's profile. */}
             {editable ? <OwnRecoveryCodePanel ens={profile.ens} /> : null}
+            {profile.kmsKeyId ? <VerifyKmsPanel ens={profile.ens} /> : null}
 
             <BountyTrail
               tags={
@@ -607,6 +608,145 @@ function parseList(raw: string): string[] {
 function shortAddr(a: string): string {
   if (a.length < 12) return a
   return `${a.slice(0, 6)}…${a.slice(-4)}`
+}
+
+/**
+ * Live KMS proof: hits /api/kms/verify, which asks SpaceComputer Orbitport
+ * to sign a fresh nonce with this twin's key, recovers the signer locally,
+ * and confirms the recovered address matches the on-chain `addr` record.
+ *
+ * Anyone running this proves the chain of trust end-to-end:
+ *   ENS → kms-key-id → SpaceComputer KMS sign → ecrecover → addr ✓
+ */
+function VerifyKmsPanel({ ens }: { ens: string }) {
+  type Result = {
+    verified: boolean
+    challenge: string
+    kmsKeyId: string
+    kmsAddress: string
+    kmsSig: string
+    kmsLatencyMs: number
+    recovered: string
+    onChain: {
+      registryOwner: string | null
+      addrTextRecord: string
+      kmsKeyIdTextRecord: string
+      kmsPublicKeyTextRecord: string
+    }
+  }
+  const [busy, setBusy] = useState(false)
+  const [result, setResult] = useState<Result | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  async function run() {
+    setBusy(true)
+    setResult(null)
+    setError(null)
+    try {
+      const res = await fetch(`/api/kms/verify?ens=${encodeURIComponent(ens)}`)
+      const data = (await res.json()) as
+        | ({ ok: true } & Result)
+        | { ok: false; error: string }
+      if (!data.ok) {
+        throw new Error(data.error)
+      }
+      setResult(data)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "verify failed")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="rounded-md border border-purple-500/30 bg-purple-500/5 p-3 text-left">
+      <div className="mb-1 flex items-center justify-between">
+        <span className="text-[10px] uppercase tracking-wider text-purple-300">
+          Live KMS proof
+        </span>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={run}
+          disabled={busy}
+          className="h-7 text-[10px]"
+        >
+          {busy ? (
+            <>
+              <Loader2 className="mr-1.5 h-3 w-3 animate-spin" /> signing…
+            </>
+          ) : result ? (
+            "re-verify"
+          ) : (
+            "Verify"
+          )}
+        </Button>
+      </div>
+      <p className="text-[11px] leading-relaxed text-muted-foreground">
+        Asks SpaceComputer Orbitport to sign a fresh nonce with this twin&apos;s
+        KMS key, then recovers the signer locally and compares to the on-chain{" "}
+        <code className="font-mono text-foreground/80">addr</code> record.
+        Match = the address really comes from a satellite-attested key.
+      </p>
+      {result ? (
+        <div className="mt-2 grid gap-1 font-mono text-[10px] leading-relaxed text-muted-foreground">
+          <div
+            className={cn(
+              "rounded-md px-2 py-1 text-[11px] font-semibold",
+              result.verified
+                ? "bg-emerald-500/15 text-emerald-300"
+                : "bg-red-500/15 text-red-300",
+            )}
+          >
+            {result.verified
+              ? `✓ KMS-signed (${result.kmsLatencyMs}ms)`
+              : "✗ recovered address ≠ on-chain addr"}
+          </div>
+          <div>
+            <span className="text-foreground/55">recovered </span>
+            <span className="break-all text-foreground/85">
+              {result.recovered}
+            </span>
+          </div>
+          <div>
+            <span className="text-foreground/55">on-chain    </span>
+            <span className="break-all text-foreground/85">
+              {result.kmsAddress}
+            </span>
+          </div>
+          <div>
+            <span className="text-foreground/55">keyId       </span>
+            <span className="break-all text-foreground/85">
+              {result.kmsKeyId}
+            </span>
+          </div>
+          <details className="mt-1">
+            <summary className="cursor-pointer text-foreground/65 hover:text-foreground/85">
+              show challenge + signature
+            </summary>
+            <div className="mt-1 grid gap-0.5">
+              <div>
+                <span className="text-foreground/55">challenge </span>
+                <span className="break-all text-foreground/85">
+                  {result.challenge}
+                </span>
+              </div>
+              <div>
+                <span className="text-foreground/55">signature </span>
+                <span className="break-all text-foreground/85">
+                  {result.kmsSig}
+                </span>
+              </div>
+            </div>
+          </details>
+        </div>
+      ) : null}
+      {error ? (
+        <p className="mt-2 text-[11px] text-red-300">{error}</p>
+      ) : null}
+    </div>
+  )
 }
 
 /**

@@ -1,18 +1,13 @@
 "use client"
 
-// Stealth USDC send — the demo hero moment.
+// Stealth USDC send — the private-payments flow.
 //
-// Flow timeline (visualized via CosmicOrb phases):
-//   idle      → user pickt recipient + amount
-//   fetching  → /api/cosmic-seed (orb spinning, particles)
-//   revealed  → cTRNG seed + attestation visible + Sourcify review prompt
-//   sending   → /api/stealth/send (USDC.transfer to one-time stealth addr)
-//   done      → block-explorer link, derived stealth address shown
-//
-// We split the flow into TWO API calls (seed first, then send) so the orb
-// animation has something real to display *before* the slow on-chain tx.
-// Yes, the backend re-fetches a seed inside sendStealthUSDC — that's fine for
-// the demo; the user-facing seed is the one they see animate.
+// Phases:
+//   idle      → user picks recipient + amount + chain
+//   reviewing → Sourcify safety review modal opens
+//   sending   → /api/stealth/send (USDC.transfer to one-time stealth addr +
+//                ERC-5564 Announcement)
+//   done      → block-explorer links + stealth address + receipt
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { motion } from "framer-motion"
@@ -24,7 +19,6 @@ import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { CosmicOrb } from "@/components/cosmic-orb"
 import { AgentProfileDialog } from "@/components/agent-profile"
 import { EnsAvatar } from "@/components/ens-avatar"
 import { BountyTrail } from "@/components/bounty-trail"
@@ -349,13 +343,21 @@ export function StealthSend({ myEnsName, getAuthToken, className }: StealthSendP
       </header>
 
       <div className="grid gap-6 p-6 md:grid-cols-[260px_1fr]">
-        {/* Hero column: cosmic orb */}
-        <div className="flex flex-col items-center justify-center gap-3">
-          <CosmicOrb
-            phase={phase === "reviewing" || phase === "sending" || phase === "done" ? "revealed" : phase === "idle" ? "idle" : phase}
-            sample={sample}
-            size={220}
-          />
+        {/* Hero column: stealth identity panel */}
+        <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-border/60 bg-card/40 p-5 text-center">
+          <div className="grid h-20 w-20 place-items-center rounded-full bg-fuchsia-500/15 text-fuchsia-300">
+            <Lock className="h-10 w-10" />
+          </div>
+          <div>
+            <div className="text-sm font-semibold text-foreground/90">
+              Stealth send
+            </div>
+            <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+              EIP-5564 one-time address derived from the recipient&apos;s
+              ENS-published meta-key. Signed by your twin&apos;s SpaceComputer
+              KMS key when funded; otherwise relayed by the dev wallet.
+            </p>
+          </div>
           <PhaseLabel phase={phase} cosmicSeeded={result?.cosmicSeeded} />
         </div>
 
