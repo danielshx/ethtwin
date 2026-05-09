@@ -365,13 +365,6 @@ function AgentDetail({
       </div>
     )
   }
-  if (toolName === "hireAgent" && output.ok === false && output.error) {
-    return (
-      <div className="ml-5 text-[11px] text-amber-300/80">
-        {output.error}
-      </div>
-    )
-  }
   if (toolName === "sendMessage" && output.ok && output.blockExplorerUrl) {
     return (
       <div className="ml-5 text-[11px] text-muted-foreground">
@@ -388,9 +381,11 @@ function AgentDetail({
       </div>
     )
   }
-  if (toolName === "sendMessage" && output.ok === false && output.error) {
+  if (output.ok === false && output.error) {
     return (
-      <div className="ml-5 text-[11px] text-amber-300/80">{output.error}</div>
+      <div className="ml-5 rounded-md border border-amber-500/20 bg-amber-500/5 px-2.5 py-1.5 text-[11px] text-amber-200/90">
+        {output.error}
+      </div>
     )
   }
   return null
