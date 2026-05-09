@@ -14,17 +14,18 @@ import {
   VALID_SCHEME_ID,
 } from "@scopelift/stealth-address-sdk"
 import { bytesToHex, hexToBytes } from "viem"
-import { getCosmicSeed } from "./cosmic"
 import { resolveDevWalletKey } from "./viem"
 
 export type StealthResult = {
   stealthAddress: `0x${string}`
   ephemeralPublicKey: `0x${string}`
   viewTag: `0x${string}`
+  /** Empty under the post-cosmic flow; kept for backwards-compat with
+   *  receipt-card consumers that displayed an attestation hash. */
   attestation: string
   /** True when the SDK threw and we returned deterministic fake data instead. */
   mocked: boolean
-  /** True when the ephemeral key came from cosmic cTRNG (not the SDK's RNG). */
+  /** Always false now — left for type-stable downstream code. */
   cosmicSeeded: boolean
 }
 
@@ -43,38 +44,30 @@ const SCHEME = VALID_SCHEME_ID.SCHEME_ID_1
 
 /**
  * Generate a one-time stealth address for the recipient identified by the URI.
- * Attempts to seed the ephemeral key from cosmic cTRNG; falls back to SDK randomness.
+ * Uses the SDK's internal CSPRNG for the ephemeral key.
  */
 export async function generatePrivateAddress(
   stealthMetaAddressURI: string,
 ): Promise<StealthResult> {
-  const seed = await getCosmicSeed()
-  const cosmicBytes = tryToUint8Array32(seed.bytes)
-  // Reflect the actual Orbitport result (the new `fromOrbitport` flag is the
-  // authoritative signal — `attestation === "mock-attestation"` is the
-  // string-level shadow we kept for backward compat).
-  const cosmicSeeded = cosmicBytes !== null && seed.fromOrbitport
-
   try {
     const result = sdkGenerateStealthAddress({
       stealthMetaAddressURI,
       schemeId: SCHEME,
-      ephemeralPrivateKey: cosmicBytes ?? undefined,
     })
     return {
       stealthAddress: result.stealthAddress,
       ephemeralPublicKey: result.ephemeralPublicKey,
       viewTag: result.viewTag,
-      attestation: seed.attestation,
+      attestation: "",
       mocked: false,
-      cosmicSeeded,
+      cosmicSeeded: false,
     }
   } catch (err) {
     console.warn(
       "[stealth] SDK generateStealthAddress failed, returning labelled mock:",
       err instanceof Error ? err.message : err,
     )
-    return mockResult(seed.bytes, seed.attestation, cosmicSeeded)
+    return mockResult()
   }
 }
 
@@ -199,26 +192,13 @@ export function isAnnouncementForMe(args: {
 
 // ── Internal ─────────────────────────────────────────────────────────────────
 
-function tryToUint8Array32(hex: `0x${string}`): Uint8Array | null {
-  try {
-    const bytes = hexToBytes(hex)
-    return bytes.length === 32 ? bytes : null
-  } catch {
-    return null
-  }
-}
-
-function mockResult(
-  seedBytes: `0x${string}`,
-  attestation: string,
-  cosmicSeeded: boolean,
-): StealthResult {
+function mockResult(): StealthResult {
   return {
-    stealthAddress: ("0x" + seedBytes.slice(2, 42)) as `0x${string}`,
+    stealthAddress: "0x000000000000000000000000000000000000dead" as `0x${string}`,
     ephemeralPublicKey: ("0x04" + "ab".repeat(64)) as `0x${string}`,
-    viewTag: ("0x" + seedBytes.slice(2, 4)) as `0x${string}`,
-    attestation,
+    viewTag: "0x00",
+    attestation: "",
     mocked: true,
-    cosmicSeeded,
+    cosmicSeeded: false,
   }
 }

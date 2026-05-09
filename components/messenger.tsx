@@ -140,13 +140,28 @@ export function Messenger({ myEnsName, getAuthToken, className }: MessengerProps
     return [...chainMessages, ...pendingMessages].sort((a, b) => a.at - b.at)
   }, [chainMessages, pendingMessages, selected])
 
-  // Auto-scroll the message list to the newest item whenever the thread
-  // grows (new chain message landed or optimistic message pushed). The ref
-  // points to a trailing sentinel rendered after the last bubble.
+  // Auto-scroll to newest. Radix `<ScrollArea>` renders a custom viewport
+  // (an inner div with `data-radix-scroll-area-viewport`); plain
+  // `scrollIntoView` on a sentinel doesn't bubble through it correctly.
+  // We climb to the viewport from the sentinel and set scrollTop directly,
+  // which works whether the viewport is overflow-auto or overflow-hidden.
   const threadEndRef = useRef<HTMLDivElement | null>(null)
   useEffect(() => {
     if (!selected) return
-    threadEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" })
+    const sentinel = threadEndRef.current
+    if (!sentinel) return
+    // rAF lets layout settle (new bubble inserted) before we measure.
+    const raf = requestAnimationFrame(() => {
+      const viewport = sentinel.closest(
+        "[data-radix-scroll-area-viewport]",
+      ) as HTMLElement | null
+      if (viewport) {
+        viewport.scrollTo({ top: viewport.scrollHeight, behavior: "smooth" })
+      } else {
+        sentinel.scrollIntoView({ behavior: "smooth", block: "end" })
+      }
+    })
+    return () => cancelAnimationFrame(raf)
   }, [thread.length, selected])
 
   // Load agent directory once on mount.

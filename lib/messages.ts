@@ -1,116 +1,118 @@
-// On-chain ENS messenger — chat-as-ENS-subname architecture.
+// On-chain ENS messenger — text-records-on-twin architecture.
 //
-// Each pair of twins shares ONE deterministic chat subname under the parent:
+// Storage lives DIRECTLY on each twin's existing ENS subname (no new chat
+// subnames are minted). For the alice ↔ bob conversation:
 //
-//   chat-<labelA>-<labelB>.ethtwin.eth   (labels sorted lexically)
+//   alice.ethtwin.eth has text records:
+//     chat.bob.count           → "<N>"
+//     chat.bob.msg.<i>          → JSON { from, body (stealth), at, kmsSig }
+//     chat.bob.participants     → JSON [aEns, bEns]
 //
-// Every message in that chat is a TEXT RECORD on the chat subname:
-//   chat.participants                  → JSON [aEns, bEns]
-//   messages.count                      → "<N>" (string of total count)
-//   msg.<i>                             → JSON { from, body (stealth), at,
-//                                          nonce }
+//   bob.ethtwin.eth has the same with the peer label flipped:
+//     chat.alice.count, chat.alice.msg.<i>, chat.alice.participants
 //
-// Each participant ALSO carries a `chats.list` text record on their own
-// twin ENS — a JSON array of chat subnames they're a part of. The inbox
-// view uses it to enumerate threads.
+//   Both twins also carry `chats.list` = JSON of peer ENS names, used to
+//   enumerate the inbox.
 //
-// ENS + Stealth bounty story:
-//   - The chat itself is a real ENS subname; resolves on standard ENS apps.
-//   - Message bodies are encrypted with EIP-5564 stealth-key ECDH:
-//       ECDH(senderSpendingPriv, recipientSpendingPub)
-//     where the spending keys come from each twin's stealth-meta-address
-//     text record (published on their own ENS subname).
-//   - Both sides decrypt symmetrically via static-static ECDH.
-//   - Anyone reading the chain sees only AES-256-GCM ciphertext.
+// Why this shape (vs minting chat-<a>-<b>.ethtwin.eth subnames):
+//   - ENS apps display existing twin subnames as readable labels because
+//     those labels were registered visibly (during onboarding, with the
+//     dev wallet broadcasting the literal username). Newly-minted
+//     setSubnodeRecord subnames only know their LABELHASH, so apps fall
+//     back to "[<hash>].ethtwin.eth" — the bracket-encoded display the
+//     user kept hitting.
+//   - Each twin's ENS subname is now a self-contained inbox. Open it in
+//     the ENS app and you see the conversations as text records, alongside
+//     stealth-meta-address, twin.kms-key-id, twin.kms-public-key, etc.
+//
+// Encryption: AES-256-GCM with EIP-5564 static-static ECDH on the pair's
+// stealth spending keys (lib/message-crypto.ts). Same as before.
+// Authentication: per-message SpaceComputer KMS signature (EIP-191) over
+// a canonical payload. Verified against the sender's ENS-published
+// twin.kms-public-key. Dev wallet pays gas (meta-tx pattern).
 
 import {
-  concat,
   encodeFunctionData,
-  keccak256,
+  hashMessage,
   namehash,
-  toBytes,
-  type Address,
+  recoverAddress,
   type Hash,
   type Hex,
 } from "viem"
-import { ENS_REGISTRY, readSubnameOwner, readTextRecordFast } from "./ens"
-import { ensResolverAbi, ensRegistryAbi } from "./abis"
+import { readSubnameOwner, readTextRecordFast } from "./ens"
+import { ensResolverAbi } from "./abis"
 import { PARENT_DOMAIN, getDevWalletClient, sepoliaClient } from "./viem"
 import { sepolia as sepoliaChain } from "viem/chains"
 import { encryptMessage, decryptMessage, isStealthBlob } from "./message-crypto"
 import { kmsAccountForEns, kmsSignEIP191 } from "./kms"
-import { hashMessage, recoverAddress } from "viem"
 
-// ── Constants & shared types ────────────────────────────────────────────────
+// ── Constants ──────────────────────────────────────────────────────────────
 
 const PARENT_RESOLVER: `0x${string}` = "0xE99638b40E4Fff0129D56f03b55b6bbC4BBE49b5"
 const SEPOLIA_MAX_FEE_PER_GAS = 5_000_000_000n
 const SEPOLIA_MAX_PRIORITY_FEE_PER_GAS = 1_500_000_000n
-const CREATE_SUBNAME_GAS = 200_000n
-const RESOLVER_MULTICALL_GAS = 1_000_000n
-const ZERO_ADDRESS: Address = "0x0000000000000000000000000000000000000000"
+const RESOLVER_MULTICALL_GAS = 1_500_000n
+const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000"
 
 const CHATS_LIST_KEY = "chats.list"
-const PARTICIPANTS_KEY = "chat.participants"
-const MESSAGES_COUNT_KEY = "messages.count"
 const MAX_MESSAGES_PER_CHAT = 200
+
+// ── Types ──────────────────────────────────────────────────────────────────
 
 export type Message = {
   index: number
+  /** ENS where this message lives — the reader's own twin. */
   chatEns: string
+  /** Peer ENS in this conversation. */
+  peer: string
   from: string
   body: string
   at: number
   stealth: boolean
-  /** Kept for compatibility with older history rows; currently always "" under
-   *  the ECDH-only encryption path. */
   cosmicAttestation: string
-  /** SpaceComputer KMS signature (EIP-191) over the canonical message
-   *  payload. Set when the sender twin had a KMS key at send time. */
   kmsSig?: string | null
-  /** Whether the kmsSig recovered to the sender's twin.kms-public-key. */
   kmsVerified?: boolean
 }
 
-// ── Chat subname derivation ─────────────────────────────────────────────────
-
-/**
- * Deterministic chat subname for a pair of twins. Both sides resolve the
- * same name regardless of who sends first — labels are sorted before
- * concatenation. Result is a normal ENS subname (normalizable ASCII).
- */
-export function chatSubnameFor(aEns: string, bEns: string): string {
-  const aLabel = labelOf(aEns)
-  const bLabel = labelOf(bEns)
-  const [lo, hi] = [aLabel, bLabel].sort()
-  return `chat-${lo}-${hi}.${PARENT_DOMAIN}`
-}
-
-/** Compatibility shim — older code paths called this name. */
-export function chatSubnamesFor(myEns: string, peerEns: string) {
-  const shared = chatSubnameFor(myEns, peerEns)
-  return { mine: shared, theirs: shared }
-}
+// ── Label helpers ─────────────────────────────────────────────────────────
 
 function labelOf(ens: string): string {
-  const parts = ens.toLowerCase().split(".")
-  if (parts.length === 0) throw new Error(`Invalid ENS name: "${ens}"`)
+  const lower = ens.toLowerCase()
   const expectedSuffix = `.${PARENT_DOMAIN.toLowerCase()}`
-  if (!ens.toLowerCase().endsWith(expectedSuffix)) {
+  if (!lower.endsWith(expectedSuffix)) {
     throw new Error(
-      `Refusing to derive chat subname for "${ens}" — must end in .${PARENT_DOMAIN}`,
+      `Refusing to derive twin label for "${ens}" — must end in .${PARENT_DOMAIN}`,
     )
   }
-  const label = parts[0]!
+  const label = lower.slice(0, -expectedSuffix.length)
   if (!/^[a-z0-9-]+$/.test(label)) {
     throw new Error(
-      `Twin label "${label}" contains characters that aren't ENS-normalizable (a-z, 0-9, -).`,
+      `Twin label "${label}" contains characters that aren't ENS-normalizable.`,
     )
   }
   return label
 }
 
-// ── Read side ───────────────────────────────────────────────────────────────
+function chatKey(peerLabel: string, suffix: string): string {
+  return `chat.${peerLabel}.${suffix}`
+}
+
+/** Backwards-compat shim — older callers / scripts request a "chat subname"
+ *  for a pair. Under this architecture there is no such subname; we return
+ *  a deterministic label for stable IDs/comparisons. */
+export function chatSubnameFor(aEns: string, bEns: string): string {
+  const a = labelOf(aEns)
+  const b = labelOf(bEns)
+  const [lo, hi] = [a, b].sort()
+  return `chat-${lo}-${hi}.${PARENT_DOMAIN}`
+}
+
+export function chatSubnamesFor(myEns: string, peerEns: string) {
+  const shared = chatSubnameFor(myEns, peerEns)
+  return { mine: shared, theirs: shared }
+}
+
+// ── Read helpers ────────────────────────────────────────────────────────────
 
 async function readChatList(twinEns: string): Promise<string[]> {
   try {
@@ -124,30 +126,14 @@ async function readChatList(twinEns: string): Promise<string[]> {
   }
 }
 
-async function readChatMessageCount(chatEns: string): Promise<number> {
+async function readMessageCount(twinEns: string, peerLabel: string): Promise<number> {
   try {
-    const raw = await readTextRecordFast(chatEns, MESSAGES_COUNT_KEY)
+    const raw = await readTextRecordFast(twinEns, chatKey(peerLabel, "count"))
     if (!raw) return 0
     const n = Number.parseInt(raw, 10)
     return Number.isFinite(n) && n >= 0 ? n : 0
   } catch {
     return 0
-  }
-}
-
-async function readChatParticipants(
-  chatEns: string,
-): Promise<[string, string] | null> {
-  try {
-    const raw = await readTextRecordFast(chatEns, PARTICIPANTS_KEY)
-    if (!raw) return null
-    const parsed = JSON.parse(raw) as unknown
-    if (!Array.isArray(parsed) || parsed.length !== 2) return null
-    const [a, b] = parsed
-    if (typeof a !== "string" || typeof b !== "string") return null
-    return [a, b]
-  } catch {
-    return null
   }
 }
 
@@ -158,80 +144,13 @@ type StoredMessage = {
   kmsSig?: string | null
 }
 
-/**
- * Canonical message payload that gets KMS-signed (EIP-191). The sender's
- * KMS proves authorship without the dev wallet (which actually pays gas)
- * being able to forge a message in their name. Verifiers reconstruct this
- * exact string from the on-chain msg.<i> fields, recover the address from
- * the signature, and compare it to the `addr` text record on the sender's
- * ENS — which is the same secp256k1 key published as twin.kms-public-key.
- */
-function canonicalSignPayload(args: {
-  fromEns: string
-  chatEns: string
-  ciphertext: string
-  at: number
-  index: number
-}): string {
-  return [
-    "ethtwin/msg/v1",
-    args.fromEns.toLowerCase(),
-    args.chatEns.toLowerCase(),
-    String(args.index),
-    String(args.at),
-    args.ciphertext,
-  ].join("\n")
-}
-
-/**
- * Verify a stored message's KMS signature. Recovers the EIP-191 signer
- * from `kmsSig` and compares to the on-chain `addr` text record on the
- * sender's ENS. Returns true iff they match.
- */
-export async function verifyMessageKms(args: {
-  fromEns: string
-  chatEns: string
-  ciphertext: string
-  at: number
-  index: number
-  kmsSig: string
-}): Promise<boolean> {
-  if (!args.kmsSig || !args.kmsSig.startsWith("0x")) return false
-  try {
-    const payload = canonicalSignPayload({
-      fromEns: args.fromEns,
-      chatEns: args.chatEns,
-      ciphertext: args.ciphertext,
-      at: args.at,
-      index: args.index,
-    })
-    const digest = hashMessage(payload)
-    const recovered = await recoverAddress({
-      hash: digest,
-      signature: args.kmsSig as `0x${string}`,
-    })
-    // Compare to the sender's published `addr` (= the KMS-derived address).
-    const expectedAddr = await readTextRecordFast(args.fromEns, "addr").catch(
-      () => "",
-    )
-    // Some resolvers expose `addr` only via the addr() function, not as a
-    // text record. Read both.
-    const owner = await readSubnameOwner(args.fromEns).catch(() => "")
-    const candidates = [expectedAddr, owner]
-      .map((s) => (typeof s === "string" ? s.toLowerCase() : ""))
-      .filter(Boolean)
-    return candidates.includes(recovered.toLowerCase())
-  } catch {
-    return false
-  }
-}
-
 async function readStoredMessage(
-  chatEns: string,
+  twinEns: string,
+  peerLabel: string,
   index: number,
 ): Promise<StoredMessage | null> {
   try {
-    const raw = await readTextRecordFast(chatEns, `msg.${index}`)
+    const raw = await readTextRecordFast(twinEns, chatKey(peerLabel, `msg.${index}`))
     if (!raw) return null
     const parsed = JSON.parse(raw) as Partial<StoredMessage>
     if (
@@ -252,40 +171,87 @@ async function readStoredMessage(
   }
 }
 
+// ── Canonical KMS-signing payload ──────────────────────────────────────────
+
+function canonicalSignPayload(args: {
+  fromEns: string
+  twinEns: string
+  peerLabel: string
+  ciphertext: string
+  at: number
+  index: number
+}): string {
+  return [
+    "ethtwin/msg/v2",
+    args.fromEns.toLowerCase(),
+    args.twinEns.toLowerCase(),
+    args.peerLabel,
+    String(args.index),
+    String(args.at),
+    args.ciphertext,
+  ].join("\n")
+}
+
 /**
- * Read the conversation between `myEns` and `peerEns`. Decrypts each body
- * via ECDH(myEns, peerEns) — symmetric, so it doesn't matter which side
- * sent the message.
+ * Verify a stored message's per-message KMS signature. Recovers the
+ * EIP-191 signer and compares to the sender's twin's `addr` record (=
+ * KMS-derived address). Returns true iff they match.
+ */
+export async function verifyMessageKms(args: {
+  fromEns: string
+  twinEns: string
+  peerLabel: string
+  ciphertext: string
+  at: number
+  index: number
+  kmsSig: string
+}): Promise<boolean> {
+  if (!args.kmsSig || !args.kmsSig.startsWith("0x")) return false
+  try {
+    const payload = canonicalSignPayload(args)
+    const digest = hashMessage(payload)
+    const recovered = await recoverAddress({
+      hash: digest,
+      signature: args.kmsSig as `0x${string}`,
+    })
+    const owner = await readSubnameOwner(args.fromEns).catch(() => "")
+    const addrRecord = await readTextRecordFast(args.fromEns, "addr").catch(() => "")
+    const candidates = [owner, addrRecord]
+      .map((s) => (typeof s === "string" ? s.toLowerCase() : ""))
+      .filter(Boolean)
+    return candidates.includes(recovered.toLowerCase())
+  } catch {
+    return false
+  }
+}
+
+// ── Public read API ────────────────────────────────────────────────────────
+
+/**
+ * Read the conversation between `myEns` and `peerEns` from `myEns`'s own
+ * text records. Decrypts each body via EIP-5564 ECDH on the pair's
+ * stealth spending keys. Verifies per-message KMS signatures in parallel.
  */
 export async function readChatThread(
   myEns: string,
   peerEns: string,
 ): Promise<Message[]> {
-  const chatEns = chatSubnameFor(myEns, peerEns)
-  const [count, participants] = await Promise.all([
-    readChatMessageCount(chatEns),
-    readChatParticipants(chatEns),
-  ])
+  const peerLabel = labelOf(peerEns)
+  const count = await readMessageCount(myEns, peerLabel)
   if (count === 0) return []
-
-  // Resolve the actual peer from chat.participants (canonical) so we
-  // tolerate reads where the caller passed slightly off-case ENS names.
-  const peer = pickPeer(participants, myEns) ?? peerEns
 
   const indices = Array.from({ length: count }, (_, i) => i)
   const stored = await Promise.all(
-    indices.map((i) => readStoredMessage(chatEns, i)),
+    indices.map((i) => readStoredMessage(myEns, peerLabel, i)),
   )
-  // Verify KMS signatures in parallel — independent reads + ecrecover
-  // calls per message. We don't gate display on verification (a missing
-  // signature is fine for legacy messages); the UI just shows an extra
-  // badge when verification succeeds.
+
   const verifications = await Promise.all(
     stored.map(async (m, i) => {
       if (!m?.kmsSig) return false
       return verifyMessageKms({
         fromEns: m.from,
-        chatEns,
+        twinEns: myEns,
+        peerLabel,
         ciphertext: m.body,
         at: m.at,
         index: i,
@@ -293,6 +259,7 @@ export async function readChatThread(
       })
     }),
   )
+
   const out: Message[] = []
   for (let i = 0; i < stored.length; i++) {
     const m = stored[i]
@@ -303,14 +270,15 @@ export async function readChatThread(
       stealth = true
       const plain = decryptMessage({
         senderEns: myEns,
-        recipientEns: peer,
+        recipientEns: peerEns,
         ciphertext: m.body,
       })
       body = plain ?? "[encrypted — could not decrypt]"
     }
     out.push({
       index: i,
-      chatEns,
+      chatEns: myEns,
+      peer: peerEns,
       from: m.from,
       body,
       at: m.at,
@@ -323,31 +291,18 @@ export async function readChatThread(
   return out
 }
 
-function pickPeer(
-  participants: [string, string] | null,
-  myEns: string,
-): string | null {
-  if (!participants) return null
-  const me = myEns.toLowerCase()
-  if (participants[0].toLowerCase() === me) return participants[1]
-  if (participants[1].toLowerCase() === me) return participants[0]
-  return null
-}
-
-/** Aggregate inbox view across every chat the twin is in. */
+/**
+ * Aggregate inbox: every conversation `myEns` is part of (per `chats.list`
+ * on their twin), flattened newest-first.
+ */
 export async function readInbox(
   recipientEns: string,
   limit = 30,
 ): Promise<Message[]> {
-  const chats = await readChatList(recipientEns)
-  if (chats.length === 0) return []
+  const peers = await readChatList(recipientEns)
+  if (peers.length === 0) return []
   const threads = await Promise.all(
-    chats.map(async (chatEns) => {
-      const participants = await readChatParticipants(chatEns)
-      const peer = pickPeer(participants, recipientEns)
-      if (!peer) return [] as Message[]
-      return readChatThread(recipientEns, peer)
-    }),
+    peers.map((peer) => readChatThread(recipientEns, peer).catch(() => [])),
   )
   const flat = threads.flat()
   flat.sort((a, b) => b.at - a.at)
@@ -358,14 +313,14 @@ export async function readInbox(
 
 export type SendMessageResult = {
   message: Message
+  /** Where THIS sender's view of the message lives. */
   chatEns: string
-  /** Backwards-compat fields used by twin-tools / scripts. Both alias
-   *  `chatEns` since this architecture has one shared subname. */
+  /** Backwards-compat fields (twin-tools / scripts referenced these). */
   mineChatEns: string
   theirsChatEns: string
+  /** First time we wrote to this chat-key on EITHER twin? */
   createdChat: boolean
   createSubnameTx: Hash | null
-  /** Backwards-compat alias for the legacy two-tx pipeline. */
   createSubnameTxs: Hash[]
   recordsMulticallTx: Hash
   blockExplorerUrl: string
@@ -374,8 +329,11 @@ export type SendMessageResult = {
 }
 
 /**
- * Send a stealth-encrypted message from `fromEns` to `toEns`. Mints the
- * shared chat subname on first message, otherwise appends.
+ * Send an encrypted message from `fromEns` to `toEns`. Writes msg.<i> +
+ * count text records to BOTH twins' ENS subnames in a single resolver
+ * multicall. Dev wallet pays gas (parent owner — already authorised on
+ * both subnames). The sender's KMS signs the canonical payload for
+ * authentication; that signature is bundled into the on-chain JSON.
  */
 export async function sendMessage(args: {
   fromEns: string
@@ -389,35 +347,19 @@ export async function sendMessage(args: {
     throw new Error("Sender and recipient are the same twin.")
   }
 
-  const { account } = getDevWalletClient()
-  const chatEns = chatSubnameFor(fromEns, toEns)
-  const chatLabel = chatEns.split(".")[0]!
-  const parentNode = namehash(PARENT_DOMAIN)
-  const chatNode = namehash(chatEns)
+  const fromLabel = labelOf(fromEns)
+  const toLabel = labelOf(toEns)
   const fromNode = namehash(fromEns)
   const toNode = namehash(toEns)
-  const labelHash = keccak256(toBytes(chatLabel))
+  const { account } = getDevWalletClient()
 
-  // Sanity: setSubnodeRecord-derived node MUST equal namehash(chatEns).
-  const expectedChatNode = keccak256(concat([parentNode, labelHash]))
-  if (expectedChatNode !== chatNode) {
-    throw new Error(
-      `chatNode namehash mismatch — reads and writes target different nodes.`,
-    )
-  }
-
-  // Encrypt body via EIP-5564-style ECDH on the pair's stealth keys.
-  const encrypted = await encryptMessage({
-    senderEns: fromEns,
-    recipientEns: toEns,
-    body,
-  })
-
-  // Pre-flight reads in parallel.
-  const [chatOwner, messageCount, fromChats, toChats, startingNonce] =
+  // Pre-flight reads. We use the MAX of both sides' counts as the index for
+  // collision safety in case they ever drift (shouldn't, since every send
+  // writes both atomically, but still cheap insurance).
+  const [myCount, theirCount, fromChats, toChats, startingNonce] =
     await Promise.all([
-      readSubnameOwner(chatEns).catch(() => ZERO_ADDRESS),
-      readChatMessageCount(chatEns),
+      readMessageCount(fromEns, toLabel),
+      readMessageCount(toEns, fromLabel),
       readChatList(fromEns),
       readChatList(toEns),
       sepoliaClient.getTransactionCount({
@@ -426,32 +368,53 @@ export async function sendMessage(args: {
       }),
     ])
 
-  const needsCreate = chatOwner === ZERO_ADDRESS
-  if (messageCount >= MAX_MESSAGES_PER_CHAT) {
+  const newIndex = Math.max(myCount, theirCount)
+  if (newIndex >= MAX_MESSAGES_PER_CHAT) {
     throw new Error(
-      `Chat ${chatEns} reached the ${MAX_MESSAGES_PER_CHAT}-message cap.`,
+      `Chat between ${fromEns} and ${toEns} reached the ${MAX_MESSAGES_PER_CHAT}-message cap.`,
     )
   }
-  const newIndex = messageCount
   const at = Math.floor(Date.now() / 1000)
 
-  // SpaceComputer KMS signature: the sender's KMS signs a canonical EIP-191
-  // payload over (fromEns, chatEns, index, at, ciphertext). The dev wallet
-  // still relays the on-chain write (gas), but the signature in msg.<i>
-  // proves the sender authored the message. Anyone can verify by resolving
-  // fromEns to its `addr` (= KMS-derived address) and recovering ecrecover.
-  let kmsSig: string | null = null
+  // Encrypt: EIP-5564 ECDH on stealth spending keys.
+  const encrypted = await encryptMessage({
+    senderEns: fromEns,
+    recipientEns: toEns,
+    body,
+  })
+
+  // KMS-sign the canonical payload using the sender's twin key. We sign
+  // ONCE here (the payload binds index + at + ciphertext) and store the
+  // same signature on both twins' records. The verifier reconstructs the
+  // payload using the twin it's reading from.
+  let kmsSigForFromTwin: string | null = null
+  let kmsSigForToTwin: string | null = null
   try {
     const senderKms = await kmsAccountForEns(fromEns)
     if (senderKms) {
-      const payload = canonicalSignPayload({
+      const fromPayload = canonicalSignPayload({
         fromEns,
-        chatEns,
+        twinEns: fromEns,
+        peerLabel: toLabel,
         ciphertext: encrypted.ciphertext,
         at,
         index: newIndex,
       })
-      kmsSig = await kmsSignEIP191(senderKms.keyId, payload)
+      const toPayload = canonicalSignPayload({
+        fromEns,
+        twinEns: toEns,
+        peerLabel: fromLabel,
+        ciphertext: encrypted.ciphertext,
+        at,
+        index: newIndex,
+      })
+      // Sign both so verification works on either side's records.
+      const [s1, s2] = await Promise.all([
+        kmsSignEIP191(senderKms.keyId, fromPayload),
+        kmsSignEIP191(senderKms.keyId, toPayload),
+      ])
+      kmsSigForFromTwin = s1
+      kmsSigForToTwin = s2
     }
   } catch (err) {
     console.warn(
@@ -460,102 +423,73 @@ export async function sendMessage(args: {
     )
   }
 
-  const messageJson = JSON.stringify({
-    from: fromEns,
-    body: encrypted.ciphertext,
-    at,
-    nonce: encrypted.nonceHex,
-    ...(kmsSig ? { kmsSig } : {}),
-  })
+  const buildJson = (kmsSig: string | null) =>
+    JSON.stringify({
+      from: fromEns,
+      body: encrypted.ciphertext,
+      at,
+      nonce: encrypted.nonceHex,
+      ...(kmsSig ? { kmsSig } : {}),
+    })
 
-  // Step 1 (only on first message): mint the chat subname.
-  let createSubnameTx: Hash | null = null
-  let recordsNonce = startingNonce
-  if (needsCreate) {
-    const createData = encodeFunctionData({
-      abi: ensRegistryAbi,
-      functionName: "setSubnodeRecord",
-      args: [parentNode, labelHash, account.address, PARENT_RESOLVER, 0n],
-    })
-    const signedCreate = await account.signTransaction({
-      chainId: sepoliaChain.id,
-      type: "eip1559",
-      to: ENS_REGISTRY,
-      data: createData,
-      nonce: startingNonce,
-      gas: CREATE_SUBNAME_GAS,
-      maxFeePerGas: SEPOLIA_MAX_FEE_PER_GAS,
-      maxPriorityFeePerGas: SEPOLIA_MAX_PRIORITY_FEE_PER_GAS,
-      value: 0n,
-    })
-    createSubnameTx = await sepoliaClient.sendRawTransaction({
-      serializedTransaction: signedCreate,
-    })
-    const createReceipt = await sepoliaClient.waitForTransactionReceipt({
-      hash: createSubnameTx,
-      timeout: 60_000,
-      pollingInterval: 1_500,
-      confirmations: 2,
-    })
-    if (createReceipt.status !== "success") {
-      throw new Error(
-        `createSubname reverted on-chain (block ${createReceipt.blockNumber}). tx=${createSubnameTx}`,
-      )
-    }
-    recordsNonce = await sepoliaClient.getTransactionCount({
-      address: account.address,
-      blockTag: "pending",
-    })
-  }
-
-  // Step 2: multicall on the parent resolver — message + count + (first time)
-  // participants + chats.list updates on each twin.
+  // Multicall: write msg.<i> + count to BOTH twins, plus participants on
+  // first message + chats.list updates when a new peer is added.
   const calls: Hex[] = [
     encodeFunctionData({
       abi: ensResolverAbi,
       functionName: "setText",
-      args: [chatNode, `msg.${newIndex}`, messageJson],
+      args: [fromNode, chatKey(toLabel, `msg.${newIndex}`), buildJson(kmsSigForFromTwin)],
     }),
     encodeFunctionData({
       abi: ensResolverAbi,
       functionName: "setText",
-      args: [chatNode, MESSAGES_COUNT_KEY, String(newIndex + 1)],
+      args: [fromNode, chatKey(toLabel, "count"), String(newIndex + 1)],
+    }),
+    encodeFunctionData({
+      abi: ensResolverAbi,
+      functionName: "setText",
+      args: [toNode, chatKey(fromLabel, `msg.${newIndex}`), buildJson(kmsSigForToTwin)],
+    }),
+    encodeFunctionData({
+      abi: ensResolverAbi,
+      functionName: "setText",
+      args: [toNode, chatKey(fromLabel, "count"), String(newIndex + 1)],
     }),
   ]
-  if (needsCreate) {
+
+  const isFirstMessage = myCount === 0 && theirCount === 0
+  const participantsJson = JSON.stringify(
+    [fromEns.toLowerCase(), toEns.toLowerCase()].sort(),
+  )
+  if (isFirstMessage) {
     calls.push(
       encodeFunctionData({
         abi: ensResolverAbi,
         functionName: "setText",
-        args: [
-          chatNode,
-          PARTICIPANTS_KEY,
-          JSON.stringify(
-            [fromEns.toLowerCase(), toEns.toLowerCase()].sort(),
-          ),
-        ],
+        args: [fromNode, chatKey(toLabel, "participants"), participantsJson],
+      }),
+      encodeFunctionData({
+        abi: ensResolverAbi,
+        functionName: "setText",
+        args: [toNode, chatKey(fromLabel, "participants"), participantsJson],
       }),
     )
   }
-  if (!fromChats.includes(chatEns)) {
+  if (!fromChats.includes(toEns)) {
     calls.push(
       encodeFunctionData({
         abi: ensResolverAbi,
         functionName: "setText",
-        args: [
-          fromNode,
-          CHATS_LIST_KEY,
-          JSON.stringify([...fromChats, chatEns]),
-        ],
+        args: [fromNode, CHATS_LIST_KEY, JSON.stringify([...fromChats, toEns])],
       }),
     )
   }
-  if (!toChats.includes(chatEns)) {
+  if (!toChats.includes(fromEns)) {
     calls.push(
       encodeFunctionData({
         abi: ensResolverAbi,
         functionName: "setText",
-        args: [toNode, CHATS_LIST_KEY, JSON.stringify([...toChats, chatEns])],
+        args: [toNode, CHATS_LIST_KEY, JSON.stringify([...toChats, fromEns])],
       }),
     )
   }
@@ -570,7 +504,7 @@ export async function sendMessage(args: {
     type: "eip1559",
     to: PARENT_RESOLVER,
     data: multicallData,
-    nonce: recordsNonce,
+    nonce: startingNonce,
     gas: RESOLVER_MULTICALL_GAS,
     maxFeePerGas: SEPOLIA_MAX_FEE_PER_GAS,
     maxPriorityFeePerGas: SEPOLIA_MAX_PRIORITY_FEE_PER_GAS,
@@ -586,37 +520,44 @@ export async function sendMessage(args: {
   })
   if (recordsReceipt.status !== "success") {
     throw new Error(
-      `Records multicall reverted on-chain (block ${recordsReceipt.blockNumber}). tx=${recordsMulticallTx}`,
+      `Records multicall reverted on-chain (block ${recordsReceipt.blockNumber}). ` +
+        `Likely cause: dev wallet doesn't own one of the twin nodes. ` +
+        `tx=${recordsMulticallTx}`,
     )
   }
 
-  // RPC consistency dance — wait until count reflects the new value.
-  const expectedCount = String(newIndex + 1)
-  for (let i = 0; i < 60; i++) {
-    const observed = await readTextRecordFast(
-      chatEns,
-      MESSAGES_COUNT_KEY,
-    ).catch(() => "")
-    if (observed === expectedCount) break
+  // RPC consistency dance — wait until both twins reflect the new count.
+  const expected = String(newIndex + 1)
+  const consistencyDeadline = Date.now() + 60_000
+  while (Date.now() < consistencyDeadline) {
+    const [a, b] = await Promise.all([
+      readTextRecordFast(fromEns, chatKey(toLabel, "count")).catch(() => ""),
+      readTextRecordFast(toEns, chatKey(fromLabel, "count")).catch(() => ""),
+    ])
+    if (a === expected && b === expected) break
     await new Promise((r) => setTimeout(r, 1_000))
   }
+  void ZERO_ADDRESS
 
   return {
     message: {
       index: newIndex,
-      chatEns,
+      chatEns: fromEns,
+      peer: toEns,
       from: fromEns,
-      body,
+      body, // plaintext for the UI; chain stays as ciphertext
       at,
       stealth: true,
       cosmicAttestation: "",
+      kmsSig: kmsSigForFromTwin,
+      kmsVerified: kmsSigForFromTwin !== null, // optimistic; reader re-verifies
     },
-    chatEns,
-    mineChatEns: chatEns,
-    theirsChatEns: chatEns,
-    createdChat: needsCreate,
-    createSubnameTx,
-    createSubnameTxs: createSubnameTx ? [createSubnameTx] : [],
+    chatEns: fromEns,
+    mineChatEns: fromEns,
+    theirsChatEns: toEns,
+    createdChat: isFirstMessage,
+    createSubnameTx: null,
+    createSubnameTxs: [],
     recordsMulticallTx,
     blockExplorerUrl: `https://sepolia.etherscan.io/tx/${recordsMulticallTx}`,
     cosmicAttestation: "",

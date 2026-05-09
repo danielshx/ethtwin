@@ -36,7 +36,6 @@ import {
 } from "node:crypto"
 import { hexToBytes } from "viem"
 import { secp256k1 } from "@noble/curves/secp256k1"
-import { getCosmicSeed, type CosmicSample } from "./cosmic"
 import { deriveTwinStealthKeys } from "./stealth"
 
 const STEALTH_PREFIX = "stl1:"
@@ -85,9 +84,7 @@ export type EncryptedMessage = {
   ciphertext: string
   /** Hex of the AES nonce. */
   nonceHex: `0x${string}`
-  /** Cosmic sample used to seed the nonce — kept for backwards compat with
-   *  the receipt-card UI. */
-  cosmic: CosmicSample
+  /** Always false — kept for backwards compat with older receipt-card UI. */
   cosmicSeeded: boolean
 }
 
@@ -97,18 +94,6 @@ export async function encryptMessage(args: {
   recipientEns: string
   body: string
 }): Promise<EncryptedMessage> {
-  // Pull a cosmic sample so the receipt card can render attestation history,
-  // but don't depend on it for the actual nonce — node:crypto.randomBytes is
-  // a CSPRNG and avoids leaking attestation length / format into the wire.
-  const sample = await getCosmicSeed().catch(
-    () =>
-      ({
-        bytes: ("0x" + Buffer.from(randomBytes(32)).toString("hex")) as `0x${string}`,
-        attestation: "mock-attestation",
-        fetchedAt: Date.now(),
-        fromOrbitport: false,
-      }) satisfies CosmicSample,
-  )
   const nonce = randomBytes(NONCE_LEN)
   const key = pairKey(args.senderEns, args.recipientEns)
   const cipher = createCipheriv(ALGO, key, nonce)
@@ -125,8 +110,7 @@ export async function encryptMessage(args: {
   return {
     ciphertext: wire,
     nonceHex: ("0x" + nonce.toString("hex")) as `0x${string}`,
-    cosmic: sample,
-    cosmicSeeded: sample.fromOrbitport,
+    cosmicSeeded: false,
   }
 }
 
