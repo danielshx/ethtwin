@@ -187,6 +187,30 @@ export function setPlainEnglishProvider(fn: PlainEnglishProvider) {
 }
 
 export async function describeTx(tx: TxInput): Promise<TxDescription> {
+  // Browser calls route through the server so Sourcify lookups happen in the
+  // Node runtime and do not depend on client CORS/bundle/network behavior.
+  if (typeof window !== "undefined") {
+    const res = await fetch("/api/decode-transaction", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        to: tx.to,
+        data: tx.data ?? "0x",
+        value: tx.value?.toString(),
+        chainId: tx.chainId,
+      }),
+    })
+    const payload = (await res.json().catch(() => ({}))) as {
+      ok?: boolean
+      decoded?: TxDescription
+      error?: string
+    }
+    if (!res.ok || !payload.ok || !payload.decoded) {
+      throw new Error(payload.error ?? `Failed to decode transaction (${res.status})`)
+    }
+    return payload.decoded
+  }
+
   return describeTxWithVerification(tx)
 }
 
