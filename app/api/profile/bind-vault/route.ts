@@ -148,12 +148,39 @@ export async function POST(req: Request) {
       serializedTransaction: signed,
     })
 
+    // Wait for the records tx to actually mine. Without this the response
+    // races against the chain — the next token send finds an empty
+    // `twin.vault` text record and silently falls back to the dev-wallet
+    // path. Vercel maxDuration is 60s and the receipts land in ~12-24s, so
+    // there's plenty of headroom.
+    const recordsReceipt = await sepoliaClient.waitForTransactionReceipt({
+      hash: recordsTx,
+    })
+    if (recordsReceipt.status !== "success") {
+      return jsonError(
+        `Vault deployed at ${vault} but records tx reverted (gasUsed=${recordsReceipt.gasUsed.toString()}). The ENS still points at the old addr — bind again or set the records manually. tx=${recordsTx}`,
+        502,
+      )
+    }
+
+    // Final read-back to make sure the resolver actually returns the new
+    // value before we tell the client we're done. If this fails we'd rather
+    // 502 than have the agent mint a transfer that goes to the wrong wallet.
+    let confirmed = ""
+    try {
+      confirmed = await readTextRecordFast(ens, "twin.vault")
+    } catch {
+      // ignore — non-fatal
+    }
+
     return Response.json({
       ok: true,
       ensName: ens,
       vaultAddress: vault,
       deployTx,
       recordsTx,
+      recordsBlock: recordsReceipt.blockNumber.toString(),
+      verifiedTwinVaultRecord: confirmed,
       blockExplorerUrl: `https://sepolia.etherscan.io/address/${vault}`,
     })
   } catch (error) {

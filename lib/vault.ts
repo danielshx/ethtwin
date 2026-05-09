@@ -59,9 +59,14 @@ const DEFAULT_LIMITS = {
 
 // Conservative gas budgets — Sepolia is permissive but we want to skip
 // `eth_estimateGas` to avoid the same Vercel timeouts the rest of the app
-// already side-stepped. These were tuned with a margin against actual usage.
+// already side-stepped. These are sized with margin against actual usage.
+//
+// The factory deploy embeds TwinVault's constructor + bytecode (Solidity
+// inlines child contracts referenced via `new`), so the deploy is bigger
+// than the factory's own source suggests — ~4 KB factory + ~3.5 KB vault.
+// Original 700k budget was too tight and reverted. 3M gives ~3x headroom.
 const GAS_DEPLOY_VAULT = 1_500_000n
-const GAS_DEPLOY_FACTORY = 700_000n
+const GAS_DEPLOY_FACTORY = 3_000_000n
 const GAS_VAULT_OP = 300_000n // setLimits, setAgent, withdraw, spend
 const SEPOLIA_MAX_FEE = 5_000_000_000n // 5 gwei
 const SEPOLIA_PRIORITY = 1_500_000_000n // 1.5 gwei
@@ -133,6 +138,11 @@ export async function deployVaultForUser(
   const receipt = await sepoliaClient.waitForTransactionReceipt({
     hash: deployTx,
   })
+  if (receipt.status !== "success") {
+    throw new Error(
+      `Vault deploy reverted (status=${receipt.status}, gasUsed=${receipt.gasUsed.toString()}). Likely out of gas — bump GAS_DEPLOY_VAULT in lib/vault.ts. tx=${deployTx}`,
+    )
+  }
   // Parse the VaultDeployed event off the receipt.
   let vault: Address | null = null
   for (const log of receipt.logs) {

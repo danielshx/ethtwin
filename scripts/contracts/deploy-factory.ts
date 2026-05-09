@@ -54,6 +54,19 @@ async function main() {
     console.error("[deploy-factory] no contractAddress on receipt — deploy failed")
     process.exit(1)
   }
+  // viem populates `contractAddress` even when the tx reverted (it's derived
+  // from sender + nonce, not the receipt status). Fail explicitly when the
+  // status is "reverted" so we don't quietly write a dead address into the
+  // env var. This bit me on the first deploy: gas budget was too tight,
+  // tx reverted, but the script logged a green checkmark anyway.
+  if (receipt.status !== "success") {
+    console.error(
+      `\n❌ Deploy reverted (status=${receipt.status}, gasUsed=${receipt.gasUsed.toString()}).\n` +
+        `   Likely out of gas — bump GAS_DEPLOY_FACTORY in lib/vault.ts.\n` +
+        `   Etherscan: https://sepolia.etherscan.io/tx/${hash}`,
+    )
+    process.exit(1)
+  }
   console.log(`\n✅ Factory deployed at: ${receipt.contractAddress}`)
   console.log(`   tx:        ${hash}`)
   console.log(`   block:     ${receipt.blockNumber}`)

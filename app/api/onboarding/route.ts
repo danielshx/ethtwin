@@ -6,7 +6,6 @@ import { PARENT_DOMAIN, getDevWalletClient, sepoliaClient } from "@/lib/viem"
 import { ENS_REGISTRY, readSubnameOwner } from "@/lib/ens"
 import { ensRegistryAbi, ensResolverAbi } from "@/lib/abis"
 import { buildDefaultProfileRecords } from "@/lib/twin-profile"
-import { deployVaultForUser, isVaultEnabled } from "@/lib/vault"
 import { encodeFunctionData, keccak256, namehash, toBytes } from "viem"
 import {
   ensLabelSchema,
@@ -82,69 +81,30 @@ export async function POST(req: Request) {
 
     const needsCreate = existingOwner === ZERO_ADDRESS
 
-    // Vault decision: deploy a TwinVault for this user only when
-    //   1. caller asked for it (wallet user, not email-only),
-    //   2. the factory env var is configured, AND
-    //   3. the user's wallet is genuinely different from the dev wallet
-    //      (otherwise owner == agent, no privilege split — pointless).
-    let vaultAddress: Address | null = null
-    let vaultDeployTx: Hash | null = null
-    let vaultSkipReason: string | null = null
-    let postVaultNonce = startingNonce
-    const factoryConfigured = isVaultEnabled()
+    // Spending model: the agent pulls funds directly from the user's wallet
+    // via ERC-20 `transferFrom`, which requires only a one-time
+    // `approve(devWallet, X)` signed by the user. We DON'T deploy a custom
+    // vault contract anymore — funds live in the user's wallet, the dev
+    // wallet only ever spends what was explicitly approved, and the user
+    // can revoke any time by approving zero. Simpler, no contract required.
+    //
+    // We just record `twin.owner` so the transfer route can find the user
+    // wallet later; `addr` keeps pointing at the user wallet so anyone
+    // sending tokens to the ENS lands directly in the user's account.
     const userIsDistinctFromDev =
       walletAddress.toLowerCase() !== devAccount.address.toLowerCase()
-    // Default to ON whenever a real user wallet + a configured factory are
-    // present. The client can still opt out with `useVault: false` (e.g. for
-    // an explicit "email-only" path), but we no longer require an opt-in.
-    const wantsVault =
-      factoryConfigured && body.useVault !== false && userIsDistinctFromDev
-
-    // Loud diagnostic line so a mint without a vault is immediately legible
-    // in the dev console: tells us which precondition failed.
-    if (!factoryConfigured) {
-      vaultSkipReason =
-        "TWIN_VAULT_FACTORY env var not set — restart dev server after adding it to .env.local"
-    } else if (!userIsDistinctFromDev) {
-      vaultSkipReason =
-        "user wallet equals dev wallet (likely email-only Privy with no smart wallet yet)"
-    } else if (body.useVault === false) {
-      vaultSkipReason = "client explicitly passed useVault=false"
-    }
-
-    if (wantsVault) {
-      try {
-        log("deploying vault…")
-        const result = await deployVaultForUser(walletAddress)
-        vaultAddress = result.vault
-        vaultDeployTx = result.deployTx
-        log(`vault deployed: ${vaultAddress} (tx ${vaultDeployTx})`)
-        // Vault deploy advances the dev-wallet nonce — re-read so the
-        // subsequent ENS txs don't collide.
-        postVaultNonce = await sepoliaClient.getTransactionCount({
-          address: devAccount.address,
-          blockTag: "pending",
-        })
-      } catch (err) {
-        // Don't break onboarding if the vault deploy fails — the user just
-        // ends up on the legacy dev-wallet path. Surface the error in the
-        // response so the UI can show a hint.
-        const msg = err instanceof Error ? err.message : String(err)
-        vaultSkipReason = `deploy threw: ${msg}`
-        console.warn("[onboarding] vault deploy failed, falling back:", err)
-      }
-    }
+    const writesOwnerRecord =
+      body.useVault !== false && userIsDistinctFromDev
+    const ownerSkipReason = !userIsDistinctFromDev
+      ? "user wallet equals dev wallet (likely email-only Privy with no smart wallet yet)"
+      : body.useVault === false
+        ? "client explicitly passed useVault=false"
+        : null
     log(
-      vaultAddress
-        ? `vault path ON → ${vaultAddress}`
-        : `vault path OFF — ${vaultSkipReason}`,
+      writesOwnerRecord
+        ? `agent-spending path: writing twin.owner=${walletAddress}`
+        : `agent-spending path OFF — ${ownerSkipReason}`,
     )
-    // The address that goes into the ENS `addr` text record. With a vault,
-    // anyone sending tokens to `<label>.ethtwin.eth` lands in the vault.
-    // Without one, the ENS resolves directly to the user's wallet (or the
-    // dev fallback for email-only users), preserving legacy behavior.
-    const ensAddrTarget: Address = vaultAddress ?? walletAddress
-
     // Build the multicall payload — addr + every text record on the new node.
     // Skip the agents.directory append for now to avoid an extra RPC read on
     // the hot path; a separate /api/agents/refresh can sync the directory later.
@@ -160,23 +120,17 @@ export async function POST(req: Request) {
       "twin.version": "0.1.0",
       "stealth-meta-address": body.stealthMetaAddress,
       [ensipKey]: "1",
-      // Recoverable pointers so the rest of the app (transfers, settings UI)
-      // can find both the funding vault AND the user's signing wallet
-      // independently from `addr` (which equals one of them depending on the
-      // path the user came in on).
-      ...(vaultAddress
-        ? {
-            "twin.vault": vaultAddress,
-            "twin.owner": walletAddress,
-          }
-        : {}),
+      // Used by lib/transfers.ts to find the user wallet for the
+      // approve/transferFrom path. addr stays pointing at the user wallet
+      // so inbound tokens land where the user expects.
+      ...(writesOwnerRecord ? { "twin.owner": walletAddress } : {}),
     }
     const ensNode = namehash(ensName)
     const calls: `0x${string}`[] = [
       encodeFunctionData({
         abi: ensResolverAbi,
         functionName: "setAddr",
-        args: [ensNode, ensAddrTarget],
+        args: [ensNode, walletAddress],
       }),
       ...Object.entries(textRecords).map(([key, value]) =>
         encodeFunctionData({
@@ -192,7 +146,7 @@ export async function POST(req: Request) {
     // wallet.sendTransaction's internal RPC calls (chain validation, fee
     // discovery, simulation) which were the suspected hang on Vercel.
     let createTx: Hash | null = null
-    let recordsNonce = postVaultNonce
+    let recordsNonce = startingNonce
 
     if (needsCreate) {
       const labelHash = keccak256(toBytes(body.username))
@@ -208,7 +162,7 @@ export async function POST(req: Request) {
         type: "eip1559",
         to: ENS_REGISTRY,
         data: createData,
-        nonce: postVaultNonce,
+        nonce: startingNonce,
         gas: CREATE_SUBNAME_GAS,
         maxFeePerGas: SEPOLIA_MAX_FEE_PER_GAS,
         maxPriorityFeePerGas: SEPOLIA_MAX_PRIORITY_FEE_PER_GAS,
@@ -219,7 +173,7 @@ export async function POST(req: Request) {
         serializedTransaction: signedCreate,
       })
       log(`createTx broadcast: ${createTx}`)
-      recordsNonce = postVaultNonce + 1
+      recordsNonce = startingNonce + 1
     }
 
     const recordsData = encodeFunctionData({
@@ -251,9 +205,8 @@ export async function POST(req: Request) {
       status: "pending",
       createTx,
       recordsTx,
-      vaultAddress,
-      vaultDeployTx,
-      vaultSkipReason,
+      twinOwner: writesOwnerRecord ? walletAddress : null,
+      ownerSkipReason,
       pollUrl: `/api/check-username?u=${encodeURIComponent(body.username)}`,
     })
   } catch (error) {

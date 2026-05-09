@@ -43,8 +43,12 @@ type TwinChatProps = {
   /** Bubbled up from the profile dialog when the user deletes their twin. */
   onTwinDeleted?: () => void
   /** Connected wallet address — passed into the profile dialog so the
-   *  "Bind vault" action knows who the vault owner should be. */
+   *  "Bind vault" action knows who the vault owner should be. Only set
+   *  when a real user-controlled wallet has surfaced (never the dev fallback). */
   walletAddress?: string | null
+  /** Opens the host app's wallet-connect modal — surfaced in the dialog so
+   *  the user can connect a wallet when no real one is present. */
+  onConnectWallet?: () => void
 }
 
 // Reads the env var Next.js inlines at build time so the badge auto-adapts
@@ -132,6 +136,7 @@ export function TwinChat({
   onSeedConsumed,
   onTwinDeleted,
   walletAddress,
+  onConnectWallet,
 }: TwinChatProps) {
   const transport = useMemo(
     () =>
@@ -302,6 +307,7 @@ export function TwinChat({
         getAuthToken={getAuthToken}
         onDeleted={onTwinDeleted}
         walletAddress={walletAddress}
+        onConnectWallet={onConnectWallet}
       />
     </Card>
   )

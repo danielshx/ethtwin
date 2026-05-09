@@ -2,10 +2,28 @@
 //
 // Returns avatar, description, persona, capabilities, addr record, plus a
 // generated-avatar fallback for older twins that pre-date the profile defaults.
+// Also reads the on-chain USDC allowance the twin's owner has granted to
+// the dev wallet, so the dialog can show "Agent can spend N USDC" live.
 
+import { type Address, getAddress, isAddress } from "viem"
 import { jsonError } from "@/lib/api-guard"
 import { readAddrFast, readTextRecordFast } from "@/lib/ens"
 import { buildAvatarUrl } from "@/lib/twin-profile"
+import { getDevWalletClient, sepoliaClient } from "@/lib/viem"
+
+const SEPOLIA_USDC: Address = "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238"
+const ERC20_ALLOWANCE_ABI = [
+  {
+    name: "allowance",
+    type: "function",
+    stateMutability: "view",
+    inputs: [
+      { name: "owner", type: "address" },
+      { name: "spender", type: "address" },
+    ],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+] as const
 
 const TWIN_TEXT_KEYS = [
   "description",
@@ -50,6 +68,27 @@ export async function GET(
       TWIN_TEXT_KEYS.map((key, i) => [key, (textResults[i] as string) || null]),
     ) as Record<TwinKey, string | null>
 
+    // Best-effort: if `twin.owner` is set, read the on-chain USDC allowance
+    // that owner has granted to the dev wallet. UI uses this to show the
+    // user "agent can currently spend N USDC" without making them refresh
+    // after the approve tx mines.
+    let agentUsdcAllowance: string | null = null
+    const ownerRaw = recordMap["twin.owner"]
+    if (ownerRaw && isAddress(ownerRaw)) {
+      try {
+        const { account: devAccount } = getDevWalletClient()
+        const allowance = (await sepoliaClient.readContract({
+          address: SEPOLIA_USDC,
+          abi: ERC20_ALLOWANCE_ABI,
+          functionName: "allowance",
+          args: [getAddress(ownerRaw) as Address, devAccount.address],
+        })) as bigint
+        agentUsdcAllowance = allowance.toString()
+      } catch {
+        // non-fatal — UI just won't show the live allowance
+      }
+    }
+
     return Response.json({
       ok: true,
       ens,
@@ -64,6 +103,7 @@ export async function GET(
       version: recordMap["twin.version"],
       vault: recordMap["twin.vault"] ?? null,
       vaultOwner: recordMap["twin.owner"] ?? null,
+      agentUsdcAllowance,
     })
   } catch (error) {
     return jsonError(

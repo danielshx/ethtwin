@@ -1,6 +1,15 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { useWallets } from "@privy-io/react-auth"
+import {
+  createPublicClient,
+  encodeFunctionData,
+  http,
+  parseUnits,
+  type Hex,
+} from "viem"
+import { sepolia } from "viem/chains"
 import { Check, ExternalLink, Loader2, Pencil, Trash2, X } from "lucide-react"
 import { toast } from "sonner"
 import {
@@ -31,6 +40,9 @@ type AgentProfile = {
   version: string | null
   vault: string | null
   vaultOwner: string | null
+  /** Live on-chain `USDC.allowance(owner, devWallet)` — string of USDC base
+   *  units (1e6 = 1 USDC). null when owner isn't set or the read fails. */
+  agentUsdcAllowance: string | null
 }
 
 type AgentProfileDialogProps = {
@@ -47,8 +59,12 @@ type AgentProfileDialogProps = {
    *  re-routed to onboarding. */
   onDeleted?: () => void
   /** The user's currently-connected wallet address. Required to expose the
-   *  "Bind vault" action — that's the address that becomes the vault owner. */
+   *  "Bind vault" action — that's the address that becomes the vault owner.
+   *  Must be a *real* user wallet, never the dev-wallet fallback. */
   walletAddress?: string | null
+  /** Opens the host app's wallet-connect modal so the user can attach a
+   *  wallet when no real one is present. */
+  onConnectWallet?: () => void
 }
 
 export function AgentProfileDialog({
@@ -59,6 +75,7 @@ export function AgentProfileDialog({
   getAuthToken,
   onDeleted,
   walletAddress,
+  onConnectWallet,
 }: AgentProfileDialogProps) {
   const [profile, setProfile] = useState<AgentProfile | null>(null)
   const [loading, setLoading] = useState(false)
@@ -68,6 +85,10 @@ export function AgentProfileDialog({
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [bindingVault, setBindingVault] = useState(false)
+  const [overrideOwner, setOverrideOwner] = useState("")
+  // Privy wallets — needed to grab an EIP-1193 provider so the user can sign
+  // the USDC approve from inside this dialog without leaving the app.
+  const { wallets } = useWallets()
 
   useEffect(() => {
     if (!open || !ens) {
@@ -251,19 +272,59 @@ export function AgentProfileDialog({
     }
   }
 
-  async function handleBindVault() {
+  // Sepolia USDC on the public testnet — same value used in lib/transfers.ts.
+  const USDC_SEPOLIA = "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238"
+  // Default headroom for the agent. The user can re-approve to raise/lower.
+  const DEFAULT_APPROVE_USDC = "10" // 10 USDC
+
+  // ERC-20 approve(spender, amount) ABI fragment.
+  const erc20ApproveAbi = [
+    {
+      name: "approve",
+      type: "function",
+      stateMutability: "nonpayable",
+      inputs: [
+        { name: "spender", type: "address" },
+        { name: "amount", type: "uint256" },
+      ],
+      outputs: [{ name: "", type: "bool" }],
+    },
+  ] as const
+
+  async function handleEnableSpending() {
     if (!ens) return
-    if (!walletAddress) {
-      toast.error("Connect a wallet first — the vault needs an owner.")
+    const trimmedOverride = overrideOwner.trim()
+    const owner = trimmedOverride || walletAddress
+    if (!owner) {
+      toast.error("Connect a wallet, or paste an owner address.")
       return
     }
+    if (!/^0x[0-9a-fA-F]{40}$/.test(owner)) {
+      toast.error("Owner address must be a valid 0x… 40-hex string.")
+      return
+    }
+    const devFallback = process.env.NEXT_PUBLIC_DEV_WALLET_ADDRESS
+    if (devFallback && owner.toLowerCase() === devFallback.toLowerCase()) {
+      toast.error(
+        "Owner equals the dev wallet — agent can't spend from itself. Use a different address.",
+      )
+      return
+    }
+    if (!devFallback) {
+      toast.error(
+        "NEXT_PUBLIC_DEV_WALLET_ADDRESS not configured — can't compute approval target.",
+      )
+      return
+    }
+
     setBindingVault(true)
     try {
+      // ── Step 1: server writes twin.owner record (dev wallet signs) ────
       const token = (await getAuthToken?.().catch(() => null)) ?? null
-      const res = await fetch("/api/profile/bind-vault", {
+      const res = await fetch("/api/profile/set-owner", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ privyToken: token, ens, userWallet: walletAddress }),
+        body: JSON.stringify({ privyToken: token, ens, userWallet: owner }),
       })
       const ct = res.headers.get("content-type") ?? ""
       if (!ct.includes("application/json")) {
@@ -274,36 +335,143 @@ export function AgentProfileDialog({
       const data = (await res.json()) as {
         ok: boolean
         error?: string
-        alreadyBound?: boolean
-        vaultAddress?: string
+        alreadySet?: boolean
+        owner?: string
+        recordsTx?: string
         blockExplorerUrl?: string
       }
       if (!data.ok) {
-        toast.error(data.error ?? "Bind vault failed")
+        toast.error(data.error ?? "set-owner failed")
         return
       }
-      if (data.alreadyBound) {
-        toast.info("Already bound — refreshing profile")
+      if (data.alreadySet) {
+        toast.info("Owner record already set — proceeding to USDC approval")
       } else {
-        toast.success(`Vault deployed: ${data.vaultAddress?.slice(0, 10)}…`, {
+        toast.success("Owner record written on-chain", {
           description: data.blockExplorerUrl,
         })
-        addHistoryEntry({
-          kind: "other",
-          status: "success",
-          chain: "sepolia",
-          summary: `Bound vault to ${ens}`,
-          description: `Vault ${data.vaultAddress}`,
-          explorerUrl: data.blockExplorerUrl,
-          ...(getAuthToken ? { syncTo: { ens, getAuthToken } } : {}),
-        })
       }
-      // Re-fetch the profile so the vault badge appears.
+      addHistoryEntry({
+        kind: "other",
+        status: "success",
+        chain: "sepolia",
+        summary: `Set ${ens} owner = ${owner.slice(0, 6)}…${owner.slice(-4)}`,
+        description: "ENS twin.owner record",
+        ...(data.recordsTx ? { txHash: data.recordsTx } : {}),
+        ...(data.blockExplorerUrl
+          ? { explorerUrl: data.blockExplorerUrl }
+          : {}),
+        ...(getAuthToken ? { syncTo: { ens, getAuthToken } } : {}),
+      })
+
+      // ── Step 2: ask the user's wallet to USDC.approve(devWallet, X) ───
+      // Find the actual wallet object so we can get an EIP-1193 provider.
+      const wallet = wallets.find(
+        (w) => w.address.toLowerCase() === owner.toLowerCase(),
+      )
+      if (!wallet) {
+        toast.error(
+          `Wallet ${owner.slice(0, 6)}…${owner.slice(-4)} isn't connected. Connect it via Privy/MetaMask, then click again.`,
+        )
+        return
+      }
+      let provider: {
+        request: (args: { method: string; params?: unknown[] }) => Promise<unknown>
+      }
+      try {
+        provider = (await wallet.getEthereumProvider()) as typeof provider
+      } catch (err) {
+        toast.error(
+          `Couldn't get a signer for ${owner.slice(0, 6)}…${owner.slice(-4)}: ${err instanceof Error ? err.message : String(err)}`,
+        )
+        return
+      }
+      // Force Sepolia. Wallet may already be on it; switch is a no-op then.
+      try {
+        await provider.request({
+          method: "wallet_switchEthereumChain",
+          params: [{ chainId: "0xaa36a7" }], // 11155111
+        })
+      } catch (err) {
+        // Some embedded wallets don't support switching — the send may still
+        // work if the wallet is already on Sepolia.
+        console.warn("[approve] wallet_switchEthereumChain failed:", err)
+      }
+      const data2 = encodeFunctionData({
+        abi: erc20ApproveAbi,
+        functionName: "approve",
+        args: [
+          devFallback as `0x${string}`,
+          parseUnits(DEFAULT_APPROVE_USDC, 6),
+        ],
+      })
+      let approveTx: string
+      try {
+        approveTx = (await provider.request({
+          method: "eth_sendTransaction",
+          params: [
+            {
+              from: owner,
+              to: USDC_SEPOLIA,
+              data: data2,
+            },
+          ],
+        })) as string
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        toast.error(`Approve rejected or failed: ${msg.slice(0, 140)}`)
+        return
+      }
+      // Wait for the approve tx to MINE before declaring victory. Without
+      // this the agent sees allowance=0 and falls back to the dev wallet —
+      // exactly the bug we're trying to fix. Sepolia mines in ~12-24s.
+      const pendingToast = toast.loading(
+        "Waiting for approve to mine on Sepolia (~24s)…",
+      )
+      try {
+        const sepoliaPublic = createPublicClient({
+          chain: sepolia,
+          transport: http(
+            "https://eth-sepolia.g.alchemy.com/v2/VnDHq7fsAyloEY3w9oQGK",
+          ),
+        })
+        const receipt = await sepoliaPublic.waitForTransactionReceipt({
+          hash: approveTx as Hex,
+        })
+        toast.dismiss(pendingToast)
+        if (receipt.status !== "success") {
+          toast.error(
+            `Approve tx reverted (gasUsed=${receipt.gasUsed.toString()}). tx=${approveTx}`,
+          )
+          return
+        }
+      } catch (err) {
+        toast.dismiss(pendingToast)
+        toast.error(
+          `Couldn't confirm approve receipt: ${err instanceof Error ? err.message : String(err)}. The tx may still mine — wait ~30s and try sending.`,
+        )
+        return
+      }
+      toast.success(`Approved ${DEFAULT_APPROVE_USDC} USDC — agent can now send`, {
+        description: `https://sepolia.etherscan.io/tx/${approveTx}`,
+      })
+      addHistoryEntry({
+        kind: "other",
+        status: "success",
+        chain: "sepolia",
+        summary: `Approved ${DEFAULT_APPROVE_USDC} USDC for the agent`,
+        description: `Spender ${devFallback}`,
+        txHash: approveTx,
+        explorerUrl: `https://sepolia.etherscan.io/tx/${approveTx}`,
+        ...(getAuthToken ? { syncTo: { ens, getAuthToken } } : {}),
+      })
+
+      // Optimistic local update so the dialog flips to "Spending enabled".
       setProfile((prev) =>
-        prev ? { ...prev, vault: data.vaultAddress ?? prev.vault } : prev,
+        prev ? { ...prev, vaultOwner: owner, vault: prev.vault ?? null } : prev,
       )
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Bind vault failed"
+      const msg = err instanceof Error ? err.message : "Enable spending failed"
       toast.error(msg)
     } finally {
       setBindingVault(false)
@@ -482,63 +650,123 @@ export function AgentProfileDialog({
                   <span
                     className={cn(
                       "inline-block h-1.5 w-1.5 rounded-full",
-                      profile.vault ? "bg-emerald-400" : "bg-amber-400",
+                      profile.vaultOwner ? "bg-emerald-400" : "bg-amber-400",
                     )}
                   />
                   <span className="text-xs font-medium">
-                    {profile.vault ? "Vault bound" : "No vault yet"}
+                    {profile.vaultOwner ? "Agent spending enabled" : "Agent spending: dev wallet"}
                   </span>
                 </div>
-                {editable && !profile.vault ? (
+                {editable ? (
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={handleBindVault}
-                    disabled={bindingVault || !walletAddress}
+                    onClick={handleEnableSpending}
+                    disabled={
+                      bindingVault ||
+                      (!walletAddress && !overrideOwner.trim())
+                    }
                     className="h-7 px-2 text-[11px]"
                     title={
                       walletAddress
-                        ? "Deploy a TwinVault and bind it to this ENS — the agent will spend from your funds."
-                        : "Connect a wallet first to deploy a vault."
+                        ? `Set ${ens && walletAddress.slice(0, 6)}…${walletAddress.slice(-4)} as the agent's funding wallet and approve 10 USDC.`
+                        : "Paste an owner address below or connect a wallet first."
                     }
                   >
                     {bindingVault ? (
                       <>
                         <Loader2 className="h-3 w-3 animate-spin" />
-                        Binding…
+                        Enabling…
                       </>
+                    ) : profile.vaultOwner ? (
+                      <>Re-approve</>
                     ) : (
-                      <>Bind vault</>
+                      <>Enable agent spending</>
                     )}
                   </Button>
                 ) : null}
               </div>
-              {profile.vault ? (
+              {profile.vaultOwner ? (
                 <div className="mt-1.5 grid gap-0.5 font-mono text-[10px] text-muted-foreground">
                   <div>
-                    <span className="text-foreground/60">vault:</span>{" "}
+                    <span className="text-foreground/60">funding wallet: </span>
                     <a
-                      href={`https://sepolia.etherscan.io/address/${profile.vault}`}
+                      href={`https://sepolia.etherscan.io/address/${profile.vaultOwner}`}
                       target="_blank"
                       rel="noreferrer"
                       className="text-primary hover:underline"
                     >
-                      {shortAddr(profile.vault)}
+                      {shortAddr(profile.vaultOwner)}
                     </a>
                   </div>
-                  {profile.vaultOwner ? (
-                    <div>
-                      <span className="text-foreground/60">owner:</span>{" "}
-                      {shortAddr(profile.vaultOwner)}
-                    </div>
-                  ) : null}
+                  <div>
+                    <span className="text-foreground/60">agent allowance: </span>
+                    {profile.agentUsdcAllowance != null
+                      ? `${(Number(profile.agentUsdcAllowance) / 1_000_000).toLocaleString(undefined, { maximumFractionDigits: 6 })} USDC`
+                      : "—"}
+                  </div>
+                  <p className="font-sans text-[10px] text-muted-foreground/80">
+                    {profile.agentUsdcAllowance &&
+                    BigInt(profile.agentUsdcAllowance) > 0n
+                      ? "USDC sends pull from this wallet via transferFrom, capped by the allowance above. ETH sends still go via the dev wallet."
+                      : "Owner is set but the USDC allowance is 0 — click Re-approve and finish the MetaMask signature so the agent can pull funds."}
+                  </p>
                 </div>
               ) : (
-                <p className="mt-1 text-[10px] leading-relaxed text-muted-foreground">
-                  Token sends fall back to the dev wallet. Bind a vault to
-                  route the agent's spends through your own funds — capped by
-                  on-chain limits you set.
-                </p>
+                <div className="mt-1 space-y-2 text-[10px] leading-relaxed text-muted-foreground">
+                  <p>
+                    USDC sends fall back to the dev wallet. Enable agent
+                    spending to point the agent at your wallet — one signature
+                    sets up an ERC-20 allowance, then every chat-driven send
+                    moves USDC straight from your funds. No custom contract.
+                  </p>
+                  <div className="space-y-1">
+                    <label className="block text-[10px] uppercase tracking-wider text-muted-foreground">
+                      Owner address (must control this wallet)
+                    </label>
+                    <div className="flex items-center gap-1.5">
+                      <Input
+                        value={overrideOwner}
+                        onChange={(e) => setOverrideOwner(e.target.value)}
+                        placeholder={walletAddress ?? "0x… your wallet address"}
+                        className="h-7 flex-1 font-mono text-[11px]"
+                        disabled={bindingVault}
+                      />
+                      {walletAddress ? (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setOverrideOwner(walletAddress)}
+                          className="h-7 px-2 text-[10px] text-muted-foreground"
+                          title="Use the auto-detected connected wallet"
+                          disabled={bindingVault}
+                        >
+                          use connected
+                        </Button>
+                      ) : null}
+                    </div>
+                    <p className="text-[10px] text-muted-foreground/80">
+                      Auto-detected:{" "}
+                      <span className="font-mono">
+                        {walletAddress ? shortAddr(walletAddress) : "none"}
+                      </span>
+                      . Only that wallet (or whatever you paste here) can
+                      withdraw, change limits, or rotate the agent afterwards.
+                    </p>
+                  </div>
+                  {!walletAddress && onConnectWallet ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={onConnectWallet}
+                      className="h-7 px-2 text-[11px]"
+                    >
+                      Connect a wallet via Privy
+                    </Button>
+                  ) : null}
+                </div>
               )}
             </div>
 

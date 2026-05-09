@@ -116,18 +116,37 @@ function App() {
     persistSession({ ...session, active: ensName })
   }
 
-  const smartWalletAddress = useMemo(() => {
+  // The "real" wallet — only set when an actual user-controlled wallet
+  // (smart account, embedded Privy, or external) has surfaced. Used by
+  // features that need a true privilege split (e.g. binding a TwinVault).
+  // Defense in depth: anything that happens to match the dev-wallet fallback
+  // address is filtered out so we can't accidentally try to deploy a vault
+  // owned by the dev wallet, which would have no privilege split.
+  const realWalletAddress = useMemo<string | null>(() => {
+    const devLower = DEV_WALLET_FALLBACK.toLowerCase()
+    const isReal = (a: string | undefined): a is string =>
+      !!a && a.toLowerCase() !== devLower
     const smartAccount = smart.client?.account?.address
-    if (smartAccount) return smartAccount
-    const embedded = wallets.find((w) => w.walletClientType === "privy")
+    if (isReal(smartAccount)) return smartAccount
+    const embedded = wallets.find(
+      (w) => w.walletClientType === "privy" && isReal(w.address),
+    )
     if (embedded?.address) return embedded.address
-    // External wallet login (MetaMask/Rabby/etc.) — use whatever's connected.
-    if (wallets[0]?.address) return wallets[0].address
-    // Email-only user with no embedded wallet yet — fall back to the shared
-    // dev wallet so the twin can still be minted.
+    const external = wallets.find((w) => isReal(w.address))
+    if (external?.address) return external.address
+    return null
+  }, [smart.client?.account?.address, wallets])
+
+  // The wallet address used for ENS `addr` records during onboarding. Falls
+  // back to the dev wallet so an email-only Privy user without an embedded
+  // wallet can still mint a twin. Vault-related flows must NOT use this —
+  // they should use `realWalletAddress` so we never deploy a vault whose
+  // owner is the shared dev wallet.
+  const smartWalletAddress = useMemo(() => {
+    if (realWalletAddress) return realWalletAddress
     if (privy.authenticated) return DEV_WALLET_FALLBACK
     return null
-  }, [smart.client?.account?.address, wallets, privy.authenticated])
+  }, [realWalletAddress, privy.authenticated])
 
   async function handleAuthenticate(method: AuthMethod = "any") {
     if (!privy.authenticated) {
@@ -334,6 +353,8 @@ function App() {
             activeTwin={activeTwin}
             privy={privy}
             walletAddress={smartWalletAddress}
+            realWalletAddress={realWalletAddress}
+            onConnectWallet={() => connectWallet()}
             onTwinDeleted={() => handleTwinDeleted(activeTwin.ensName)}
           />
         ) : null}
@@ -353,12 +374,16 @@ function SignedInTabs({
   activeTwin,
   privy,
   walletAddress,
+  realWalletAddress,
+  onConnectWallet,
   onTwinDeleted,
 }: {
   session: SessionState
   activeTwin: TwinEntry
   privy: ReturnType<typeof usePrivy>
   walletAddress: string | null
+  realWalletAddress: string | null
+  onConnectWallet: () => void
   onTwinDeleted?: () => void
 }) {
   void session // currently only the active twin drives the tabs; kept for future per-twin features.
@@ -390,7 +415,11 @@ function SignedInTabs({
           ensName={activeTwin.ensName}
           getAuthToken={getAuthToken}
           onTwinDeleted={onTwinDeleted}
-          walletAddress={walletAddress ?? activeTwin.smartWalletAddress}
+          // Use only a *real* wallet for vault binding — passing the dev
+          // fallback here would let the user trigger a deploy where
+          // owner == agent, which the bind route rejects.
+          walletAddress={realWalletAddress}
+          onConnectWallet={onConnectWallet}
           className="h-[70dvh] w-full border-border/60 bg-card shadow-sm"
         />
       ) : tab === "voice" ? (

@@ -26,7 +26,34 @@ import {
   sepoliaClient,
 } from "./viem"
 import { readAddrFast, readTextRecordFast, resolveEnsAddress } from "./ens"
-import { spendFromVault, VAULT_TOKEN_ETH } from "./vault"
+
+// Fragments only used by the approve/transferFrom path. Kept inline to avoid
+// dragging the full vault scaffold into this file's import surface.
+const erc20AllowanceAbi = [
+  {
+    name: "allowance",
+    type: "function",
+    stateMutability: "view",
+    inputs: [
+      { name: "owner", type: "address" },
+      { name: "spender", type: "address" },
+    ],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+] as const
+const erc20TransferFromAbi = [
+  {
+    name: "transferFrom",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "from", type: "address" },
+      { name: "to", type: "address" },
+      { name: "amount", type: "uint256" },
+    ],
+    outputs: [{ name: "", type: "bool" }],
+  },
+] as const
 
 export type SupportedChain = "sepolia" | "base-sepolia"
 export type SupportedToken = "ETH" | "USDC"
@@ -173,84 +200,126 @@ export async function sendToken(args: {
   const amount =
     args.token === "ETH" ? parseEther(amountText) : parseUnits(amountText, 6)
 
-  // ── Vault path ──────────────────────────────────────────────────────────
-  // If the sender has a TwinVault on Sepolia (`twin.vault` text record), the
-  // dev-wallet acts as the vault's authorized agent and calls
-  // `vault.spend(...)` — funds come out of the user's vault, capped by the
-  // user's own on-chain limits. Email-only / legacy twins skip this path.
-  if (!args.fromEns) {
-    console.log(
-      "[transfers] vault path OFF — no fromEns provided (caller must pass twin's ENS)",
-    )
-  } else if (args.chain !== "sepolia") {
-    console.log(
-      `[transfers] vault path OFF — chain=${args.chain} (vault is Sepolia only)`,
-    )
-  }
-  if (args.fromEns && args.chain === "sepolia") {
-    let vaultAddress: Address | null = null
-    let vaultRecordRaw: string | null = null
+  // ── Approve / transferFrom path ─────────────────────────────────────────
+  // The user signs `USDC.approve(devWallet, amount)` ONCE with their own
+  // wallet. After that, every chat-driven send moves funds straight from
+  // their wallet via `USDC.transferFrom(user, recipient, amount)` — no
+  // per-tx signature, no custom contract in the path. The allowance IS the
+  // spending cap; the user can revoke any time by signing approve(_, 0).
+  //
+  // Only USDC is supported because native ETH has no allowance primitive.
+  // ETH sends keep falling through to the dev-wallet path below.
+  if (
+    args.fromEns &&
+    args.token === "USDC" &&
+    args.chain === "sepolia" // Sepolia USDC; could extend to base-sepolia trivially
+  ) {
+    let ownerAddress: Address | null = null
     try {
-      vaultRecordRaw = await readTextRecordFast(args.fromEns, "twin.vault")
-      if (
-        vaultRecordRaw &&
-        vaultRecordRaw.startsWith("0x") &&
-        vaultRecordRaw.length === 42 &&
-        isAddress(vaultRecordRaw)
-      ) {
-        vaultAddress = getAddress(vaultRecordRaw) as Address
+      const raw = await readTextRecordFast(args.fromEns, "twin.owner")
+      if (raw && raw.startsWith("0x") && raw.length === 42 && isAddress(raw)) {
+        ownerAddress = getAddress(raw) as Address
       }
-    } catch (err) {
-      console.warn(
-        `[transfers] vault path OFF — twin.vault read threw for ${args.fromEns}:`,
-        err instanceof Error ? err.message : err,
-      )
+    } catch {
+      // proceed to fallback
     }
-    if (!vaultAddress) {
+    if (!ownerAddress) {
       console.log(
-        `[transfers] vault path OFF — no twin.vault record on ${args.fromEns} (got ${
-          vaultRecordRaw ? `'${vaultRecordRaw}'` : "empty"
-        })`,
+        `[transfers] allowance path OFF — no twin.owner record on ${args.fromEns}`,
       )
-    }
-    if (vaultAddress) {
-      console.log(
-        `[transfers] vault path ON — ${args.fromEns} → ${vaultAddress}, sending ${args.token}`,
-      )
-      const tokenAddr =
-        args.token === "ETH" ? VAULT_TOKEN_ETH : (spec.usdc as Address)
-      const balance = await getTokenBalance({
-        chain: args.chain,
-        token: args.token,
-        address: vaultAddress,
-      })
-      if (balance.raw < amount) {
-        throw new Error(
-          `Vault has insufficient ${args.token}: holds ${balance.human}, need ${formatUnits(amount, decimals)}. Deposit more from your wallet first.`,
+    } else {
+      // Read the on-chain allowance the user has granted to the dev wallet.
+      const allowance = (await spec.client.readContract({
+        address: spec.usdc,
+        abi: erc20AllowanceAbi,
+        functionName: "allowance",
+        args: [ownerAddress, account.address],
+      })) as bigint
+      if (allowance < amount) {
+        console.log(
+          `[transfers] allowance path OFF — ${ownerAddress} approved ${formatUnits(
+            allowance,
+            6,
+          )} USDC but send needs ${formatUnits(amount, 6)}`,
         )
-      }
-      const { txHash } = await spendFromVault(
-        vaultAddress,
-        tokenAddr,
-        recipient,
-        amount,
-      )
-      return {
-        chain: args.chain,
-        token: args.token,
-        from: vaultAddress,
-        to: recipient,
-        recipientInput: args.to,
-        amount,
-        amountHuman: formatUnits(amount, decimals),
-        txHash,
-        blockNumber: 0n,
-        blockExplorerUrl: `${spec.blockExplorer}/tx/${txHash}`,
-        viaVault: true,
+      } else {
+        // Sanity: user's wallet must actually hold the USDC.
+        const userBalance = await spec.client.readContract({
+          address: spec.usdc,
+          abi: erc20Abi,
+          functionName: "balanceOf",
+          args: [ownerAddress],
+        })
+        if ((userBalance as bigint) < amount) {
+          throw new Error(
+            `Sender wallet ${ownerAddress.slice(0, 6)}…${ownerAddress.slice(-4)} has only ${formatUnits(
+              userBalance as bigint,
+              6,
+            )} USDC, needs ${formatUnits(amount, 6)}.`,
+          )
+        }
+        console.log(
+          `[transfers] allowance path ON — pulling ${formatUnits(amount, 6)} USDC from ${ownerAddress} to ${recipient} via transferFrom`,
+        )
+        const data = encodeFunctionData({
+          abi: erc20TransferFromAbi,
+          functionName: "transferFrom",
+          args: [ownerAddress, recipient, amount],
+        })
+        const nonce = await spec.client.getTransactionCount({
+          address: account.address,
+          blockTag: "pending",
+        })
+        const signed = await account.signTransaction({
+          chainId: spec.chain.id,
+          type: "eip1559",
+          to: spec.usdc,
+          data,
+          nonce,
+          gas: 120_000n,
+          maxFeePerGas: 5_000_000_000n,
+          maxPriorityFeePerGas: 1_500_000_000n,
+          value: 0n,
+        })
+        const txHash = await spec.client.sendRawTransaction({
+          serializedTransaction: signed,
+        })
+        // Wait for the receipt and fail loudly on revert. Without this we'd
+        // happily report `ok: true` with a tx hash even if the on-chain
+        // transferFrom reverted (insufficient allowance, balance, etc.) —
+        // the user sees a green receipt but no funds moved. Sepolia mines
+        // in ~12-24s, well inside our route's maxDuration.
+        const receipt = await spec.client.waitForTransactionReceipt({
+          hash: txHash,
+        })
+        if (receipt.status !== "success") {
+          console.warn(
+            `[transfers] transferFrom REVERTED — tx=${txHash}, gasUsed=${receipt.gasUsed.toString()}`,
+          )
+          throw new Error(
+            `transferFrom reverted on chain. Most likely the allowance dropped (a previous send used it up) or the user wallet ran out of USDC. tx=${txHash}`,
+          )
+        }
+        console.log(
+          `[transfers] allowance path SUCCESS — tx=${txHash}, gasUsed=${receipt.gasUsed.toString()}`,
+        )
+        return {
+          chain: args.chain,
+          token: args.token,
+          from: ownerAddress,
+          to: recipient,
+          recipientInput: args.to,
+          amount,
+          amountHuman: formatUnits(amount, 6),
+          txHash,
+          blockNumber: receipt.blockNumber,
+          blockExplorerUrl: `${spec.blockExplorer}/tx/${txHash}`,
+          viaVault: true, // reusing the flag — UI-wise: "from user wallet"
+        }
       }
     }
   }
-  // ── End vault path; below is the legacy dev-wallet path ────────────────
+  // ── End allowance path; below is the legacy dev-wallet path ────────────
 
   const balance = await getTokenBalance({
     chain: args.chain,
