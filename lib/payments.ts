@@ -22,6 +22,7 @@
 import {
   encodeFunctionData,
   formatUnits,
+  parseEther,
   parseUnits,
   type Address,
   type Chain,
@@ -40,6 +41,7 @@ import {
   generatePrivateAddress,
   type StealthResult,
 } from "./stealth"
+import { kmsAccount, kmsAccountForEns } from "./kms"
 import { erc5564AnnouncerAbi } from "./abis"
 
 export type StealthChain = "sepolia" | "base-sepolia"
@@ -170,13 +172,24 @@ function buildErc20StealthMetadata(
  * Send `amountUsdc` of USDC on the chosen chain to a one-time stealth
  * address derived from the recipient's ENS-published meta-key, then emit
  * the ERC-5564 Announcement so the recipient can scan and find it.
+ *
+ * Sender selection priority:
+ *   1. `senderEnsName`'s KMS-managed account, when the twin has a KMS key
+ *      AND the KMS-derived address holds enough USDC + gas. This is the
+ *      bounty-optimal path — every `caller` in the Announcement is a
+ *      per-twin satellite-attested address, not the shared dev wallet.
+ *   2. Dev wallet (DEV_WALLET_PRIVATE_KEY) as a fallback for legacy twins
+ *      and demo runs where the user hasn't funded their twin yet.
  */
 export async function sendStealthUSDC(args: {
   recipientEnsName: string
   amountUsdc: number | string
   chain?: StealthChain
+  /** Optional: sender twin's ENS. When provided + the twin has a KMS key
+   *  + the address is funded, we sign with KMS instead of the dev wallet. */
+  senderEnsName?: string
 }): Promise<StealthPaymentResult> {
-  const { recipientEnsName, amountUsdc } = args
+  const { recipientEnsName, amountUsdc, senderEnsName } = args
   const chainKey: StealthChain = args.chain ?? "base-sepolia"
   const spec = CHAINS[chainKey]
 
@@ -220,7 +233,44 @@ export async function sendStealthUSDC(args: {
 
   // 4. USDC.transfer(stealthAddress, amount) on the chosen chain.
   const amount = parseUnits(String(amountUsdc), USDC_DECIMALS)
-  const { account } = getDevWalletClient(spec.chain)
+
+  // Sender selection: try the user's KMS-managed account first when the
+  // sender twin has both a KMS key AND enough USDC + gas at its KMS-derived
+  // address. Falling back to the dev wallet keeps the demo functional for
+  // unfunded twins, but the bounty-optimal path is KMS — every Announcement
+  // `caller` becomes a per-twin satellite-attested address.
+  // Default: dev wallet. Upgrade to KMS when the sender twin can cover its
+  // own send (USDC ≥ amount + ETH for gas).
+  let account: ReturnType<typeof getDevWalletClient>["account"] | ReturnType<typeof kmsAccount> =
+    getDevWalletClient(spec.chain).account
+  let viaKms = false
+  if (senderEnsName) {
+    try {
+      const kms = await kmsAccountForEns(senderEnsName)
+      if (kms) {
+        const usdcBalance = await getUsdcBalance(kms.address, chainKey)
+        const ethBalance = await spec.client.getBalance({ address: kms.address })
+        // Need USDC for the transfer + ETH for gas (~0.0005 ETH covers both
+        // transfer + announce txs at 5 gwei).
+        const minGas = parseEther("0.0005")
+        if (usdcBalance >= amount && ethBalance >= minGas) {
+          account = kmsAccount(kms)
+          viaKms = true
+        } else {
+          console.warn(
+            `[payments] sender twin ${senderEnsName} has insufficient funds at its ` +
+              `KMS address (${kms.address}): USDC=${formatUnits(usdcBalance, USDC_DECIMALS)}, ` +
+              `ETH=${formatUnits(ethBalance, 18)}. Falling back to dev wallet.`,
+          )
+        }
+      }
+    } catch (err) {
+      console.warn(
+        `[payments] kmsAccountForEns(${senderEnsName}) failed:`,
+        err instanceof Error ? err.message : err,
+      )
+    }
+  }
 
   // Pre-flight: don't broadcast a tx that will revert on insufficient balance.
   const senderBalance = await getUsdcBalance(account.address, chainKey)
@@ -228,7 +278,9 @@ export async function sendStealthUSDC(args: {
     throw new Error(
       `Sender ${account.address} has ${formatUnits(senderBalance, USDC_DECIMALS)} USDC on ${chainKey} ` +
         `(contract ${spec.usdc}), needs ${formatUnits(amount, USDC_DECIMALS)}. ` +
-        `Fund the dev wallet on ${chainKey} with USDC before retrying.`,
+        `${viaKms
+          ? `Top up your twin's KMS-derived address from your wallet (Send tab → Fund your twin)`
+          : `Fund the dev wallet on ${chainKey} with USDC before retrying`}.`,
     )
   }
 

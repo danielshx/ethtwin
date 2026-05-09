@@ -53,11 +53,17 @@ export async function POST(req: Request) {
     )
   }
 
+  // Resolve sender from the session cookie BEFORE calling sendStealthUSDC
+  // so we can pass senderEnsName and the payment is signed by the user's
+  // KMS-managed account when it's funded.
+  const session = await getSession()
+
   try {
     const result = await sendStealthUSDC({
       recipientEnsName,
       amountUsdc,
       ...(chain ? { chain } : {}),
+      ...(session?.ens ? { senderEnsName: session.ens } : {}),
     })
 
     // Notify the recipient via the chat-subname so it shows up in their
@@ -66,7 +72,6 @@ export async function POST(req: Request) {
     // (that's the whole point of stealth) and their wallet history shows
     // nothing. The message is the demo-friendly bridge until the proper
     // Announcer-scanning inbox is wired up.
-    const session = await getSession()
     if (session?.ens) {
       const ipfsHash = result.stealth.ephemeralPublicKey.slice(2, 18)
       const explorerLink = result.announceExplorerUrl ?? result.blockExplorerUrl

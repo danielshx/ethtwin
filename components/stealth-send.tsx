@@ -28,6 +28,7 @@ import { CosmicOrb } from "@/components/cosmic-orb"
 import { AgentProfileDialog } from "@/components/agent-profile"
 import { EnsAvatar } from "@/components/ens-avatar"
 import { BountyTrail } from "@/components/bounty-trail"
+import { FundTwin } from "@/components/fund-twin"
 import { TxApprovalModal, type TxIntent } from "@/components/tx-approval-modal"
 import { describeTx } from "@/lib/tx-decoder"
 import { addHistoryEntry } from "@/lib/history"
@@ -125,6 +126,8 @@ export function StealthSend({ myEnsName, getAuthToken, className }: StealthSendP
   const [modalOpen, setModalOpen] = useState(false)
   const [inboxLoading, setInboxLoading] = useState(false)
   const [inbox, setInbox] = useState<StealthInboxItem[]>([])
+  // Twin's KMS-derived address (the funding target for FundTwin).
+  const [twinAddress, setTwinAddress] = useState<`0x${string}` | null>(null)
 
   // Load agent directory once.
   const loadAgents = useCallback(async () => {
@@ -149,6 +152,24 @@ export function StealthSend({ myEnsName, getAuthToken, className }: StealthSendP
   useEffect(() => {
     loadAgents()
   }, [loadAgents])
+
+  // Resolve our twin's on-chain `addr` record — that's the KMS-derived
+  // address users top up via FundTwin. One read per mount.
+  useEffect(() => {
+    let cancelled = false
+    fetch(`/api/agent/${encodeURIComponent(myEnsName)}`)
+      .then((r) => r.json())
+      .then((data: { ok?: boolean; addr?: string | null }) => {
+        if (cancelled) return
+        if (data.ok && data.addr) setTwinAddress(data.addr as `0x${string}`)
+      })
+      .catch(() => {
+        // best-effort
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [myEnsName])
 
   // Stealth inbox: scan the ERC-5564 Announcer for inbound payments
   // addressed to this twin and surface them so the receiver actually has
@@ -429,6 +450,8 @@ export function StealthSend({ myEnsName, getAuthToken, className }: StealthSendP
               onProfileClick={() => setProfileEns(result.recipientEnsName)}
             />
           ) : null}
+
+          <FundTwin twinAddress={twinAddress} defaultChain={chain} />
 
           <StealthInboxCard
             myEnsName={myEnsName}
