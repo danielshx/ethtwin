@@ -390,6 +390,7 @@ function SignedInTabs({
           ensName={activeTwin.ensName}
           getAuthToken={getAuthToken}
           onTwinDeleted={onTwinDeleted}
+          walletAddress={walletAddress ?? activeTwin.smartWalletAddress}
           className="h-[70dvh] w-full border-border/60 bg-card shadow-sm"
         />
       ) : tab === "voice" ? (

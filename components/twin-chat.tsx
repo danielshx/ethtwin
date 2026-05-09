@@ -301,6 +301,7 @@ export function TwinChat({
         editable={!!getAuthToken}
         getAuthToken={getAuthToken}
         onDeleted={onTwinDeleted}
+        walletAddress={walletAddress}
       />
     </Card>
   )
