@@ -71,15 +71,6 @@ function chainLabel(): string {
   return network ?? "the chain"
 }
 
-<<<<<<< HEAD
-export function TwinChat({
-  ensName,
-  className,
-  getAuthToken,
-  seedPrompt,
-  onSeedConsumed,
-}: TwinChatProps) {
-=======
 // localStorage key for twin chat history. Keyed per-ENS so signing in as a
 // different twin starts a clean conversation.
 const CHAT_HISTORY_KEY = (ens: string) => `ethtwin.twinchat.${ens.toLowerCase()}`
@@ -128,8 +119,13 @@ function clearChatHistory(ens: string) {
   }
 }
 
-export function TwinChat({ ensName, className, getAuthToken }: TwinChatProps) {
->>>>>>> refs/remotes/origin/main
+export function TwinChat({
+  ensName,
+  className,
+  getAuthToken,
+  seedPrompt,
+  onSeedConsumed,
+}: TwinChatProps) {
   const transport = useMemo(
     () =>
       new DefaultChatTransport({

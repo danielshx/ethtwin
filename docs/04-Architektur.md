@@ -232,8 +232,13 @@ ethtwin/
 │   └── globals.css
 ├── components/
 │   ├── ui/                         # shadcn primitives
-│   ├── twin-chat.tsx               # ✅ useChat + ENSIP-25 verified-badge + sendMessage rendering
+│   ├── twin-chat.tsx               # ✅ useChat + ENSIP-25 verified-badge + persistent localStorage history + seedPrompt prop for quick-send
 │   ├── voice-twin.tsx              # ✅ OpenAI Realtime over WebRTC w/ Listening/Thinking/Speaking states
+│   ├── maria-shell.tsx             # ✅ NEW (demo-mode): single-view shell — big breathing avatar, gamification pills, quick-send tap cards
+│   ├── twin-avatar.tsx             # ✅ NEW: state-driven breathing avatar (idle/listening/thinking/speaking)
+│   ├── receipt-postcard.tsx        # ✅ NEW: jargon-free send receipt → X-ray reveal (EIP-5564 / ENS / cTRNG / ENSIP-25 / Base Sepolia tags)
+│   ├── send-celebration.tsx        # ✅ NEW: confetti shower + cosmic mikro-pulse overlay on send success
+│   ├── contrast-card.tsx           # ✅ NEW: Metamask-style "Confirm transaction" vs EthTwin postcard (landing page)
 │   ├── messenger.tsx               # ✅ ENS-Subname-Messenger UI (one subname per message)
 │   ├── token-transfer.tsx          # ✅ Multichain ETH/USDC send w/ hard caps
 │   ├── stealth-send.tsx            # ✅ HERO TAB: CosmicOrb during EIP-5564 USDC send
@@ -265,6 +270,8 @@ ethtwin/
 │   ├── use-ens-name.ts             # React hook: reverse-resolve any 0x address (cached)
 │   ├── use-ens-avatar.ts           # React hook: ENS avatar fallback (Pollinations placeholder)
 │   ├── use-notifications.ts        # React hook: 30s poll → unified messages + wallet activity feed
+│   ├── use-demo-mode.ts            # NEW: hook reads NEXT_PUBLIC_DEMO_MODE / ?demoMode=1 → toggles html.maria-mode class
+│   ├── use-twin-sound.ts           # NEW: opportunistic audio cues (listening / done / receive) from /public/sounds/
 │   ├── viem.ts                     # viem clients (Sepolia, Base Sepolia, dev wallet)
 │   ├── privy-server.ts             # @privy-io/node token verification
 │   ├── prompts.ts                  # System prompts (hydrated from ENS records)
@@ -276,6 +283,7 @@ ethtwin/
 │   ├── send:{token,stealth-usdc}
 │   ├── wallet:{generate,rotate}
 │   ├── twins:backfill (backfill-twin-profiles.ts)
+│   ├── twins:seed-demo (seed-demo-twins.ts)   # ✅ NEW: mints maria.ethtwin.eth + tom.ethtwin.eth with full record set
 │   └── warm-cosmic-cache.ts
 ├── docs/
 │   └── (alle .md hier)
