@@ -16,6 +16,8 @@ const TWIN_TEXT_KEYS = [
   "twin.endpoint",
   "twin.version",
   "stealth-meta-address",
+  "twin.vault",
+  "twin.owner",
 ] as const
 type TwinKey = (typeof TWIN_TEXT_KEYS)[number]
 
@@ -60,6 +62,8 @@ export async function GET(
       endpoint: recordMap["twin.endpoint"],
       stealthMeta: recordMap["stealth-meta-address"],
       version: recordMap["twin.version"],
+      vault: recordMap["twin.vault"] ?? null,
+      vaultOwner: recordMap["twin.owner"] ?? null,
     })
   } catch (error) {
     return jsonError(

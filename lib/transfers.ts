@@ -178,17 +178,45 @@ export async function sendToken(args: {
   // dev-wallet acts as the vault's authorized agent and calls
   // `vault.spend(...)` — funds come out of the user's vault, capped by the
   // user's own on-chain limits. Email-only / legacy twins skip this path.
+  if (!args.fromEns) {
+    console.log(
+      "[transfers] vault path OFF — no fromEns provided (caller must pass twin's ENS)",
+    )
+  } else if (args.chain !== "sepolia") {
+    console.log(
+      `[transfers] vault path OFF — chain=${args.chain} (vault is Sepolia only)`,
+    )
+  }
   if (args.fromEns && args.chain === "sepolia") {
     let vaultAddress: Address | null = null
+    let vaultRecordRaw: string | null = null
     try {
-      const raw = await readTextRecordFast(args.fromEns, "twin.vault")
-      if (raw && raw.startsWith("0x") && raw.length === 42 && isAddress(raw)) {
-        vaultAddress = getAddress(raw) as Address
+      vaultRecordRaw = await readTextRecordFast(args.fromEns, "twin.vault")
+      if (
+        vaultRecordRaw &&
+        vaultRecordRaw.startsWith("0x") &&
+        vaultRecordRaw.length === 42 &&
+        isAddress(vaultRecordRaw)
+      ) {
+        vaultAddress = getAddress(vaultRecordRaw) as Address
       }
-    } catch {
-      // No vault record / RPC blip → fall through to legacy path.
+    } catch (err) {
+      console.warn(
+        `[transfers] vault path OFF — twin.vault read threw for ${args.fromEns}:`,
+        err instanceof Error ? err.message : err,
+      )
+    }
+    if (!vaultAddress) {
+      console.log(
+        `[transfers] vault path OFF — no twin.vault record on ${args.fromEns} (got ${
+          vaultRecordRaw ? `'${vaultRecordRaw}'` : "empty"
+        })`,
+      )
     }
     if (vaultAddress) {
+      console.log(
+        `[transfers] vault path ON — ${args.fromEns} → ${vaultAddress}, sending ${args.token}`,
+      )
       const tokenAddr =
         args.token === "ETH" ? VAULT_TOKEN_ETH : (spec.usdc as Address)
       const balance = await getTokenBalance({

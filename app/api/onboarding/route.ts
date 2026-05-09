@@ -89,10 +89,23 @@ export async function POST(req: Request) {
     //      (otherwise owner == agent, no privilege split — pointless).
     let vaultAddress: Address | null = null
     let vaultDeployTx: Hash | null = null
+    let vaultSkipReason: string | null = null
     let postVaultNonce = startingNonce
-    const wantsVault = body.useVault === true && isVaultEnabled()
+    const factoryConfigured = isVaultEnabled()
+    const wantsVault = body.useVault === true && factoryConfigured
     const userIsDistinctFromDev =
       walletAddress.toLowerCase() !== devAccount.address.toLowerCase()
+
+    // Loud diagnostic line so a mint without a vault is immediately legible
+    // in the dev console: tells us which precondition failed.
+    if (!body.useVault) {
+      vaultSkipReason = "client passed useVault=false (likely email-only sign-in)"
+    } else if (!factoryConfigured) {
+      vaultSkipReason = "TWIN_VAULT_FACTORY env var not set — restart dev server after adding it"
+    } else if (!userIsDistinctFromDev) {
+      vaultSkipReason = "user wallet equals dev wallet (DEV_WALLET_FALLBACK)"
+    }
+
     if (wantsVault && userIsDistinctFromDev) {
       try {
         log("deploying vault…")
@@ -110,12 +123,16 @@ export async function POST(req: Request) {
         // Don't break onboarding if the vault deploy fails — the user just
         // ends up on the legacy dev-wallet path. Surface the error in the
         // response so the UI can show a hint.
-        console.warn(
-          "[onboarding] vault deploy failed, falling back to direct addr:",
-          err,
-        )
+        const msg = err instanceof Error ? err.message : String(err)
+        vaultSkipReason = `deploy threw: ${msg}`
+        console.warn("[onboarding] vault deploy failed, falling back:", err)
       }
     }
+    log(
+      vaultAddress
+        ? `vault path ON → ${vaultAddress}`
+        : `vault path OFF — ${vaultSkipReason}`,
+    )
     // The address that goes into the ENS `addr` text record. With a vault,
     // anyone sending tokens to `<label>.ethtwin.eth` lands in the vault.
     // Without one, the ENS resolves directly to the user's wallet (or the
@@ -230,6 +247,7 @@ export async function POST(req: Request) {
       recordsTx,
       vaultAddress,
       vaultDeployTx,
+      vaultSkipReason,
       pollUrl: `/api/check-username?u=${encodeURIComponent(body.username)}`,
     })
   } catch (error) {
