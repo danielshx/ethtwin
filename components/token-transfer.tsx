@@ -2,20 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { motion } from "framer-motion"
-import { ArrowUpRight, Coins, Loader2, Send, ShieldAlert, ShieldCheck, Users } from "lucide-react"
+import { ArrowUpRight, Coins, Loader2, Send, Users } from "lucide-react"
 import { toast } from "sonner"
-import {
-  createPublicClient,
-  encodeFunctionData,
-  getAddress,
-  http,
-  isAddress,
-  parseEther,
-  parseUnits,
-  type Address,
-  type Hex,
-} from "viem"
-import { sepolia } from "viem/chains"
+import { parseEther, parseUnits } from "viem"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -26,9 +15,6 @@ import { displayNameFromEns } from "@/lib/ens"
 import { cn } from "@/lib/utils"
 import { AgentProfileDialog } from "@/components/agent-profile"
 import { EnsAvatar } from "@/components/ens-avatar"
-import { TxApprovalModal, type TxIntent } from "@/components/tx-approval-modal"
-import { useEnsName } from "@/lib/use-ens-name"
-import { describeTx } from "@/lib/tx-decoder"
 
 type AgentEntry = {
   ens: string
@@ -69,63 +55,11 @@ const TOKENS: { id: Token; label: string }[] = [
 
 const RECENT_KEY = "ethtwin.transfers.recent.v1"
 const MAX_RECENT = 10
-const BASE_SEPOLIA_CHAIN_ID = 84532
-const MAX_UINT256 =
-  115792089237316195423570985008687907853269984665640564039457584007913129639935n
-const RISKY_APPROVAL_SPENDER: Address = "0x000000000000000000000000000000000000dEaD"
 
 // Demo safety caps mirror /api/transfer's hard caps. Bigger sends would
 // require a code change — intentional to keep the demo wallet from draining.
 const MAX_ETH_WEI = parseEther("0.01")
 const MAX_USDC_RAW = parseUnits("1", 6)
-
-// Base Sepolia USDC. Same address used in lib/transfers.ts + lib/payments.ts.
-const USDC_BASE_SEPOLIA: Address = "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
-
-// Minimal ERC-20 ABI for client-side calldata encoding used by the Sourcify
-// safety review and the non-executable risky approval demo.
-const ERC20_REVIEW_ABI = [
-  {
-    name: "transfer",
-    type: "function",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "to", type: "address" },
-      { name: "amount", type: "uint256" },
-    ],
-    outputs: [{ name: "", type: "bool" }],
-  },
-  {
-    name: "approve",
-    type: "function",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "spender", type: "address" },
-      { name: "amount", type: "uint256" },
-    ],
-    outputs: [{ name: "", type: "bool" }],
-  },
-] as const
-
-// Public Sepolia client for forward ENS resolution (`alice.ethtwin.eth` →
-// `0x…`). Our subnames live on Sepolia per CLAUDE.md.
-const sepoliaPublic = createPublicClient({
-  chain: sepolia,
-  transport: http(process.env.NEXT_PUBLIC_SEPOLIA_RPC ?? undefined),
-})
-
-async function resolveRecipient(input: string): Promise<Address> {
-  const trimmed = input.trim()
-  if (isAddress(trimmed)) return getAddress(trimmed)
-  if (!trimmed.includes(".")) {
-    throw new Error(`"${trimmed}" is neither a 0x address nor an ENS name.`)
-  }
-  const resolved = await sepoliaPublic.getEnsAddress({ name: trimmed })
-  if (!resolved) {
-    throw new Error(`Could not resolve ENS name "${trimmed}" on Sepolia.`)
-  }
-  return getAddress(resolved)
-}
 
 export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTransferProps) {
   const [agents, setAgents] = useState<AgentEntry[]>([])
@@ -139,37 +73,13 @@ export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTrans
   const [sending, setSending] = useState(false)
   const [recent, setRecent] = useState<RecentTransfer[]>([])
   const [profileEns, setProfileEns] = useState<string | null>(null)
-  // The on-chain `addr` record for our twin (= KMS-derived address when the
-  // KMS path was used at mint). We surface it so the user can copy it into a
-  // faucet without leaving the page — the most common reason "send doesn't
-  // work" is that the new KMS wallet has zero ETH for gas.
+  // The on-chain `addr` record for our twin (= KMS-derived address). We
+  // surface it so the user can copy it into a faucet without leaving the
+  // page — the most common reason "send doesn't work" is that the new KMS
+  // wallet has zero ETH for gas.
   const [twinAddress, setTwinAddress] = useState<string | null>(null)
 
-  // KMS-only signing path: every send goes through /api/transfer, which
-  // resolves ENS → twin.kms-key-id → SpaceComputer KMS for the signature.
-  // On Base Sepolia we still run the Sourcify safety review modal *before*
-  // calling the KMS executor — review is independent of who signs.
-  const [pendingIntent, setPendingIntent] = useState<TxIntent | null>(null)
-  const [pendingMeta, setPendingMeta] = useState<{
-    chain: Chain
-    token: Token
-    recipientInput: string
-    amount: string
-    resolvedTo: Address
-  } | null>(null)
-  const [modalOpen, setModalOpen] = useState(false)
-
-  // Reverse-resolve the recipient ENS for the modal. Per CLAUDE.md: tx
-  // approvals show ENS, never 0x… The hook returns null while loading / on
-  // miss; the modal already falls back to a truncated 0x… in that case.
-  const toEnsName = useEnsName(pendingMeta?.resolvedTo)
-  const fromEnsName = myEnsName
-
-  // Sourcify safety review only runs on Base Sepolia (where the decoded
-  // calldata + Sourcify lookups are wired). Sepolia goes straight to KMS.
-  const canReviewBeforeSend = chain === "base-sepolia"
-
-  // Load agents + recent transfers on mount.
+  // Load agents + recent transfers + the twin's KMS address on mount.
   const loadAgents = useCallback(async () => {
     setAgentsLoading(true)
     try {
@@ -191,9 +101,6 @@ export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTrans
       const raw = localStorage.getItem(RECENT_KEY)
       if (raw) setRecent(JSON.parse(raw) as RecentTransfer[])
     } catch {}
-    // Resolve our twin's on-chain wallet address (the KMS-derived address
-    // when the KMS path was used at mint). One-time read on mount; the value
-    // doesn't change for the lifetime of a twin.
     let cancelled = false
     fetch(`/api/agent/${encodeURIComponent(myEnsName)}`)
       .then((r) => r.json())
@@ -249,54 +156,6 @@ export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTrans
     })
   }
 
-  async function handleRiskyApprovalDemo() {
-    setSending(true)
-    try {
-      const data = encodeFunctionData({
-        abi: ERC20_REVIEW_ABI,
-        functionName: "approve",
-        args: [RISKY_APPROVAL_SPENDER, MAX_UINT256],
-      })
-      const decoded = await describeTx({
-        to: USDC_BASE_SEPOLIA,
-        data,
-        chainId: BASE_SEPOLIA_CHAIN_ID,
-      })
-      const intent: TxIntent = {
-        to: USDC_BASE_SEPOLIA,
-        value: "Unlimited USDC approval",
-        data,
-        chain: "base-sepolia",
-        demoOnly: true,
-        plainEnglish: `Demo: Maria is about to grant an unlimited USDC approval to a suspicious spender.\n\n${decoded.english}`,
-        sourceVerified: decoded.verification.sourceVerified,
-        sourceProvider: decoded.verification.sourceProvider,
-        sourceMatch: decoded.verification.match,
-        sourceUrl: decoded.verification.sourceUrl,
-        sourceWarning: decoded.verification.warning,
-        riskLevel: decoded.risk.level,
-        riskLabel: decoded.risk.label,
-        riskReasons: decoded.risk.reasons,
-        riskRecommendation: decoded.risk.recommendation,
-        riskPatternIds: decoded.risk.patternIds,
-      }
-      setPendingMeta({
-        chain: "base-sepolia",
-        token: "USDC",
-        recipientInput: "Risky approval demo",
-        amount: "∞",
-        resolvedTo: RISKY_APPROVAL_SPENDER,
-      })
-      setPendingIntent(intent)
-      setModalOpen(true)
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Could not prepare risky approval demo"
-      toast.error(msg)
-    } finally {
-      setSending(false)
-    }
-  }
-
   async function handleSend() {
     if (!canSend) return
 
@@ -324,84 +183,10 @@ export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTrans
       return
     }
 
-    // ── Base Sepolia: Sourcify safety review FIRST, then KMS execute ──
-    // Decode calldata, look up the contract on Sourcify, and open the
-    // approval modal. The KMS executor runs only after the user approves.
-    if (canReviewBeforeSend) {
-      setSending(true)
-      try {
-        const resolvedTo = await resolveRecipient(recip)
-        const data: Hex =
-          token2send === "USDC"
-            ? encodeFunctionData({
-                abi: ERC20_REVIEW_ABI,
-                functionName: "transfer",
-                args: [resolvedTo, requestedRaw],
-              })
-            : "0x"
-        const txTo = token2send === "USDC" ? USDC_BASE_SEPOLIA : resolvedTo
-        const decoded = await describeTx({
-          to: txTo,
-          value: token2send === "ETH" ? requestedRaw : undefined,
-          data,
-          chainId: BASE_SEPOLIA_CHAIN_ID,
-        })
-        const intent: TxIntent = {
-          to: txTo,
-          value: token2send === "ETH" ? `${amt} ETH` : `${amt} USDC`,
-          data,
-          chain: "base-sepolia",
-          plainEnglish:
-            token2send === "ETH"
-              ? `Send ${amt} ETH on Base Sepolia to ${recip}.\n\n${decoded.english}`
-              : decoded.english,
-          sourceVerified: decoded.verification.sourceVerified,
-          sourceProvider: decoded.verification.sourceProvider,
-          sourceMatch: decoded.verification.match,
-          sourceUrl: decoded.verification.sourceUrl,
-          sourceWarning: decoded.verification.warning,
-          riskLevel: decoded.risk.level,
-          riskLabel: decoded.risk.label,
-          riskReasons: decoded.risk.reasons,
-          riskRecommendation: decoded.risk.recommendation,
-          riskPatternIds: decoded.risk.patternIds,
-        }
-        setPendingMeta({
-          chain: chain2send,
-          token: token2send,
-          recipientInput: recip,
-          amount: amt,
-          resolvedTo,
-        })
-        setPendingIntent(intent)
-        setModalOpen(true)
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : "Could not prepare tx"
-        toast.error(msg)
-      } finally {
-        setSending(false)
-      }
-      return
-    }
-
-    // Sepolia path — no Sourcify review wired here, go straight to KMS.
-    await executeBackendTransfer({
-      chain: chain2send,
-      token: token2send,
-      recipientInput: recip,
-      amount: amt,
-    })
-  }
-
-  // KMS-signed executor. Server resolves the active twin's ENS →
-  // twin.kms-key-id text record, signs via SpaceComputer KMS, and
-  // broadcasts. Auth is the session cookie (same-origin fetch).
-  async function executeBackendTransfer(meta: {
-    chain: Chain
-    token: Token
-    recipientInput: string
-    amount: string
-  }): Promise<{ hash: `0x${string}` }> {
+    // KMS-signed path via /api/transfer. The server resolves the active
+    // twin's ENS → twin.kms-key-id text record, signs via SpaceComputer KMS,
+    // and broadcasts. Funds come from the twin's KMS-derived address. Auth
+    // is the session cookie (sent automatically with same-origin fetches).
     setSending(true)
     try {
       const res = await fetch("/api/transfer", {
@@ -409,10 +194,10 @@ export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTrans
         credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          chain: meta.chain,
-          token: meta.token,
-          to: meta.recipientInput,
-          amount: meta.amount,
+          chain: chain2send,
+          token: token2send,
+          to: recip,
+          amount: amt,
           fromEns: myEnsName,
         }),
       })
@@ -420,11 +205,12 @@ export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTrans
       const ct = res.headers.get("content-type") ?? ""
       if (!ct.includes("application/json")) {
         const text = await res.text()
-        throw new Error(
+        toast.error(
           res.status === 504
             ? "Vercel timed out, but the tx may still be on-chain — refresh balance in ~30s."
             : `Server error ${res.status}: ${text.slice(0, 120)}`,
         )
+        return
       }
       const data = (await res.json()) as {
         ok: boolean
@@ -435,29 +221,29 @@ export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTrans
         amount?: string
       }
       if (!data.ok) {
+        toast.error(data.error ?? "Transfer failed")
         addHistoryEntry({
           kind: "transfer",
           status: "failed",
-          chain: meta.chain,
-          summary: `Failed: ${meta.amount} ${meta.token} → ${meta.recipientInput}`,
+          chain: chain2send,
+          summary: `Failed: ${amt} ${token2send} → ${recip}`,
           errorMessage: data.error,
           syncTo: { ens: myEnsName, getAuthToken },
         })
-        throw new Error(data.error ?? "Transfer failed")
+        return
       }
 
-      toast.success(`Sent ${data.amount} ${meta.token} on ${meta.chain}`, {
+      toast.success(`Sent ${data.amount} ${token2send} on ${chain2send}`, {
         description: data.blockExplorerUrl,
       })
 
-      const txHash = data.txHash ?? `${Date.now()}`
       pushRecent({
-        id: txHash,
-        chain: meta.chain,
-        token: meta.token,
-        to: data.to ?? meta.recipientInput,
-        recipientInput: meta.recipientInput,
-        amount: data.amount ?? meta.amount,
+        id: data.txHash ?? `${Date.now()}`,
+        chain: chain2send,
+        token: token2send,
+        to: data.to ?? recip,
+        recipientInput: recip,
+        amount: data.amount ?? amt,
         txHash: data.txHash ?? "",
         blockExplorerUrl: data.blockExplorerUrl ?? "",
         at: Math.floor(Date.now() / 1000),
@@ -466,8 +252,8 @@ export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTrans
       addHistoryEntry({
         kind: "transfer",
         status: "success",
-        chain: meta.chain,
-        summary: `Sent ${data.amount} ${meta.token} → ${meta.recipientInput}`,
+        chain: chain2send,
+        summary: `Sent ${data.amount} ${token2send} → ${recip}`,
         description: data.to ? `Resolved to ${data.to}` : undefined,
         txHash: data.txHash,
         explorerUrl: data.blockExplorerUrl,
@@ -475,43 +261,20 @@ export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTrans
       })
 
       loadBalance()
-      return { hash: txHash as `0x${string}` }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Transfer failed"
       toast.error(msg)
       addHistoryEntry({
         kind: "transfer",
         status: "failed",
-        chain: meta.chain,
-        summary: `Failed: ${meta.amount} ${meta.token} → ${meta.recipientInput}`,
+        chain,
+        summary: `Failed: ${amount} ${token} → ${recipient.trim()}`,
         errorMessage: msg,
         syncTo: { ens: myEnsName, getAuthToken },
       })
-      throw err
     } finally {
       setSending(false)
     }
-  }
-
-  // Approval callback wired into TxApprovalModal. After the user approves
-  // the Sourcify review, route execution through the KMS-only backend.
-  async function handleReviewedTransferApprove(
-    intent: TxIntent,
-  ): Promise<{ hash: `0x${string}` }> {
-    if (intent.demoOnly) {
-      setModalOpen(false)
-      return { hash: "0x0" }
-    }
-    if (!pendingMeta) {
-      throw new Error("Missing tx context.")
-    }
-    const meta = pendingMeta
-    return executeBackendTransfer({
-      chain: meta.chain,
-      token: meta.token,
-      recipientInput: meta.recipientInput,
-      amount: meta.amount,
-    })
   }
 
   return (
@@ -604,7 +367,7 @@ export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTrans
           <Coins className="h-4 w-4 text-muted-foreground" />
           <span className="text-sm font-medium">Send tokens</span>
           <Badge variant="secondary" className="ml-auto font-mono text-[10px]">
-            multichain · ENS-aware
+            multichain · ENS-aware · KMS-signed
           </Badge>
         </header>
 
@@ -707,20 +470,11 @@ export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTrans
               disabled={sending}
             />
             <p className="mt-1 font-mono text-[10px] text-muted-foreground">
-              Demo cap: 0.01 ETH or 1 USDC per send. Signed by your twin's
+              Demo cap: 0.01 ETH or 1 USDC per send. Signed by your twin&apos;s
               SpaceComputer KMS key.
             </p>
-            {canReviewBeforeSend ? (
-              <p className="mt-1 flex items-center gap-1 font-mono text-[10px] text-primary/90">
-                <ShieldCheck className="h-3 w-3" />
-                Sourcify safety review runs before execution.
-              </p>
-            ) : null}
-            {/* Show the twin's KMS-bound on-chain address + a faucet hint
-             *  when the balance is empty. This is the single biggest UX
-             *  trap of the KMS-only flow: a freshly-minted twin's address
-             *  has zero ETH for gas and the first send fails confusingly.
-             */}
+            {/* Twin's KMS-bound on-chain address + faucet hint when balance
+             *  is empty — the single biggest UX trap of the KMS-only flow. */}
             {twinAddress ? (
               <div className="mt-2 rounded-md border border-border/60 bg-card/40 px-3 py-2 text-[10px]">
                 <div className="flex items-center justify-between gap-2 font-mono">
@@ -782,29 +536,16 @@ export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTrans
             {sending ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                {canReviewBeforeSend ? "Preparing review…" : "Broadcasting…"}
+                Broadcasting…
               </>
             ) : (
               <>
                 <Send className="mr-2 h-4 w-4" />
-                {canReviewBeforeSend ? "Review & send" : "Send"} {amount} {token} on{" "}
+                Send {amount} {token} on{" "}
                 {chain === "sepolia" ? "Sepolia" : "Base Sepolia"}
               </>
             )}
           </Button>
-
-          {canReviewBeforeSend ? (
-            <Button
-              type="button"
-              variant="outline"
-              onClick={handleRiskyApprovalDemo}
-              disabled={sending}
-              className="border-amber-500/40 bg-amber-500/10 text-amber-700 hover:bg-amber-500/15 dark:text-amber-300"
-            >
-              <ShieldAlert className="mr-2 h-4 w-4" />
-              Try risky approval demo
-            </Button>
-          ) : null}
 
           {/* Recent transfers */}
           {recent.length > 0 && (
@@ -842,27 +583,6 @@ export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTrans
         ens={profileEns}
         open={profileEns !== null}
         onOpenChange={(open) => !open && setProfileEns(null)}
-      />
-
-      <TxApprovalModal
-        intent={
-          pendingIntent
-            ? { ...pendingIntent, toEnsName, fromEnsName }
-            : null
-        }
-        open={modalOpen}
-        onOpenChange={(next) => {
-          setModalOpen(next)
-          if (!next) {
-            // Clear once the dialog finishes its close animation. Keeps
-            // ENS-resolution effects from firing again on stale state.
-            setTimeout(() => {
-              setPendingIntent(null)
-              setPendingMeta(null)
-            }, 200)
-          }
-        }}
-        onApprove={handleReviewedTransferApprove}
       />
     </Card>
   )
