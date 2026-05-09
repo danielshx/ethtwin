@@ -380,9 +380,18 @@ export function AvatarImage({
   size?: number
   className?: string
 }) {
-  const [errored, setErrored] = useState(false)
-  const initial = (ens.split(".")[0] ?? ens).charAt(0).toUpperCase()
-  if (!src || errored) {
+  const label = ens.split(".")[0] ?? ens
+  const fallbackUrl = buildAvatarUrl(label)
+  // Three-step fallback so every chat row in the messenger always has a face:
+  //   0 → on-chain ENS avatar (whatever the twin set)
+  //   1 → deterministic DiceBear from the ENS label (matches what onboarding
+  //       writes for fresh twins, and rescues older twins whose stored URL
+  //       (e.g. stale Pollinations) no longer resolves)
+  //   2 → initial-letter circle (only if even DiceBear's CDN dies)
+  const [attempt, setAttempt] = useState<0 | 1 | 2>(src ? 0 : 1)
+  const candidate = attempt === 0 ? src : attempt === 1 ? fallbackUrl : null
+  const initial = label.charAt(0).toUpperCase()
+  if (!candidate) {
     return (
       <span
         className={cn(
@@ -399,11 +408,11 @@ export function AvatarImage({
   return (
     // eslint-disable-next-line @next/next/no-img-element
     <img
-      src={src}
+      src={candidate}
       alt={`${ens} avatar`}
       width={size}
       height={size}
-      onError={() => setErrored(true)}
+      onError={() => setAttempt((prev) => (prev < 2 ? ((prev + 1) as 0 | 1 | 2) : 2))}
       className={cn("shrink-0 rounded-full bg-card object-cover", className)}
       style={{ width: size, height: size }}
     />

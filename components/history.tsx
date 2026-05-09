@@ -58,17 +58,17 @@ type HistoryProps = {
   walletAddress?: string | null
 }
 
-function walletTxToHistoryEntry(tx: WalletTx, myAddress: string | null): HistoryEntry {
-  const isOutgoing =
-    myAddress != null && tx.from.toLowerCase() === myAddress.toLowerCase()
-  // Best-effort kind classification — the decoder gives us function names.
+function walletTxToHistoryEntry(tx: WalletTx): HistoryEntry {
+  // Server already returns a clean directional summary ("Sent 0.5 USDC to 0xab…cd"
+  // / "Received 0.01 ETH from 0x12…34" / "Minted ENS subname" / etc.) so we
+  // just classify it into a kind for filter chips and render verbatim.
   const fn = tx.functionName.toLowerCase()
   const kind: HistoryKind =
     fn === "transfer" || fn === "transferfrom"
       ? "transfer"
-      : fn.startsWith("setsubnoderecord") || fn.startsWith("setname")
+      : fn === "setsubnoderecord" || fn === "setname"
       ? "mint"
-      : fn.startsWith("settext")
+      : fn === "multicall" || fn === "settext"
       ? "message"
       : "other"
   return {
@@ -76,12 +76,8 @@ function walletTxToHistoryEntry(tx: WalletTx, myAddress: string | null): History
     at: tx.at,
     kind,
     status: tx.status,
-    summary: isOutgoing
-      ? tx.summary
-      : tx.summary.replace(/^Send|^Transfer|^Call/, "Received"),
-    description: isOutgoing
-      ? `from your wallet · ${tx.contractName}`
-      : `to your wallet · ${tx.contractName}`,
+    summary: tx.summary,
+    description: tx.contractName,
     txHash: tx.txHash,
     explorerUrl: tx.explorerUrl,
     chain: tx.chain,
@@ -141,9 +137,9 @@ export function History({ className, ensName, walletAddress }: HistoryProps) {
     )
     const walletEntries = walletTxs
       .filter((tx) => !seenTxHashes.has(tx.txHash.toLowerCase()))
-      .map((tx) => walletTxToHistoryEntry(tx, resolvedAddress ?? walletAddress ?? null))
+      .map((tx) => walletTxToHistoryEntry(tx))
     return [...localEntries, ...walletEntries].sort((a, b) => b.at - a.at)
-  }, [localEntries, walletTxs, walletAddress, resolvedAddress])
+  }, [localEntries, walletTxs])
 
   const filtered = useMemo(() => {
     if (filter === "all") return entries

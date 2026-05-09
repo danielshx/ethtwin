@@ -15,6 +15,7 @@ import { TokenTransfer } from "@/components/token-transfer"
 import { StealthSend } from "@/components/stealth-send"
 import { History } from "@/components/history"
 import { VoiceTwin } from "@/components/voice-twin"
+import { NotificationPanel } from "@/components/notification-panel"
 import { addHistoryEntry } from "@/lib/history"
 import { Toaster } from "@/components/ui/sonner"
 import { toast } from "sonner"
@@ -202,6 +203,12 @@ function App() {
           />
         )}
       </section>
+      {session ? (
+        <NotificationPanel
+          ensName={session.ensName}
+          walletAddress={smartWalletAddress ?? session.smartWalletAddress}
+        />
+      ) : null}
     </>
   )
 }
