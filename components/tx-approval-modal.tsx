@@ -103,8 +103,8 @@ export function TxApprovalModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
+      <DialogContent className="flex max-h-[92dvh] flex-col overflow-hidden sm:max-w-md">
+        <DialogHeader className="shrink-0">
           <DialogTitle className="flex items-center gap-2">
             <ShieldCheck className="h-5 w-5 text-primary" />
             Approve transaction
@@ -114,7 +114,7 @@ export function TxApprovalModal({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 text-sm">
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1 text-sm">
           <SourcifySafetyFlow intent={intent} />
 
           <p className="rounded-md bg-secondary/60 px-3 py-2.5 leading-relaxed whitespace-pre-line">
@@ -193,9 +193,9 @@ export function TxApprovalModal({
           )}
         </div>
 
-        <Separator />
+        <Separator className="shrink-0" />
 
-        <DialogFooter className="gap-2 sm:gap-2">
+        <DialogFooter className="shrink-0 gap-2 sm:gap-2">
           <Button
             variant="ghost"
             onClick={() => onOpenChange(false)}
