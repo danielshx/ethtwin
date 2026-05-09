@@ -4,11 +4,15 @@ import { chatSubnameFor, readChatThread, readInbox, sendMessage } from "@/lib/me
 import { jsonError, parseJsonBody } from "@/lib/api-guard"
 
 export const runtime = "nodejs"
-// Send path needs to broadcast (≤2s) AND wait for the records-multicall to
-// mine (~12-24s on Sepolia) so the client's immediate refresh actually sees
-// the message. 45s budget covers the slowest realistic send; reads finish
-// well within this. (Vercel function ceiling is 60s on hobby, 300s on pro.)
-export const maxDuration = 45
+// Send path on the FIRST message between a pair runs two sequential txs:
+//   1. setSubnodeRecord for the chat subname (mint) — wait for 2-conf receipt
+//   2. multicall on the resolver writing msg/count/participants/chats.list
+//      — wait for receipt + RPC consistency poll
+// Each step is ~12-24s on Sepolia, so 90s covers the worst case. Subsequent
+// messages on an existing chat skip step 1 and finish in ~25-35s.
+//
+// Vercel ceilings: Hobby = 60s (will time out — upgrade to Pro), Pro = 300s.
+export const maxDuration = 90
 
 // GET /api/messages?for=alice.ethtwin.eth[&limit=10]
 //   → aggregated inbox across every chat the twin is in.
