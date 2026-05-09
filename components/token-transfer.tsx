@@ -303,6 +303,9 @@ export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTrans
           token: token2send,
           to: recip,
           amount: amt,
+          // Sender's twin ENS so the server can route through their vault
+          // when one is bound to the ENS via `twin.vault`.
+          fromEns: myEnsName,
         }),
       })
       // Vercel function timeouts return plain text. Parse defensively.

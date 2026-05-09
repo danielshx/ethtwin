@@ -581,6 +581,53 @@ export function buildTwinTools(ctx: TwinToolContext = {}) {
       },
     }),
 
+    // Override the static sendToken with a ctx-aware version so the
+    // sender's `twin.vault` text record is checked and (if present) the
+    // spend routes through the user's vault — funds come from the user, not
+    // from the dev wallet. Email-only / legacy twins keep the dev-wallet
+    // path because they have no vault record.
+    sendToken: tool({
+      description:
+        "Send native ETH or USDC on Sepolia or Base Sepolia. Recipient can be an ENS name (e.g. alice.ethtwin.eth) or a 0x address. Returns the on-chain tx hash + block-explorer link. Use this immediately when the user explicitly asks to send, transfer, or pay a token and provides chain, token, recipient, and amount. **DEFAULT chain: sepolia** for both ETH and USDC.",
+      inputSchema: z.object({
+        chain: z
+          .enum(["sepolia", "base-sepolia"])
+          .describe(
+            "Which chain to send on. **DEFAULT: sepolia**. Only switch to base-sepolia when the user explicitly says 'Base' or 'Base Sepolia'.",
+          ),
+        token: z.enum(["ETH", "USDC"]).describe("Native ETH or USDC ERC-20"),
+        to: z
+          .string()
+          .describe("Recipient ENS name (resolved on Sepolia) or 0x... address"),
+        amount: z
+          .union([z.string(), z.number()])
+          .describe("Human-readable amount, e.g. 0.001 (ETH) or 0.5 (USDC)"),
+      }),
+      execute: async (input) => {
+        try {
+          const result = await sendToken({
+            ...input,
+            ...(ctx.fromEns ? { fromEns: ctx.fromEns } : {}),
+          })
+          return {
+            ok: true,
+            chain: result.chain,
+            token: result.token,
+            from: result.from,
+            to: result.to,
+            recipientInput: result.recipientInput,
+            amount: `${result.amountHuman} ${result.token}`,
+            txHash: result.txHash,
+            blockNumber: result.blockNumber.toString(),
+            blockExplorerUrl: result.blockExplorerUrl,
+            viaVault: result.viaVault,
+          }
+        } catch (err) {
+          return { ok: false, error: err instanceof Error ? err.message : String(err) }
+        }
+      },
+    }),
+
     listAgentDirectory: tool({
       description:
         "List all peer twins currently registered under ethtwin.eth. Use when the user asks who else is around, who they can message, or who they can hire. Lighter than findAgents — does not run ENSIP-25 verification per-agent.",

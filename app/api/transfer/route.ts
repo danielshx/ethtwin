@@ -19,25 +19,30 @@ const MAX_ETH = parseEther("0.01")
 const MAX_USDC = parseUnits("1", 6)
 
 const transferBodySchema = z.object({
-  privyToken: z.string().min(1),
+  privyToken: z.string().nullable().optional(),
   chain: z.enum(["sepolia", "base-sepolia"]),
   token: z.enum(["ETH", "USDC"]),
   to: z.string().min(1),
   amount: z.union([z.string(), z.number()]),
+  /** Sender's twin ENS — when present + the ENS has a `twin.vault` record,
+   *  the spend routes through the user's vault. */
+  fromEns: z.string().optional(),
 })
 
 export async function POST(req: Request) {
   const parsed = await parseJsonBody(req, transferBodySchema)
   if (!parsed.ok) return parsed.response
-  const { privyToken, chain, token, to, amount } = parsed.data
+  const { privyToken, chain, token, to, amount, fromEns } = parsed.data
 
-  try {
-    await verifyAuthToken(privyToken)
-  } catch (error) {
-    return jsonError(
-      error instanceof Error ? error.message : "Privy token verification failed",
-      401,
-    )
+  if (privyToken) {
+    try {
+      await verifyAuthToken(privyToken)
+    } catch (error) {
+      return jsonError(
+        error instanceof Error ? error.message : "Privy token verification failed",
+        401,
+      )
+    }
   }
 
   // Cap the amount before broadcasting.
@@ -52,7 +57,13 @@ export async function POST(req: Request) {
   }
 
   try {
-    const result = await sendToken({ chain, token, to, amount })
+    const result = await sendToken({
+      chain,
+      token,
+      to,
+      amount,
+      ...(fromEns ? { fromEns } : {}),
+    })
     return Response.json({
       ok: true,
       chain: result.chain,
@@ -64,6 +75,7 @@ export async function POST(req: Request) {
       txHash: result.txHash,
       blockNumber: result.blockNumber.toString(),
       blockExplorerUrl: result.blockExplorerUrl,
+      viaVault: result.viaVault,
     })
   } catch (error) {
     return jsonError(

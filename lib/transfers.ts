@@ -25,7 +25,8 @@ import {
   getDevWalletClient,
   sepoliaClient,
 } from "./viem"
-import { readAddrFast, resolveEnsAddress } from "./ens"
+import { readAddrFast, readTextRecordFast, resolveEnsAddress } from "./ens"
+import { spendFromVault, VAULT_TOKEN_ETH } from "./vault"
 
 export type SupportedChain = "sepolia" | "base-sepolia"
 export type SupportedToken = "ETH" | "USDC"
@@ -138,6 +139,9 @@ export type SendTokenResult = {
   txHash: Hash
   blockNumber: bigint
   blockExplorerUrl: string
+  /** True when the send routed through a TwinVault (user funds), false when
+   *  it used the dev-wallet path (legacy / email-only). */
+  viaVault: boolean
 }
 
 export async function sendToken(args: {
@@ -145,6 +149,11 @@ export async function sendToken(args: {
   token: SupportedToken
   to: string // ENS name or raw 0x...
   amount: string | number // human-readable
+  /** If provided, the function checks the sender's `twin.vault` text record
+   *  and (when present + on Sepolia) routes the spend through the vault.
+   *  Email-only / legacy twins without a vault skip this and use the
+   *  dev-wallet path as before. */
+  fromEns?: string
 }): Promise<SendTokenResult> {
   const spec = CHAINS[args.chain]
   if (!spec) throw new Error(`Unsupported chain: ${args.chain}`)
@@ -163,6 +172,57 @@ export async function sendToken(args: {
   const decimals = args.token === "ETH" ? 18 : 6
   const amount =
     args.token === "ETH" ? parseEther(amountText) : parseUnits(amountText, 6)
+
+  // ── Vault path ──────────────────────────────────────────────────────────
+  // If the sender has a TwinVault on Sepolia (`twin.vault` text record), the
+  // dev-wallet acts as the vault's authorized agent and calls
+  // `vault.spend(...)` — funds come out of the user's vault, capped by the
+  // user's own on-chain limits. Email-only / legacy twins skip this path.
+  if (args.fromEns && args.chain === "sepolia") {
+    let vaultAddress: Address | null = null
+    try {
+      const raw = await readTextRecordFast(args.fromEns, "twin.vault")
+      if (raw && raw.startsWith("0x") && raw.length === 42 && isAddress(raw)) {
+        vaultAddress = getAddress(raw) as Address
+      }
+    } catch {
+      // No vault record / RPC blip → fall through to legacy path.
+    }
+    if (vaultAddress) {
+      const tokenAddr =
+        args.token === "ETH" ? VAULT_TOKEN_ETH : (spec.usdc as Address)
+      const balance = await getTokenBalance({
+        chain: args.chain,
+        token: args.token,
+        address: vaultAddress,
+      })
+      if (balance.raw < amount) {
+        throw new Error(
+          `Vault has insufficient ${args.token}: holds ${balance.human}, need ${formatUnits(amount, decimals)}. Deposit more from your wallet first.`,
+        )
+      }
+      const { txHash } = await spendFromVault(
+        vaultAddress,
+        tokenAddr,
+        recipient,
+        amount,
+      )
+      return {
+        chain: args.chain,
+        token: args.token,
+        from: vaultAddress,
+        to: recipient,
+        recipientInput: args.to,
+        amount,
+        amountHuman: formatUnits(amount, decimals),
+        txHash,
+        blockNumber: 0n,
+        blockExplorerUrl: `${spec.blockExplorer}/tx/${txHash}`,
+        viaVault: true,
+      }
+    }
+  }
+  // ── End vault path; below is the legacy dev-wallet path ────────────────
 
   const balance = await getTokenBalance({
     chain: args.chain,
@@ -240,5 +300,6 @@ export async function sendToken(args: {
     txHash,
     blockNumber: 0n, // not waited for; UI can fetch explorer for confirmation
     blockExplorerUrl: `${spec.blockExplorer}/tx/${txHash}`,
+    viaVault: false,
   }
 }

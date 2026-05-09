@@ -33,11 +33,45 @@ const STORAGE_KEY = "ethtwin.session.v1"
 const DEV_WALLET_FALLBACK = (process.env.NEXT_PUBLIC_DEV_WALLET_ADDRESS ??
   "0x4E09c220BD556396Bc255A4DD24F858Bafeba6f5") as `0x${string}`
 
-type SessionState = {
+type TwinEntry = {
   ensName: string
   username: string
   smartWalletAddress: string
   cosmicAttestation: string
+  vaultAddress?: string | null
+}
+
+type SessionState = {
+  /** ENS name of the currently selected twin (must match one of `twins`). */
+  active: string
+  /** Every twin this user has minted in this browser session. */
+  twins: TwinEntry[]
+}
+
+// Migrate the old single-twin localStorage shape into the multi-twin one.
+function migrateSession(raw: string | null): SessionState | null {
+  if (!raw) return null
+  try {
+    const parsed = JSON.parse(raw) as unknown
+    if (!parsed || typeof parsed !== "object") return null
+    // New shape already.
+    if (Array.isArray((parsed as SessionState).twins)) {
+      return parsed as SessionState
+    }
+    // Legacy: single twin object — wrap it.
+    const legacy = parsed as TwinEntry & { ensName?: string }
+    if (typeof legacy.ensName === "string") {
+      return { active: legacy.ensName, twins: [legacy as TwinEntry] }
+    }
+    return null
+  } catch {
+    return null
+  }
+}
+
+function getActiveTwin(s: SessionState | null): TwinEntry | null {
+  if (!s) return null
+  return s.twins.find((t) => t.ensName === s.active) ?? s.twins[0] ?? null
 }
 
 export default function HomePage() {
@@ -56,16 +90,31 @@ function App() {
   const smart = useSmartWallets()
   const { connectWallet } = useConnectWallet()
   const [session, setSession] = useState<SessionState | null>(null)
+  const [addingTwin, setAddingTwin] = useState(false)
   const [hydrated, setHydrated] = useState(false)
   const demoMode = useDemoMode()
+  const activeTwin = getActiveTwin(session)
 
   useEffect(() => {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY)
-      if (raw) setSession(JSON.parse(raw) as SessionState)
+      setSession(migrateSession(localStorage.getItem(STORAGE_KEY)))
     } catch {}
     setHydrated(true)
   }, [])
+
+  function persistSession(next: SessionState | null) {
+    setSession(next)
+    try {
+      if (next) localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
+      else localStorage.removeItem(STORAGE_KEY)
+    } catch {}
+  }
+
+  function switchActiveTwin(ensName: string) {
+    if (!session) return
+    if (!session.twins.some((t) => t.ensName === ensName)) return
+    persistSession({ ...session, active: ensName })
+  }
 
   const smartWalletAddress = useMemo(() => {
     const smartAccount = smart.client?.account?.address
@@ -101,6 +150,11 @@ function App() {
     cosmicAttestation: string
   }) {
     const token = await privy.getAccessToken().catch(() => null)
+    // Wallet-connected users get a TwinVault — funds and agent permissions
+    // live in the contract they own. Email-only users (smartWalletAddress
+    // resolved to the dev fallback in this app) skip the vault.
+    const useVault =
+      input.smartWalletAddress.toLowerCase() !== DEV_WALLET_FALLBACK.toLowerCase()
     const res = await fetch("/api/onboarding", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -113,37 +167,50 @@ function App() {
           .padEnd(128, "0")
           .slice(0, 128)}`,
         twinAgentId: input.username,
+        useVault,
       }),
     })
     if (!res.ok) {
       const text = await res.text()
       throw new Error(text || `mint failed (${res.status})`)
     }
-    const data = (await res.json()) as { ensName: string }
-    return { ensName: data.ensName }
+    const data = (await res.json()) as {
+      ensName: string
+      vaultAddress?: string | null
+    }
+    return { ensName: data.ensName, vaultAddress: data.vaultAddress ?? null }
   }
 
   function handleComplete(result: OnboardingResult) {
-    const next: SessionState = {
+    const newTwin: TwinEntry = {
       ensName: result.ensName,
       username: result.username,
       smartWalletAddress: String(result.smartWalletAddress),
       cosmicAttestation: result.cosmicAttestation,
+      vaultAddress: (result as OnboardingResult & { vaultAddress?: string | null })
+        .vaultAddress ?? null,
     }
-    setSession(next)
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
-    } catch {}
-    toast.success(`${next.ensName} is live`)
+    // Append to whatever's already there (multi-twin support) and make this
+    // one active. Replace any duplicate ENS entry.
+    const prevTwins = session?.twins.filter(
+      (t) => t.ensName.toLowerCase() !== newTwin.ensName.toLowerCase(),
+    ) ?? []
+    const next: SessionState = {
+      active: newTwin.ensName,
+      twins: [newTwin, ...prevTwins],
+    }
+    persistSession(next)
+    setAddingTwin(false)
+    toast.success(`${newTwin.ensName} is live`)
     addHistoryEntry({
       kind: "mint",
       status: "success",
       chain: "sepolia",
-      summary: `Twin minted: ${next.ensName}`,
-      description: `Linked to wallet ${next.smartWalletAddress}`,
-      explorerUrl: `https://sepolia.app.ens.domains/${next.ensName}`,
+      summary: `Twin minted: ${newTwin.ensName}`,
+      description: `Linked to wallet ${newTwin.smartWalletAddress}`,
+      explorerUrl: `https://sepolia.app.ens.domains/${newTwin.ensName}`,
       syncTo: {
-        ens: next.ensName,
+        ens: newTwin.ensName,
         getAuthToken: () => privy.getAccessToken().catch(() => null),
       },
     })
@@ -151,10 +218,25 @@ function App() {
 
   function handleSignOut() {
     privy.logout?.()
-    setSession(null)
-    try {
-      localStorage.removeItem(STORAGE_KEY)
-    } catch {}
+    persistSession(null)
+    setAddingTwin(false)
+  }
+
+  // After deleting a twin on-chain, drop it from the session. If no twins
+  // remain, sign out entirely.
+  function handleTwinDeleted(deletedEns: string) {
+    if (!session) return
+    const remaining = session.twins.filter(
+      (t) => t.ensName.toLowerCase() !== deletedEns.toLowerCase(),
+    )
+    if (remaining.length === 0) {
+      handleSignOut()
+      return
+    }
+    persistSession({
+      active: remaining[0]!.ensName,
+      twins: remaining,
+    })
   }
 
   if (!hydrated) return null
@@ -173,12 +255,15 @@ function App() {
           </motion.span>
           <span className="text-lg font-semibold tracking-tight">EthTwin</span>
         </div>
-        {session ? (
-          <div className="flex items-center gap-3 text-sm">
+        {session && activeTwin ? (
+          <div className="flex items-center gap-2 text-sm">
             {!demoMode ? (
-              <span className="font-mono text-xs text-muted-foreground">
-                {session.ensName}
-              </span>
+              <TwinSwitcher
+                twins={session.twins}
+                active={activeTwin.ensName}
+                onSwitch={switchActiveTwin}
+                onAddNew={() => setAddingTwin(true)}
+              />
             ) : null}
             <Button variant="ghost" size="sm" onClick={handleSignOut}>
               <LogOut className="h-4 w-4" />
@@ -211,25 +296,52 @@ function App() {
               <ContrastCard />
             </div>
           </>
-        ) : demoMode ? (
+        ) : demoMode && activeTwin ? (
           <MariaShell
-            ensName={session.ensName}
-            walletAddress={smartWalletAddress ?? session.smartWalletAddress}
+            ensName={activeTwin.ensName}
+            walletAddress={smartWalletAddress ?? activeTwin.smartWalletAddress}
             getAuthToken={() => privy.getAccessToken().catch(() => null)}
           />
-        ) : (
+        ) : addingTwin ? (
+          <div className="w-full max-w-3xl space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-semibold">Mint another twin</h2>
+                <p className="text-xs text-muted-foreground">
+                  Each twin is its own ENS subname under ethtwin.eth.
+                </p>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setAddingTwin(false)}
+              >
+                Cancel
+              </Button>
+            </div>
+            <OnboardingFlow
+              parentDomain={PARENT_DOMAIN}
+              isAuthenticated={privy.authenticated}
+              smartWalletAddress={smartWalletAddress}
+              onAuthenticate={handleAuthenticate}
+              onMint={handleMint}
+              onComplete={handleComplete}
+            />
+          </div>
+        ) : activeTwin ? (
           <SignedInTabs
             session={session}
+            activeTwin={activeTwin}
             privy={privy}
             walletAddress={smartWalletAddress}
-            onTwinDeleted={handleSignOut}
+            onTwinDeleted={() => handleTwinDeleted(activeTwin.ensName)}
           />
-        )}
+        ) : null}
       </section>
-      {session && !demoMode ? (
+      {session && activeTwin && !demoMode ? (
         <NotificationPanel
-          ensName={session.ensName}
-          walletAddress={smartWalletAddress ?? session.smartWalletAddress}
+          ensName={activeTwin.ensName}
+          walletAddress={smartWalletAddress ?? activeTwin.smartWalletAddress}
         />
       ) : null}
     </>
@@ -238,19 +350,26 @@ function App() {
 
 function SignedInTabs({
   session,
+  activeTwin,
   privy,
   walletAddress,
   onTwinDeleted,
 }: {
   session: SessionState
+  activeTwin: TwinEntry
   privy: ReturnType<typeof usePrivy>
   walletAddress: string | null
   onTwinDeleted?: () => void
 }) {
+  void session // currently only the active twin drives the tabs; kept for future per-twin features.
   const [tab, setTab] = useState<
     "chat" | "voice" | "messenger" | "transfer" | "stealth" | "history"
   >("chat")
   const getAuthToken = () => privy.getAccessToken().catch(() => null)
+  // Re-mount each tab when the active twin changes — chat history, inbox,
+  // wallet history all key off the ENS, so resetting state here is the
+  // simplest way to avoid showing the previous twin's data for a frame.
+  const reactKey = activeTwin.ensName
   return (
     <div className="flex w-full max-w-3xl flex-col gap-4">
       <SegmentedTabs
@@ -267,43 +386,142 @@ function SignedInTabs({
       />
       {tab === "chat" ? (
         <TwinChat
-          ensName={session.ensName}
+          key={reactKey}
+          ensName={activeTwin.ensName}
           getAuthToken={getAuthToken}
           onTwinDeleted={onTwinDeleted}
           className="h-[70dvh] w-full border-border/60 bg-card shadow-sm"
         />
       ) : tab === "voice" ? (
         <VoiceTwin
-          ensName={session.ensName}
+          key={reactKey}
+          ensName={activeTwin.ensName}
           getAuthToken={getAuthToken}
           onSwitchToChat={() => setTab("chat")}
           className="w-full border-border/60 bg-card shadow-sm"
         />
       ) : tab === "messenger" ? (
         <Messenger
-          myEnsName={session.ensName}
+          key={reactKey}
+          myEnsName={activeTwin.ensName}
           getAuthToken={getAuthToken}
           className="w-full border-border/60 bg-card shadow-sm"
         />
       ) : tab === "transfer" ? (
         <TokenTransfer
-          myEnsName={session.ensName}
+          key={reactKey}
+          myEnsName={activeTwin.ensName}
           getAuthToken={getAuthToken}
           className="w-full border-border/60 bg-card shadow-sm"
         />
       ) : tab === "stealth" ? (
         <StealthSend
-          myEnsName={session.ensName}
+          key={reactKey}
+          myEnsName={activeTwin.ensName}
           getAuthToken={getAuthToken}
           className="w-full border-border/60 bg-card shadow-sm"
         />
       ) : (
         <History
-          ensName={session.ensName}
-          walletAddress={walletAddress ?? session.smartWalletAddress}
+          key={reactKey}
+          ensName={activeTwin.ensName}
+          walletAddress={walletAddress ?? activeTwin.smartWalletAddress}
           className="w-full border-border/60 bg-card shadow-sm"
         />
       )}
+    </div>
+  )
+}
+
+function TwinSwitcher({
+  twins,
+  active,
+  onSwitch,
+  onAddNew,
+}: {
+  twins: TwinEntry[]
+  active: string
+  onSwitch: (ensName: string) => void
+  onAddNew: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  // Close on outside click — small dropdown, no need for radix.
+  useEffect(() => {
+    if (!open) return
+    function onDoc(e: MouseEvent) {
+      const t = e.target as HTMLElement
+      if (!t.closest("[data-twin-switcher]")) setOpen(false)
+    }
+    document.addEventListener("mousedown", onDoc)
+    return () => document.removeEventListener("mousedown", onDoc)
+  }, [open])
+
+  return (
+    <div className="relative" data-twin-switcher>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="inline-flex items-center gap-1.5 rounded-md border border-border/60 bg-card px-2.5 py-1 font-mono text-xs text-muted-foreground hover:bg-secondary/40 hover:text-foreground"
+      >
+        <span className="truncate max-w-[14rem]">{active}</span>
+        <span aria-hidden className="text-muted-foreground/60">▾</span>
+      </button>
+      {open ? (
+        <div className="absolute right-0 top-full z-50 mt-1 w-[18rem] overflow-hidden rounded-md border border-border/60 bg-card shadow-lg">
+          <div className="border-b border-border/40 px-3 py-1.5 text-[10px] uppercase tracking-wider text-muted-foreground">
+            Your twins
+          </div>
+          <ul className="max-h-72 overflow-y-auto py-1">
+            {twins.map((t) => {
+              const isActive = t.ensName === active
+              return (
+                <li key={t.ensName}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onSwitch(t.ensName)
+                      setOpen(false)
+                    }}
+                    className={
+                      "flex w-full items-center gap-2 px-3 py-2 text-left text-xs hover:bg-secondary/40" +
+                      (isActive ? " bg-secondary/40" : "")
+                    }
+                  >
+                    <span className="grid h-1.5 w-1.5 shrink-0 place-items-center">
+                      {isActive ? (
+                        <span className="block h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                      ) : null}
+                    </span>
+                    <span className="flex flex-col min-w-0">
+                      <span className="truncate font-medium text-foreground">
+                        {t.username}
+                      </span>
+                      <span className="truncate font-mono text-[10px] text-muted-foreground">
+                        {t.ensName}
+                        {t.vaultAddress
+                          ? " · vault"
+                          : ""}
+                      </span>
+                    </span>
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+          <div className="border-t border-border/40 px-1 py-1">
+            <button
+              type="button"
+              onClick={() => {
+                onAddNew()
+                setOpen(false)
+              }}
+              className="w-full rounded-sm px-2 py-1.5 text-left text-xs text-primary hover:bg-primary/10"
+            >
+              + Mint another twin
+            </button>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }
