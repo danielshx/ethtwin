@@ -131,8 +131,9 @@ export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTrans
   const [recent, setRecent] = useState<RecentTransfer[]>([])
   const [profileEns, setProfileEns] = useState<string | null>(null)
 
-  // Tx approval modal state — populated when the user clicks Send and we
-  // have a Privy smart wallet ready to sign client-side.
+  // Tx approval modal state. Sourcify review is execution-agnostic: the modal
+  // opens before Base Sepolia sends whether the final executor is Privy today,
+  // a backend/dev-wallet fallback, or Space Computer KMS later.
   const [pendingIntent, setPendingIntent] = useState<TxIntent | null>(null)
   const [pendingMeta, setPendingMeta] = useState<{
     chain: Chain
@@ -149,9 +150,9 @@ export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTrans
   const toEnsName = useEnsName(pendingMeta?.resolvedTo)
   const fromEnsName = useEnsName(smartWalletAddress)
 
-  // Smart-wallet sign path is Base Sepolia only — that's the chain our
-  // `SmartWalletsProvider` is configured for. Any other chain falls back
-  // to the dev-wallet `/api/transfer` route, which is fine for the demo.
+  // Sourcify review is independent from Privy. Privy smart wallets are only
+  // one possible execution backend after the user approves the safety review.
+  const canReviewBeforeSend = chain === "base-sepolia"
   const canUseSmartWallet = !!smartClient && chain === "base-sepolia"
 
   // Load agents + recent transfers on mount.
@@ -245,10 +246,10 @@ export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTrans
       return
     }
 
-    // Branch: if a Privy smart wallet exists and we're on Base Sepolia,
-    // open the approval modal so the user signs client-side. Otherwise
-    // fall back to the dev-wallet `/api/transfer` route.
-    if (canUseSmartWallet) {
+    // Base Sepolia uses the Sourcify safety review before execution. The
+    // actual executor is selected only after approval (smart wallet when
+    // available, otherwise the existing backend transfer route).
+    if (canReviewBeforeSend) {
       setSending(true)
       try {
         const resolvedTo = await resolveRecipient(recip)
@@ -305,35 +306,46 @@ export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTrans
       return
     }
 
-    // ── Fallback: dev-wallet path via /api/transfer ─────────────────────
+    await executeBackendTransfer({
+      chain: chain2send,
+      token: token2send,
+      recipientInput: recip,
+      amount: amt,
+    })
+  }
+
+  async function executeBackendTransfer(meta: {
+    chain: Chain
+    token: Token
+    recipientInput: string
+    amount: string
+  }): Promise<{ hash: `0x${string}` }> {
     setSending(true)
     try {
       const authToken = await getAuthToken()
       if (!authToken) {
-        toast.error("Not authenticated. Sign in again.")
-        return
+        throw new Error("Not authenticated. Sign in again.")
       }
       const res = await fetch("/api/transfer", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           privyToken: authToken,
-          chain: chain2send,
-          token: token2send,
-          to: recip,
-          amount: amt,
+          chain: meta.chain,
+          token: meta.token,
+          to: meta.recipientInput,
+          amount: meta.amount,
         }),
       })
       // Vercel function timeouts return plain text. Parse defensively.
       const ct = res.headers.get("content-type") ?? ""
       if (!ct.includes("application/json")) {
         const text = await res.text()
-        toast.error(
+        throw new Error(
           res.status === 504
             ? "Vercel timed out, but the tx may still be on-chain — refresh balance in ~30s."
             : `Server error ${res.status}: ${text.slice(0, 120)}`,
         )
-        return
       }
       const data = (await res.json()) as {
         ok: boolean
@@ -344,29 +356,29 @@ export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTrans
         amount?: string
       }
       if (!data.ok) {
-        toast.error(data.error ?? "Transfer failed")
         addHistoryEntry({
           kind: "transfer",
           status: "failed",
-          chain: chain2send,
-          summary: `Failed: ${amt} ${token2send} → ${recip}`,
+          chain: meta.chain,
+          summary: `Failed: ${meta.amount} ${meta.token} → ${meta.recipientInput}`,
           errorMessage: data.error,
           syncTo: { ens: myEnsName, getAuthToken },
         })
-        return
+        throw new Error(data.error ?? "Transfer failed")
       }
 
-      toast.success(`Sent ${data.amount} ${token2send} on ${chain2send}`, {
+      toast.success(`Sent ${data.amount} ${meta.token} on ${meta.chain}`, {
         description: data.blockExplorerUrl,
       })
 
+      const txHash = data.txHash ?? `${Date.now()}`
       pushRecent({
-        id: data.txHash ?? `${Date.now()}`,
-        chain: chain2send,
-        token: token2send,
-        to: data.to ?? recip,
-        recipientInput: recip,
-        amount: data.amount ?? amt,
+        id: txHash,
+        chain: meta.chain,
+        token: meta.token,
+        to: data.to ?? meta.recipientInput,
+        recipientInput: meta.recipientInput,
+        amount: data.amount ?? meta.amount,
         txHash: data.txHash ?? "",
         blockExplorerUrl: data.blockExplorerUrl ?? "",
         at: Math.floor(Date.now() / 1000),
@@ -375,54 +387,60 @@ export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTrans
       addHistoryEntry({
         kind: "transfer",
         status: "success",
-        chain: chain2send,
-        summary: `Sent ${data.amount} ${token2send} → ${recip}`,
+        chain: meta.chain,
+        summary: `Sent ${data.amount} ${meta.token} → ${meta.recipientInput}`,
         description: data.to ? `Resolved to ${data.to}` : undefined,
         txHash: data.txHash,
         explorerUrl: data.blockExplorerUrl,
         syncTo: { ens: myEnsName, getAuthToken },
       })
 
-      // Refresh balance after send.
       loadBalance()
+      return { hash: txHash as `0x${string}` }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Transfer failed"
       toast.error(msg)
       addHistoryEntry({
         kind: "transfer",
         status: "failed",
-        chain,
-        summary: `Failed: ${amount} ${token} → ${recipient.trim()}`,
+        chain: meta.chain,
+        summary: `Failed: ${meta.amount} ${meta.token} → ${meta.recipientInput}`,
         errorMessage: msg,
         syncTo: { ens: myEnsName, getAuthToken },
       })
+      throw err
     } finally {
       setSending(false)
     }
   }
 
-  // Approve callback wired into TxApprovalModal. Calls Privy's
-  // smart-wallet `sendTransaction` directly — the user signs in their
-  // own embedded wallet, no dev wallet involved. Per CLAUDE.md, this is
-  // the path that gives us a *real* user-signed tx for T1-15.
-  async function handleSmartWalletApprove(
+  // Approval callback wired into TxApprovalModal. Sourcify review is separate
+  // from execution: use a Privy smart wallet if present, otherwise execute via
+  // the backend route. This keeps the review flow compatible with Space
+  // Computer KMS replacing the execution layer later.
+  async function handleReviewedTransferApprove(
     intent: TxIntent,
   ): Promise<{ hash: `0x${string}` }> {
-    if (!smartClient) {
-      throw new Error("Smart wallet client unavailable.")
-    }
     if (!pendingMeta) {
       throw new Error("Missing tx context.")
     }
     const meta = pendingMeta
-    const value =
-      meta.token === "ETH" ? parseEther(meta.amount) : 0n
+
+    if (!smartClient) {
+      return executeBackendTransfer({
+        chain: meta.chain,
+        token: meta.token,
+        recipientInput: meta.recipientInput,
+        amount: meta.amount,
+      })
+    }
+
+    const value = meta.token === "ETH" ? parseEther(meta.amount) : 0n
 
     // The smart-wallet client is already pinned to Base Sepolia via
     // `SmartWalletsProvider` + `supportedChains` in `app/providers.tsx`,
-    // so we omit `chain` here. (Passing it tripped a viem 2.47 vs 2.48
-    // dual-version type clash — Privy bundles 2.47.) `Call` shape per
-    // `SendUserOperationParameters` is `{ to, value, data }`.
+    // so we omit `chain` here. `Call` shape per `SendUserOperationParameters`
+    // is `{ to, value, data }`.
     const hash = await smartClient.sendTransaction({
       to: intent.to as Address,
       value,
@@ -453,8 +471,6 @@ export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTrans
     toast.success(`Sent ${meta.amount} ${meta.token} on Base Sepolia`, {
       description: explorerUrl,
     })
-    // Refresh balance once the user closes the modal — but kick it off
-    // immediately so the next "open" shows fresh numbers.
     loadBalance()
     return { hash }
   }
@@ -654,10 +670,10 @@ export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTrans
             <p className="mt-1 font-mono text-[10px] text-muted-foreground">
               Demo cap: 0.01 ETH or 1 USDC per send.
             </p>
-            {canUseSmartWallet ? (
+            {canReviewBeforeSend ? (
               <p className="mt-1 flex items-center gap-1 font-mono text-[10px] text-primary/90">
                 <ShieldCheck className="h-3 w-3" />
-                You'll sign with your own smart wallet on Base Sepolia.
+                Sourcify safety review runs before execution.
               </p>
             ) : null}
           </div>
@@ -671,12 +687,12 @@ export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTrans
             {sending ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                {canUseSmartWallet ? "Preparing…" : "Broadcasting…"}
+                {canReviewBeforeSend ? "Preparing review…" : "Broadcasting…"}
               </>
             ) : (
               <>
                 <Send className="mr-2 h-4 w-4" />
-                {canUseSmartWallet ? "Review & sign" : "Send"} {amount} {token} on{" "}
+                {canReviewBeforeSend ? "Review & send" : "Send"} {amount} {token} on{" "}
                 {chain === "sepolia" ? "Sepolia" : "Base Sepolia"}
               </>
             )}
@@ -738,7 +754,7 @@ export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTrans
             }, 200)
           }
         }}
-        onApprove={handleSmartWalletApprove}
+        onApprove={handleReviewedTransferApprove}
       />
     </Card>
   )
