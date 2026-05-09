@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { clearHistory, useHistory, type HistoryEntry, type HistoryKind } from "@/lib/history"
 import { BountyTrail, type BountyTag } from "@/components/bounty-trail"
+import { cn } from "@/lib/utils"
 
 // Mapping of action → which bounty integrations participated. Used by the
 // history Row to surface a "powered by" trail under each entry, matching
@@ -16,10 +17,9 @@ const KIND_BOUNTY_TAGS: Record<HistoryKind, BountyTag[]> = {
   mint: ["ens", "ensip25", "kms", "ctrng", "stealth"],
   message: ["ens", "ctrng", "kms"],
   "stealth-send": ["ens", "stealth", "ctrng", "kms"],
-  transfer: ["ens", "kms"],
+  transfer: ["ens", "kms", "sourcify"],
   other: [],
 }
-import { cn } from "@/lib/utils"
 
 type FilterKind = HistoryKind | "all"
 type FeedbackRating = "up" | "down"
@@ -125,6 +125,24 @@ function actionSnapshot(entry: HistoryEntry) {
     ...(entry.explorerUrl !== undefined && { explorerUrl: entry.explorerUrl }),
     ...(entry.chain !== undefined && { chain: entry.chain }),
     ...(entry.errorMessage !== undefined && { errorMessage: entry.errorMessage }),
+  }
+}
+
+function optimisticSummary(previous: FeedbackSummary | undefined, rating: FeedbackRating): FeedbackSummary {
+  if (!previous) {
+    return {
+      up: rating === "up" ? 1 : 0,
+      down: rating === "down" ? 1 : 0,
+      total: 1,
+      score: rating === "up" ? 1 : -2,
+    }
+  }
+  return {
+    ...previous,
+    up: rating === "up" ? Math.max(previous.up, 1) : previous.up,
+    down: rating === "down" ? Math.max(previous.down, 1) : previous.down,
+    total: Math.max(previous.total, 1),
+    score: rating === "up" ? Math.max(previous.score, 1) : Math.min(previous.score, -2),
   }
 }
 
@@ -242,9 +260,16 @@ export function History({ className, ensName, walletAddress }: HistoryProps) {
   const submitFeedback = useCallback(
     async (entry: HistoryEntry, rating: FeedbackRating) => {
       if (!ensName) return
+      const previous = feedbackByAction[entry.id]
       setFeedbackByAction((prev) => ({
         ...prev,
-        [entry.id]: { ...prev[entry.id], loading: true, error: undefined },
+        [entry.id]: {
+          ...prev[entry.id],
+          rating,
+          summary: optimisticSummary(prev[entry.id]?.summary, rating),
+          loading: true,
+          error: undefined,
+        },
       }))
       try {
         const res = await fetch("/api/feedback", {
@@ -279,14 +304,14 @@ export function History({ className, ensName, walletAddress }: HistoryProps) {
         setFeedbackByAction((prev) => ({
           ...prev,
           [entry.id]: {
-            ...prev[entry.id],
+            ...previous,
             loading: false,
             error: err instanceof Error ? err.message : String(err),
           },
         }))
       }
     },
-    [ensName],
+    [ensName, feedbackByAction],
   )
 
   return (
@@ -468,26 +493,28 @@ function Row({
                   disabled={feedback?.loading}
                   onClick={() => onFeedback("up")}
                   className={cn(
-                    "grid h-5 w-5 place-items-center rounded-full transition hover:bg-emerald-500/15 hover:text-emerald-300 disabled:opacity-50",
+                    "grid h-6 w-6 place-items-center rounded-full transition hover:bg-emerald-500/15 hover:text-emerald-300 disabled:opacity-50",
                     feedback?.rating === "up" && "bg-emerald-500/15 text-emerald-300",
                   )}
                   title="Good decision"
                 >
-                  <ThumbsUp className="h-3 w-3" />
+                  <ThumbsUp className="h-3.5 w-3.5" />
                 </button>
                 <button
                   type="button"
                   disabled={feedback?.loading}
                   onClick={() => onFeedback("down")}
                   className={cn(
-                    "grid h-5 w-5 place-items-center rounded-full transition hover:bg-amber-500/15 hover:text-amber-300 disabled:opacity-50",
+                    "grid h-6 w-6 place-items-center rounded-full transition hover:bg-amber-500/15 hover:text-amber-300 disabled:opacity-50",
                     feedback?.rating === "down" && "bg-amber-500/15 text-amber-300",
                   )}
                   title="Bad decision"
                 >
-                  <ThumbsDown className="h-3 w-3" />
+                  <ThumbsDown className="h-3.5 w-3.5" />
                 </button>
-                {feedback?.summary && feedback.summary.total > 0 ? (
+                {feedback?.loading ? (
+                  <Loader2 className="ml-1 h-3 w-3 animate-spin text-muted-foreground/70" />
+                ) : feedback?.summary && feedback.summary.total > 0 ? (
                   <span className="ml-1 text-muted-foreground/80">
                     {feedback.summary.score > 0 ? "+" : ""}{feedback.summary.score}
                   </span>
