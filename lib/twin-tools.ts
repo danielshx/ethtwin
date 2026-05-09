@@ -169,7 +169,9 @@ export const twinTools = {
     inputSchema: z.object({
       chain: z
         .enum(["sepolia", "base-sepolia"])
-        .describe("Which chain to send on. Pick base-sepolia for fast cheap transfers, sepolia for ENS-aligned demos."),
+        .describe(
+          "Which chain to send on. **DEFAULT: sepolia** for both ETH and USDC. Only switch to base-sepolia when the user explicitly says 'Base' or 'Base Sepolia'.",
+        ),
       token: z.enum(["ETH", "USDC"]).describe("Native ETH or USDC ERC-20"),
       to: z
         .string()
