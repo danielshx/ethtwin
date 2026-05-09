@@ -106,6 +106,18 @@ export const ensRegistryAbi = [
     ],
     outputs: [],
   },
+  {
+    name: "setRecord",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "node", type: "bytes32" },
+      { name: "owner", type: "address" },
+      { name: "resolver", type: "address" },
+      { name: "ttl", type: "uint64" },
+    ],
+    outputs: [],
+  },
 ] as const satisfies Abi
 
 export const ensResolverAbi = [

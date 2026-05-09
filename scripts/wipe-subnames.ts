@@ -102,17 +102,15 @@ const REGISTRY_OWNER_ABI = [
   },
 ] as const
 
-async function collectSubnames(fromBlock: bigint, toBlock: bigint): Promise<Subname[]> {
-  const parentNode = namehash(PARENT_DOMAIN)
-  console.log(`Scanning NewOwner events for parent ${PARENT_DOMAIN}`)
-  console.log(`  parentNode = ${parentNode}`)
-  console.log(`  blocks ${fromBlock} → ${toBlock}`)
-
-  // Chunked log queries via the public RPC (bypasses Alchemy free-tier 10-block
-  // cap). publicnode allows ~5000-10000 blocks per call; 5000 is comfortable.
+async function scanChildrenOf(
+  parentNode: Hex,
+  fromBlock: bigint,
+  toBlock: bigint,
+): Promise<Map<Hex, bigint>> {
+  // Returns labelHash → lastSeenBlock for every NewOwner event under
+  // `parentNode`. Chunked to fit publicnode's eth_getLogs window.
   const CHUNK = 5_000n
-  const labelHashByLabelHash = new Map<Hex, { lastSeenBlock: bigint }>()
-  let scanned = 0n
+  const out = new Map<Hex, bigint>()
   for (let start = fromBlock; start <= toBlock; start += CHUNK) {
     const end = start + CHUNK - 1n > toBlock ? toBlock : start + CHUNK - 1n
     const logs = await logClient.getLogs({
@@ -129,38 +127,131 @@ async function collectSubnames(fromBlock: bigint, toBlock: bigint): Promise<Subn
     })
     for (const ev of parsed) {
       const labelHash = ev.args.label as Hex
-      const existing = labelHashByLabelHash.get(labelHash)
-      if (!existing || ev.blockNumber > existing.lastSeenBlock) {
-        labelHashByLabelHash.set(labelHash, { lastSeenBlock: ev.blockNumber })
+      const existing = out.get(labelHash)
+      if (!existing || ev.blockNumber > existing) {
+        out.set(labelHash, ev.blockNumber)
       }
     }
-    scanned += end - start + 1n
-    if (logs.length > 0) {
-      console.log(`  ${start}..${end} → ${logs.length} events`)
-    }
-  }
-  console.log(`Scanned ${scanned} blocks. Found ${labelHashByLabelHash.size} unique labelHashes.`)
-
-  // Resolve current owner for each labelHash. Skip already-zeroed ones —
-  // they were either never finalized or already wiped in a prior run.
-  const out: Subname[] = []
-  for (const [labelHash, meta] of labelHashByLabelHash) {
-    const node = keccak256(concat([parentNode, labelHash]))
-    let currentOwner: Address
-    try {
-      currentOwner = await sepoliaClient.readContract({
-        address: ENS_REGISTRY,
-        abi: REGISTRY_OWNER_ABI,
-        functionName: "owner",
-        args: [node],
-      })
-    } catch {
-      currentOwner = "0x0000000000000000000000000000000000000000"
-    }
-    if (currentOwner.toLowerCase() === "0x0000000000000000000000000000000000000000") continue
-    out.push({ node, labelHash, currentOwner, lastSeenBlock: meta.lastSeenBlock })
   }
   return out
+}
+
+async function ownerOf(node: Hex): Promise<Address> {
+  try {
+    return await sepoliaClient.readContract({
+      address: ENS_REGISTRY,
+      abi: REGISTRY_OWNER_ABI,
+      functionName: "owner",
+      args: [node],
+    })
+  } catch {
+    return "0x0000000000000000000000000000000000000000"
+  }
+}
+
+type RecursiveSubnames = {
+  /** Direct children of PARENT_DOMAIN currently owned (twin subdomains). */
+  topLevel: Subname[]
+  /** chat-* sub-subdomains (under any historical twin) currently owned. */
+  children: { node: Hex; labelHash: Hex; twinNode: Hex }[]
+}
+
+async function collectSubnames(
+  fromBlock: bigint,
+  toBlock: bigint,
+): Promise<RecursiveSubnames> {
+  const parentNode = namehash(PARENT_DOMAIN)
+  console.log(`Scanning NewOwner events for parent ${PARENT_DOMAIN}`)
+  console.log(`  parentNode = ${parentNode}`)
+  console.log(`  blocks ${fromBlock} → ${toBlock}`)
+
+  // Layer 1: direct children of ethtwin.eth (the twin subdomains).
+  const twinLabels = await scanChildrenOf(parentNode, fromBlock, toBlock)
+  console.log(
+    `  layer 1: ${twinLabels.size} historical twin labels under ${PARENT_DOMAIN}`,
+  )
+
+  // Layer 2: for EVERY twin we've ever seen (even orphaned ones), scan its
+  // own NewOwner events to find chat-* sub-subdomains. Children persist in
+  // the registry even after the parent is orphaned, and are addressable
+  // directly via setRecord(childNode, ...).
+  //
+  // Throttled SEQUENTIAL scan to stay under publicnode's free-tier rate
+  // limit (~50 reqs/10s). 67 twins × 1 chunk each = 67 reqs total when
+  // the lookback is small, so this finishes in ~30s without 429s.
+  const twinNodes = Array.from(twinLabels.keys()).map((labelHash) => ({
+    labelHash,
+    node: keccak256(concat([parentNode, labelHash])),
+  }))
+  const childRecords: { node: Hex; labelHash: Hex; twinNode: Hex }[] = []
+  for (let i = 0; i < twinNodes.length; i++) {
+    const twin = twinNodes[i]!
+    const labels = await scanChildrenOf(twin.node, fromBlock, toBlock)
+    for (const labelHash of labels.keys()) {
+      childRecords.push({
+        node: keccak256(concat([twin.node, labelHash])),
+        labelHash,
+        twinNode: twin.node,
+      })
+    }
+    // 200ms throttle between twin scans = max 5 req/s. Comfortable for
+    // publicnode's free tier even with multi-chunk twins.
+    await new Promise((r) => setTimeout(r, 200))
+  }
+  console.log(`  layer 2: ${childRecords.length} historical chat sub-subdomains`)
+
+  // Filter to currently-owned (skip already-zeroed). Owner reads go to the
+  // canonical sepoliaClient (Alchemy) — those are direct contract reads
+  // not eth_getLogs, so the rate limit there is much friendlier.
+  const ZERO = "0x0000000000000000000000000000000000000000"
+  const topLevel: Subname[] = []
+  for (const t of twinNodes) {
+    const owner = await ownerOf(t.node)
+    if (owner.toLowerCase() !== ZERO.toLowerCase()) {
+      topLevel.push({
+        node: t.node,
+        labelHash: t.labelHash,
+        currentOwner: owner,
+        lastSeenBlock: twinLabels.get(t.labelHash) ?? 0n,
+      })
+    }
+  }
+  const children: { node: Hex; labelHash: Hex; twinNode: Hex }[] = []
+  for (const c of childRecords) {
+    const owner = await ownerOf(c.node)
+    if (owner.toLowerCase() !== ZERO.toLowerCase()) {
+      children.push(c)
+    }
+  }
+  console.log(
+    `  currently-owned: ${topLevel.length} twins, ${children.length} chat sub-subdomains`,
+  )
+
+  return { topLevel, children }
+}
+
+async function wipeChildBySetRecord(node: Hex, nonce: number): Promise<Hash> {
+  // Direct setRecord on the child node — works regardless of whether the
+  // parent twin is still owned, because dev wallet has direct registry-level
+  // ownership of the child node from when it was minted.
+  const { account } = getDevWalletClient()
+  const data = encodeFunctionData({
+    abi: ensRegistryAbi,
+    functionName: "setRecord",
+    args: [node, ZERO_ADDRESS, ZERO_ADDRESS, 0n],
+  })
+  const signed = await account.signTransaction({
+    chainId: sepolia.id,
+    type: "eip1559",
+    to: ENS_REGISTRY,
+    data,
+    nonce,
+    gas: SET_SUBNODE_GAS,
+    maxFeePerGas: SEPOLIA_MAX_FEE_PER_GAS,
+    maxPriorityFeePerGas: SEPOLIA_MAX_PRIORITY_FEE_PER_GAS,
+    value: 0n,
+  })
+  return sepoliaClient.sendRawTransaction({ serializedTransaction: signed })
 }
 
 async function wipeOne(labelHash: Hex, nonce: number): Promise<Hash> {
@@ -244,20 +335,33 @@ async function main() {
       ? tip - DEFAULT_LOOKBACK
       : 0n
 
-  const subnames = await collectSubnames(fromBlock, tip)
-  console.log(`\nFound ${subnames.length} subnames currently owned and wipeable:`)
-  for (const s of subnames) {
-    console.log(
-      `  labelHash=${s.labelHash}  owner=${s.currentOwner}  lastSeenBlock=${s.lastSeenBlock}`,
-    )
+  const { topLevel, children } = await collectSubnames(fromBlock, tip)
+  const totalToWipe = topLevel.length + children.length
+
+  console.log(`\nFound ${totalToWipe} subnames currently owned and wipeable:`)
+  if (children.length > 0) {
+    console.log(`  ${children.length} chat sub-subdomain(s):`)
+    for (const c of children.slice(0, 20)) {
+      console.log(`    chat ${c.labelHash}  under twin ${c.twinNode}`)
+    }
+    if (children.length > 20) {
+      console.log(`    … and ${children.length - 20} more`)
+    }
+  }
+  if (topLevel.length > 0) {
+    console.log(`  ${topLevel.length} top-level twin(s):`)
+    for (const s of topLevel) {
+      console.log(`    twin ${s.labelHash}  owner=${s.currentOwner}`)
+    }
   }
 
-  if (subnames.length === 0) {
+  if (totalToWipe === 0) {
     console.log(`\nNothing to do.`)
     return
   }
 
-  const estGas = subnames.length * Number(SET_SUBNODE_GAS) + Number(SET_TEXT_GAS)
+  const estGas =
+    totalToWipe * Number(SET_SUBNODE_GAS) + Number(SET_TEXT_GAS)
   const estCost = BigInt(estGas) * SEPOLIA_MAX_FEE_PER_GAS
   console.log(`\nEstimated worst-case gas cost: ${formatEther(estCost)} ETH`)
 
@@ -273,15 +377,35 @@ async function main() {
   console.log(`\nStarting wipe at nonce ${nonce}…\n`)
 
   const txs: { id: string; hash: Hash }[] = []
-  for (const s of subnames) {
+  // Phase 1: wipe chat sub-subdomains FIRST. We use setRecord (owner=0x0,
+  // resolver=0x0) on each child node directly — this works even if the
+  // parent twin is already orphaned, because the dev wallet still has
+  // direct registry-level ownership of every child node.
+  for (const c of children) {
     try {
-      const hash = await wipeOne(s.labelHash, nonce)
-      console.log(`  ${nonce}  ${s.labelHash}  →  ${hash}`)
-      txs.push({ id: s.labelHash, hash })
+      const hash = await wipeChildBySetRecord(c.node, nonce)
+      console.log(`  ${nonce}  child ${c.labelHash}  →  ${hash}`)
+      txs.push({ id: `child:${c.labelHash}`, hash })
       nonce += 1
     } catch (err) {
       console.error(
-        `  ${nonce}  ${s.labelHash}  →  FAILED to broadcast: ${err instanceof Error ? err.message : err}`,
+        `  ${nonce}  child ${c.labelHash}  →  FAILED: ${err instanceof Error ? err.message : err}`,
+      )
+      break
+    }
+  }
+  // Phase 2: wipe top-level twins via setSubnodeRecord on the parent
+  // (PARENT_DOMAIN). The parent (ethtwin.eth) is still owned by the dev
+  // wallet, so this is the standard orphan path.
+  for (const s of topLevel) {
+    try {
+      const hash = await wipeOne(s.labelHash, nonce)
+      console.log(`  ${nonce}  twin  ${s.labelHash}  →  ${hash}`)
+      txs.push({ id: `twin:${s.labelHash}`, hash })
+      nonce += 1
+    } catch (err) {
+      console.error(
+        `  ${nonce}  twin ${s.labelHash}  →  FAILED: ${err instanceof Error ? err.message : err}`,
       )
       break
     }
@@ -294,7 +418,7 @@ async function main() {
       txs.push({ id: "agents.directory", hash })
     } catch (err) {
       console.error(
-        `  ${nonce}  agents.directory  →  FAILED to broadcast: ${err instanceof Error ? err.message : err}`,
+        `  ${nonce}  agents.directory  →  FAILED: ${err instanceof Error ? err.message : err}`,
       )
     }
   }
@@ -310,7 +434,6 @@ async function main() {
         pollingInterval: 2_000,
       })
       if (receipt.status === "success") {
-        console.log(`  ✓  ${id}  block ${receipt.blockNumber}`)
         success += 1
       } else {
         console.log(`  ✗  ${id}  REVERTED  block ${receipt.blockNumber}`)
