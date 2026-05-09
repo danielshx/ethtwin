@@ -73,7 +73,7 @@ type HistoryProps = {
   /** When set, the History tab also pulls the wallet's on-chain txs from
    *  Etherscan (Sepolia + Base Sepolia) and merges them into the list. */
   walletAddress?: string | null
-  /** Optional auth getter enables fair action feedback writes. */
+  /** Legacy prop kept for compatibility; feedback now authenticates via session cookie. */
   getAuthToken?: () => Promise<string | null>
 }
 
@@ -116,7 +116,7 @@ function actionSnapshot(entry: HistoryEntry) {
   }
 }
 
-export function History({ className, ensName, walletAddress, getAuthToken }: HistoryProps) {
+export function History({ className, ensName, walletAddress }: HistoryProps) {
   const localEntries = useHistory({ ens: ensName })
   const [walletTxs, setWalletTxs] = useState<WalletTx[]>([])
   const [walletLoading, setWalletLoading] = useState(false)
@@ -229,19 +229,17 @@ export function History({ className, ensName, walletAddress, getAuthToken }: His
 
   const submitFeedback = useCallback(
     async (entry: HistoryEntry, rating: FeedbackRating) => {
-      if (!ensName || !getAuthToken) return
+      if (!ensName) return
       setFeedbackByAction((prev) => ({
         ...prev,
         [entry.id]: { ...prev[entry.id], loading: true, error: undefined },
       }))
       try {
-        const token = await getAuthToken()
-        if (!token) throw new Error("Sign in again to review this action.")
         const res = await fetch("/api/feedback", {
           method: "POST",
+          credentials: "same-origin",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            privyToken: token,
             reviewerEns: ensName,
             actionId: entry.id,
             rating,
@@ -276,7 +274,7 @@ export function History({ className, ensName, walletAddress, getAuthToken }: His
         }))
       }
     },
-    [ensName, getAuthToken],
+    [ensName],
   )
 
   return (
@@ -353,7 +351,7 @@ export function History({ className, ensName, walletAddress, getAuthToken }: His
                 key={e.id}
                 entry={e}
                 feedback={feedbackByAction[e.id]}
-                feedbackEnabled={!!ensName && !!getAuthToken}
+                feedbackEnabled={!!ensName}
                 onFeedback={(rating) => submitFeedback(e, rating)}
               />
             ))}

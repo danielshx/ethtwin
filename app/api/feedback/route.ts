@@ -1,6 +1,6 @@
 import { z } from "zod"
-import { verifyAuthToken } from "@/lib/privy-server"
 import { jsonError, parseJsonBody } from "@/lib/api-guard"
+import { getSessionFromRequest } from "@/lib/session"
 import {
   readFeedbackForAction,
   summarizeActionFeedback,
@@ -51,7 +51,6 @@ const actionSnapshotSchema = z.object({
 })
 
 const postBodySchema = z.object({
-  privyToken: z.string().min(1),
   reviewerEns: z.string().min(1),
   actionId: z.string().min(1),
   rating: z.enum(["up", "down"]),
@@ -65,13 +64,14 @@ export async function POST(req: Request) {
   if (!parsed.ok) return parsed.response
   const body = parsed.data
 
-  try {
-    await verifyAuthToken(body.privyToken)
-  } catch (error) {
-    return jsonError(
-      error instanceof Error ? error.message : "Privy token verification failed",
-      401,
-    )
+  // KMS-only auth: same-origin requests carry the signed session cookie.
+  // The reviewer may only review as the currently logged-in twin.
+  const session = getSessionFromRequest(req)
+  if (!session) {
+    return jsonError("Sign in again to review this action.", 401)
+  }
+  if (session.ens.toLowerCase() !== body.reviewerEns.toLowerCase()) {
+    return jsonError("You can only review actions for the active twin session.", 403)
   }
 
   // Fairness guard:
