@@ -34,6 +34,16 @@ const POLL_MS = 30_000
 const MAX_KEPT = 50
 const SEEN_KEY = (ens: string) => `ethtwin.notifications.seen.${ens.toLowerCase()}`
 const STORE_KEY = (ens: string) => `ethtwin.notifications.feed.${ens.toLowerCase()}`
+// Tracks incoming-message ids we've already triggered an autonomous reply for.
+// Prevents the user's twin from re-replying to the same message on every poll
+// and prevents tight auto-reply loops (peer's auto-reply also triggers ours).
+const REPLIED_KEY = (ens: string) =>
+  `ethtwin.notifications.autoReplied.${ens.toLowerCase()}`
+// Don't auto-reply to messages older than this on first load — otherwise
+// signing in after several missed messages would generate a burst of replies.
+const AUTO_REPLY_FRESHNESS_S = 600 // 10 minutes
+// Cooldown per peer ENS so a fast back-and-forth can't degenerate into a loop.
+const AUTO_REPLY_PEER_COOLDOWN_MS = 60_000
 
 function loadSeen(ens: string): Set<string> {
   if (typeof window === "undefined") return new Set()
@@ -79,6 +89,31 @@ function saveFeed(ens: string, items: Notification[]) {
   }
 }
 
+function loadReplied(ens: string): Set<string> {
+  if (typeof window === "undefined") return new Set()
+  try {
+    const raw = window.localStorage.getItem(REPLIED_KEY(ens))
+    if (!raw) return new Set()
+    const parsed = JSON.parse(raw)
+    if (Array.isArray(parsed)) return new Set(parsed.filter((x): x is string => typeof x === "string"))
+  } catch {
+    // ignore
+  }
+  return new Set()
+}
+
+function saveReplied(ens: string, ids: Set<string>) {
+  if (typeof window === "undefined") return
+  try {
+    // Cap to last ~200 ids — long enough to dedupe within a poll cycle but
+    // bounded so localStorage doesn't grow forever.
+    const trimmed = Array.from(ids).slice(-200)
+    window.localStorage.setItem(REPLIED_KEY(ens), JSON.stringify(trimmed))
+  } catch {
+    // ignore
+  }
+}
+
 type ApiMessage = { label?: string; from: string; body: string; at: number }
 type ApiWalletTx = {
   txHash: `0x${string}`
@@ -97,19 +132,46 @@ export function useNotifications(
   const [items, setItems] = useState<Notification[]>([])
   const [unreadCount, setUnreadCount] = useState(0)
   const seenRef = useRef<Set<string>>(new Set())
+  const repliedRef = useRef<Set<string>>(new Set())
+  const peerCooldownRef = useRef<Map<string, number>>(new Map())
   const initializedRef = useRef(false)
 
   useEffect(() => {
     if (!ensName) {
       seenRef.current = new Set()
+      repliedRef.current = new Set()
+      peerCooldownRef.current = new Map()
       initializedRef.current = false
       setItems([])
       setUnreadCount(0)
       return
     }
     seenRef.current = loadSeen(ensName)
+    repliedRef.current = loadReplied(ensName)
     setItems(loadFeed(ensName))
   }, [ensName])
+
+  // Fire an autonomous reply via /api/twin/auto-reply. Used when the user's
+  // twin receives a message from a peer agent — the twin responds in the user's
+  // persona without the user having to type anything.
+  const triggerAutoReply = useCallback(
+    async (myEns: string, peerEns: string, body: string) => {
+      try {
+        await fetch("/api/twin/auto-reply", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            fromEns: myEns,
+            toEns: peerEns,
+            incomingBody: body,
+          }),
+        })
+      } catch {
+        // best-effort — if the auto-reply fails the user can still reply manually
+      }
+    },
+    [],
+  )
 
   const refresh = useCallback(async () => {
     if (!ensName) return
@@ -129,6 +191,7 @@ export function useNotifications(
 
       // Inbox messages
       if (msgRes?.ok && Array.isArray(msgRes.messages)) {
+        const nowSec = Math.floor(Date.now() / 1000)
         for (const m of msgRes.messages as ApiMessage[]) {
           const id = `msg:${m.label ?? `${m.from}-${m.at}`}`
           if (seenRef.current.has(id)) continue
@@ -141,6 +204,30 @@ export function useNotifications(
             at: m.at,
           })
           seenRef.current.add(id)
+
+          // Autonomous reply: if the message is recent, from a known
+          // *.ethtwin.eth peer, hasn't been replied to yet, and the per-peer
+          // cooldown is clear, kick the user's twin to answer in their persona.
+          const peerLower = m.from.toLowerCase()
+          const isPeerAgent = peerLower.endsWith(".ethtwin.eth")
+          const isFresh = nowSec - m.at <= AUTO_REPLY_FRESHNESS_S
+          const alreadyReplied = repliedRef.current.has(id)
+          const lastReplyAt = peerCooldownRef.current.get(peerLower) ?? 0
+          const cooldownClear = Date.now() - lastReplyAt >= AUTO_REPLY_PEER_COOLDOWN_MS
+          if (
+            isPeerAgent &&
+            isFresh &&
+            !alreadyReplied &&
+            cooldownClear &&
+            peerLower !== ensName.toLowerCase()
+          ) {
+            repliedRef.current.add(id)
+            peerCooldownRef.current.set(peerLower, Date.now())
+            saveReplied(ensName, repliedRef.current)
+            // Fire-and-forget — the reply will land on chain within ~25s and
+            // surface as its own notification on the next poll cycle.
+            void triggerAutoReply(ensName, m.from, m.body)
+          }
         }
       }
 
@@ -185,7 +272,7 @@ export function useNotifications(
       }
     }
     initializedRef.current = true
-  }, [ensName, walletAddress])
+  }, [ensName, walletAddress, triggerAutoReply])
 
   useEffect(() => {
     if (!ensName) return
