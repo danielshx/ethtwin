@@ -17,6 +17,12 @@ import { sendToken, getTokenBalance, parseRecipient } from "./transfers"
 import { readAgentDirectory } from "./agents"
 import { sendMessage as sendEnsMessage } from "./messages"
 import { readInbox } from "./messages"
+import { baseSepoliaClient, sepoliaClient } from "./viem"
+
+const TX_EXPLORERS = {
+  sepolia: "https://sepolia.etherscan.io",
+  "base-sepolia": "https://sepolia.basescan.org",
+} as const
 
 export const twinTools = {
   getWalletSummary: tool({
@@ -93,9 +99,73 @@ export const twinTools = {
     },
   }),
 
+  checkTransactionStatus: tool({
+    description:
+      "Check whether a transaction hash is pending, confirmed, or failed on Sepolia or Base Sepolia. Use when the user asks if a token transfer, stealth send, message, or ENS transaction went through.",
+    inputSchema: z.object({
+      chain: z.enum(["sepolia", "base-sepolia"]),
+      txHash: z.string().regex(/^0x[0-9a-fA-F]{64}$/).describe("Transaction hash to check"),
+    }),
+    execute: async ({ chain, txHash }) => {
+      try {
+        const client = chain === "sepolia" ? sepoliaClient : baseSepoliaClient
+        const explorer = TX_EXPLORERS[chain]
+        const hash = txHash as `0x${string}`
+        const [receipt, currentBlock] = await Promise.all([
+          client.getTransactionReceipt({ hash }).catch(() => null),
+          client.getBlockNumber().catch(() => null),
+        ])
+        if (!receipt) {
+          return {
+            ok: true,
+            chain,
+            txHash: hash,
+            status: "pending_or_not_found",
+            confirmed: false,
+            success: null,
+            confirmations: 0,
+            blockNumber: null,
+            blockExplorerUrl: `${explorer}/tx/${hash}`,
+            plainEnglish:
+              "I could not find a mined receipt yet. The transaction may still be pending, or it may not have propagated to this RPC/indexer.",
+          }
+        }
+        const confirmations =
+          currentBlock && receipt.blockNumber
+            ? Number(currentBlock - receipt.blockNumber + 1n)
+            : null
+        const success = receipt.status === "success"
+        return {
+          ok: true,
+          chain,
+          txHash: hash,
+          status: success ? "confirmed" : "failed",
+          confirmed: true,
+          success,
+          confirmations,
+          blockNumber: receipt.blockNumber.toString(),
+          gasUsed: receipt.gasUsed.toString(),
+          from: receipt.from,
+          to: receipt.to,
+          blockExplorerUrl: `${explorer}/tx/${hash}`,
+          plainEnglish: success
+            ? `The transaction is confirmed on ${chain}${confirmations !== null ? ` with ${confirmations} confirmation${confirmations === 1 ? "" : "s"}` : ""}.`
+            : `The transaction was mined on ${chain}, but it failed/reverted.`,
+        }
+      } catch (err) {
+        return {
+          ok: false,
+          chain,
+          txHash,
+          error: err instanceof Error ? err.message : String(err),
+        }
+      }
+    },
+  }),
+
   sendToken: tool({
     description:
-      "Send native ETH or USDC on Sepolia or Base Sepolia. Recipient can be an ENS name (e.g. alice.ethtwin.eth) or a 0x address. Returns the on-chain tx hash + block-explorer link.",
+      "Send native ETH or USDC on Sepolia or Base Sepolia. Recipient can be an ENS name (e.g. alice.ethtwin.eth) or a 0x address. Returns the on-chain tx hash + block-explorer link. Use this immediately when the user explicitly asks to send, transfer, or pay a token and provides chain, token, recipient, and amount. Do not stop after getBalance in that case.",
     inputSchema: z.object({
       chain: z
         .enum(["sepolia", "base-sepolia"])
@@ -131,7 +201,7 @@ export const twinTools = {
 
   getBalance: tool({
     description:
-      "Read an address's native ETH or USDC balance on Sepolia or Base Sepolia. Use before proposing a transfer.",
+      "Read an address's native ETH or USDC balance on Sepolia or Base Sepolia. Use before proposing a transfer, or when the user only asks to check/view a balance. Do not use this as the final step when the user explicitly asked to send a token and already provided chain, token, recipient, and amount.",
     inputSchema: z.object({
       chain: z.enum(["sepolia", "base-sepolia"]),
       token: z.enum(["ETH", "USDC"]),
