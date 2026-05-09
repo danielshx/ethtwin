@@ -2,6 +2,7 @@ import { getAddress, type Abi, type Address } from "viem"
 
 const SOURCIFY_REPOSITORY_BASE = "https://repo.sourcify.dev/contracts"
 const FETCH_TIMEOUT_MS = 4_000
+const DEMO_CHAIN_IDS = [1, 11155111, 84532] as const
 
 type SourcifyMatch = "full_match" | "partial_match"
 
@@ -34,13 +35,37 @@ export type SourcifyVerification = {
  * - no new dependency during the hackathon
  * - deterministic URL that is easy to show judges
  * - safe failure mode when Sourcify is unavailable
+ *
+ * When no chainId is provided, we try the chains used in the demo so callers
+ * that only have a raw tx payload still get a useful anti-blind-signing check.
  */
 export async function getSourcifyVerification(args: {
   chainId?: number
   address: Address | string
 }): Promise<SourcifyVerification> {
-  const chainId = args.chainId ?? 1
   const address = getAddress(args.address)
+  const chainIds = args.chainId ? [args.chainId] : [...DEMO_CHAIN_IDS]
+
+  let lastError = "Contract source was not found in Sourcify full_match or partial_match."
+  for (const chainId of chainIds) {
+    const result = await getSourcifyVerificationForChain({ chainId, address })
+    if (result.verified) return result
+    if (result.error) lastError = result.error
+  }
+
+  return {
+    address,
+    chainId: args.chainId ?? DEMO_CHAIN_IDS[0],
+    verified: false,
+    error: lastError,
+  }
+}
+
+async function getSourcifyVerificationForChain(args: {
+  chainId: number
+  address: Address
+}): Promise<SourcifyVerification> {
+  const { chainId, address } = args
 
   for (const match of ["full_match", "partial_match"] as const) {
     const metadataUrl = `${SOURCIFY_REPOSITORY_BASE}/${match}/${chainId}/${address}/metadata.json`
@@ -88,7 +113,6 @@ async function fetchSourcifyMetadata(url: string): Promise<SourcifyMetadata | nu
       signal: controller.signal,
       headers: { accept: "application/json" },
       cache: "force-cache",
-      next: { revalidate: 60 * 60 },
     })
     if (!res.ok) return null
     return (await res.json()) as SourcifyMetadata
