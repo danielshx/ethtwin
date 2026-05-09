@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react"
 import { useConnectWallet, usePrivy, useWallets } from "@privy-io/react-auth"
 import { useSmartWallets } from "@privy-io/react-auth/smart-wallets"
 import { motion } from "framer-motion"
-import { LogOut, Sparkles } from "lucide-react"
+import { Eye, EyeOff, LogOut, Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card } from "@/components/ui/card"
@@ -57,7 +57,7 @@ function App() {
   const { connectWallet } = useConnectWallet()
   const [session, setSession] = useState<SessionState | null>(null)
   const [hydrated, setHydrated] = useState(false)
-  const demoMode = useDemoMode()
+  const [demoMode, setDemoMode] = useDemoMode()
 
   useEffect(() => {
     try {
@@ -173,18 +173,21 @@ function App() {
           </motion.span>
           <span className="text-lg font-semibold tracking-tight">EthTwin</span>
         </div>
-        {session ? (
-          <div className="flex items-center gap-3 text-sm">
-            {!demoMode ? (
-              <span className="font-mono text-xs text-muted-foreground">
-                {session.ensName}
-              </span>
-            ) : null}
-            <Button variant="ghost" size="sm" onClick={handleSignOut}>
-              <LogOut className="h-4 w-4" />
-            </Button>
-          </div>
-        ) : null}
+        <div className="flex items-center gap-2 text-sm">
+          <DemoModeToggle enabled={demoMode} onChange={setDemoMode} />
+          {session ? (
+            <>
+              {!demoMode ? (
+                <span className="hidden font-mono text-xs text-muted-foreground sm:inline">
+                  {session.ensName}
+                </span>
+              ) : null}
+              <Button variant="ghost" size="sm" onClick={handleSignOut}>
+                <LogOut className="h-4 w-4" />
+              </Button>
+            </>
+          ) : null}
+        </div>
       </header>
 
       <section className="relative z-10 mx-auto flex w-full max-w-5xl flex-col items-center gap-10 px-6 pb-16 pt-4 sm:px-10">
@@ -305,6 +308,47 @@ function SignedInTabs({
         />
       )}
     </div>
+  )
+}
+
+function DemoModeToggle({
+  enabled,
+  onChange,
+}: {
+  enabled: boolean
+  onChange: (next: boolean) => void
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={enabled}
+      aria-label={enabled ? "Switch to developer view" : "Switch to demo view"}
+      onClick={() => onChange(!enabled)}
+      className="group inline-flex items-center gap-2 rounded-full border border-border/60 bg-card/80 px-3 py-1.5 text-xs shadow-sm transition hover:border-primary/40"
+      title={
+        enabled
+          ? "Currently in demo view — tap to switch to developer view"
+          : "Currently in developer view — tap to switch to demo view"
+      }
+    >
+      <span
+        className={`grid h-5 w-5 place-items-center rounded-full ${
+          enabled
+            ? "bg-primary text-primary-foreground"
+            : "bg-secondary text-muted-foreground"
+        }`}
+      >
+        {enabled ? (
+          <Eye className="h-3 w-3" />
+        ) : (
+          <EyeOff className="h-3 w-3" />
+        )}
+      </span>
+      <span className="hidden font-medium text-foreground/90 sm:inline">
+        {enabled ? "Demo view" : "Dev view"}
+      </span>
+    </button>
   )
 }
 

@@ -323,7 +323,15 @@ export type TwinToolContext = {
    *  parameter-less tools like `inspectMyWallet` can summarize the user's
    *  wallet without forcing the model to first resolve the ENS. */
   fromAddress?: Address
+  /** Auto-reply chain depth. 0 (or undefined) = top-level user-driven turn.
+   *  1+ = a recipient twin is autonomously responding via the auto-reply route.
+   *  Used by `sendMessage` to cap runaway twin↔twin auto-reply chains. */
+  chainDepth?: number
 }
+
+/** Hard cap on how many nested twin↔twin auto-reply hops we allow.
+ *  Maria→Tom counts as 1; if Tom's auto-reply messages Alice, that's 2. */
+const MAX_AUTO_REPLY_CHAIN_DEPTH = 2
 
 /**
  * Build the `hireAgent` tool with optional history-context. When `fromEns` is
@@ -632,11 +640,17 @@ export function buildTwinTools(ctx: TwinToolContext = {}) {
           // Fire-and-forget: kick the recipient twin to auto-reply in their
           // persona. We don't await this — the user's agent will see the
           // reply via waitForReply / readMyMessages once it lands on-chain.
-          if (toEns.toLowerCase().endsWith(".ethtwin.eth")) {
+          // Cap nested chains so Tom→Alice→Bob→… can't run away.
+          const currentDepth = ctx.chainDepth ?? 0
+          const autoReplyExpected =
+            toEns.toLowerCase().endsWith(".ethtwin.eth") &&
+            currentDepth < MAX_AUTO_REPLY_CHAIN_DEPTH
+          if (autoReplyExpected) {
             triggerAutoReply({
               fromEns: toEns, // recipient becomes the auto-replier
               toEns: ctx.fromEns,
               incomingBody: body,
+              chainDepth: currentDepth + 1,
             })
           }
           return {
@@ -648,7 +662,7 @@ export function buildTwinTools(ctx: TwinToolContext = {}) {
             at: result.message.at,
             txHash: result.recordsMulticallTx,
             blockExplorerUrl: result.blockExplorerUrl,
-            autoReplyExpected: toEns.toLowerCase().endsWith(".ethtwin.eth"),
+            autoReplyExpected,
           }
         } catch (err) {
           return {
@@ -760,6 +774,7 @@ function triggerAutoReply(payload: {
   fromEns: string
   toEns: string
   incomingBody: string
+  chainDepth?: number
 }) {
   const base =
     process.env.NEXT_PUBLIC_APP_URL ??

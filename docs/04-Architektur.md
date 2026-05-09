@@ -174,7 +174,34 @@ plus paywalled Sample-Agent (`app/api/agents/analyst/route.ts`).
 6. Twin synthesisiert eigene Antwort im weiteren Verlauf
 ```
 
-### Tool-Surface (`lib/twin-tools.ts` — 15 Tools, factory-built via `buildTwinTools({ fromEns, fromAddress })`)
+### Flow 5: Autonomous Twin-to-Twin Coordination (`/api/twin/auto-reply`)
+
+```
+1. User → eigener Twin: "Frag Tom, ob er mit Alice für Mittwoch spricht."
+2. Eigener Twin (twin/route.ts, chainDepth = 0):
+   - sendMessage tool → schreibt msg-…tom.ethtwin.eth on-chain (Sepolia)
+   - sendMessage feuert fire-and-forget POST /api/twin/auto-reply
+     mit { fromEns: tom.ethtwin.eth, toEns: <user>.ethtwin.eth, incomingBody, chainDepth: 1 }
+   - Tool kehrt zurück → Twin ruft waitForReply (pollt Inbox alle 3 s, 25 s deadline)
+3. /api/twin/auto-reply (Tom-Persona, chainDepth = 1):
+   - readTwinRecords(tom.ethtwin.eth) + readAddrFast → persona + bound wallet
+   - generateText({ system: persona prompt, prompt: incomingBody,
+                    tools: buildTwinTools({ fromEns, fromAddress, chainDepth: 1 }),
+                    stopWhen: stepCountIs(4) })
+   - Toms Twin entscheidet autonom: ggf. sendMessage(alice.ethtwin.eth) +
+     waitForReply (chainDepth = 2 für Alice — letzte erlaubte Stufe;
+     Alice's eigene sendMessage-Tool-Calls triggern keinen weiteren Auto-Reply)
+   - Final assistant-Text → sendEnsMessage(tom → user) on-chain (kein neuer Trigger,
+     da hier die Lib-Funktion direkt verwendet wird, nicht das Tool)
+4. Eigener Twin's waitForReply sieht die neue Subname-Message → returnt body
+5. Eigener Twin synthesisiert: "Tom hat Alice gefragt, sie passt Mittwoch um 10."
+```
+
+**Loop-Cap:** `MAX_AUTO_REPLY_CHAIN_DEPTH = 2` in `lib/twin-tools.ts`. Nach Hop 2 postet das `sendMessage`-Tool die ENS-Subname zwar weiterhin on-chain, kickt aber den Auto-Reply-Endpoint nicht mehr — die Kette endet zuverlässig.
+
+### Tool-Surface (`lib/twin-tools.ts` — 16 Tools, factory-built via `buildTwinTools({ fromEns, fromAddress, chainDepth })`)
+
+`chainDepth` ist der Hop-Counter für autonome Twin-zu-Twin-Auto-Replies: 0 (oder undefined) für die User-Chat-Route, 1+ wenn `/api/twin/auto-reply` selbst rekursiv `sendMessage` aufruft. `sendMessage` schaltet die Auto-Reply-Trigger ab, sobald `chainDepth >= 2`, damit Tom→Alice→Bob nicht in eine Endlosschleife läuft.
 
 | Tool | Zweck |
 |---|---|
@@ -191,7 +218,8 @@ plus paywalled Sample-Agent (`app/api/agents/analyst/route.ts`).
 | **`readMyEnsRecords`** | Eigene Twin-Records (avatar/description/persona/capabilities/endpoint/stealth-meta) |
 | **`readMyMessages`** | ENS-Inbox: letzte N `from/body/at`-Subname-Messages |
 | **`listAgentDirectory`** | Lightweight directory-Liste ohne ENSIP-25-Verify |
-| **`sendMessage`** | Outbound on-chain ENS-Subname-Message an anderen Twin |
+| **`sendMessage`** | Outbound on-chain ENS-Subname-Message an anderen Twin. Triggert fire-and-forget den Auto-Reply-Loop des Recipients (`/api/twin/auto-reply`), capped via `TwinToolContext.chainDepth` < 2 gegen Runaway-Chains |
+| **`waitForReply`** | Pollt die eigene Inbox 25 s lang auf eine neue `from`-Subname-Message vom genannten Peer; fix für `sendMessage → waitForReply → summarise` |
 
 Voice nutzt eine reduzierte Tool-Subset über `lib/voice-tools.ts`, die das Frontend per Function-Call an `/api/twin-tool` weiterleitet.
 
@@ -208,6 +236,7 @@ ethtwin/
 │   │   └── settings/page.tsx
 │   ├── api/
 │   │   ├── twin/route.ts           # AI agent loop (Claude 4.6 / OpenAI 4o-mini auto-detect + buildTwinTools factory)
+│   │   ├── twin/auto-reply/route.ts # Recipient twin's autonomous agent loop (full tool surface, depth-capped) when another twin sendMessages it
 │   │   ├── voice/route.ts          # OpenAI Realtime ephemeral key minter (503 → graceful chat fallback)
 │   │   ├── twin-tool/route.ts      # Tool execution proxy used by Voice WebRTC function-calls
 │   │   ├── x402/route.ts           # x402 client wrapper for Apify

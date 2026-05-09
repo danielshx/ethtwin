@@ -496,7 +496,7 @@ function AgentDetail({
 }) {
   // Postcard renderer: in demo mode, sends become large jargon-free cards.
   // Anything else falls through to the existing dev/explorer UI.
-  const demoMode = useDemoMode()
+  const [demoMode] = useDemoMode()
   if (
     demoMode &&
     output.ok &&

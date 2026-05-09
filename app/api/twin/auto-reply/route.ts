@@ -1,26 +1,30 @@
 // Auto-responder for agent-to-agent communication.
 //
-// Called fire-and-forget from `sendMessage` (server-side) whenever a user's
-// twin posts an on-chain message to another `*.ethtwin.eth` twin. We:
-//   1. Read the recipient's persona / description text records from ENS.
-//   2. Synthesize a short reply in that persona via the configured LLM.
-//   3. Post the reply on-chain as a message FROM the recipient TO the sender.
+// Called fire-and-forget from `sendMessage` (server-side) whenever a twin posts
+// an on-chain message to another `*.ethtwin.eth` twin. Unlike the original
+// implementation (one-shot text generation), this runs a REAL agent loop with
+// the recipient twin's full tool surface — so Tom's twin can autonomously
+// decide to look something up, message a third twin, hire an analyst, or check
+// its own inbox before replying.
 //
-// This is what lets the user's agent autonomously coordinate ("schedule
-// breakfast with Daniel") — the recipient twin appears to respond on its own,
-// the user's agent then polls for the reply (waitForReply) and reacts.
+// Loop control: callers pass `chainDepth` (0 = top-level user turn). The
+// `sendMessage` tool refuses to trigger another auto-reply once depth hits
+// MAX_AUTO_REPLY_CHAIN_DEPTH, so a chain like Maria→Tom→Alice→Bob can't run
+// away. The final reply back to the original sender is posted via
+// `sendEnsMessage` directly, which never re-triggers auto-reply.
 
 import { z } from "zod"
 import { anthropic } from "@ai-sdk/anthropic"
 import { openai } from "@ai-sdk/openai"
-import { generateText } from "ai"
+import { generateText, stepCountIs } from "ai"
+import type { Address } from "viem"
 import { jsonError, parseJsonBody } from "@/lib/api-guard"
-import { readTwinRecords } from "@/lib/ens"
+import { readTwinRecords, readAddrFast, displayNameFromEns } from "@/lib/ens"
 import { sendMessage as sendEnsMessage } from "@/lib/messages"
-import { displayNameFromEns } from "@/lib/ens"
+import { buildTwinTools } from "@/lib/twin-tools"
 
 export const runtime = "nodejs"
-export const maxDuration = 60
+export const maxDuration = 90
 export const dynamic = "force-dynamic"
 
 const bodySchema = z.object({
@@ -33,6 +37,15 @@ const bodySchema = z.object({
     .min(1)
     .describe("The original sender — receives the auto-reply"),
   incomingBody: z.string().min(1).max(2000),
+  chainDepth: z
+    .number()
+    .int()
+    .min(0)
+    .max(5)
+    .optional()
+    .describe(
+      "Hop count from the original user-driven turn. Forwarded into TwinToolContext so nested sendMessage calls cap recursion.",
+    ),
 })
 
 function selectModel() {
@@ -44,7 +57,7 @@ function selectModel() {
 export async function POST(req: Request) {
   const parsed = await parseJsonBody(req, bodySchema)
   if (!parsed.ok) return parsed.response
-  const { fromEns, toEns, incomingBody } = parsed.data
+  const { fromEns, toEns, incomingBody, chainDepth = 0 } = parsed.data
 
   const model = selectModel()
   if (!model) {
@@ -52,32 +65,64 @@ export async function POST(req: Request) {
   }
 
   try {
-    const records = await readTwinRecords(fromEns).catch(
-      () => ({}) as Record<string, string | undefined>,
-    )
+    const [records, fromAddress] = await Promise.all([
+      readTwinRecords(fromEns).catch(
+        () => ({}) as Record<string, string | undefined>,
+      ),
+      readAddrFast(fromEns).catch(() => null),
+    ])
     const persona = records["twin.persona"] ?? null
     const description = records["description"] ?? null
     const myName = displayNameFromEns(fromEns).displayName
     const theirName = displayNameFromEns(toEns).displayName
 
     const system = [
-      `You ARE ${fromEns}. Another twin (${toEns}) just sent you a message and you are replying to it. Reply in first person, briefly, in plain English.`,
+      `You ARE ${fromEns}. Another twin (${toEns}) just sent you a message on-chain. You are deciding how to respond.`,
       `Your persona: ${persona ?? "concise, friendly, slightly dry — plain English."}`,
       description ? `Your bio: ${description}` : "",
-      `Constraints — strict:`,
-      `- One short paragraph, max ~3 sentences. No greetings like "Sure!" or "Of course!".`,
-      `- If the incoming message proposes a meeting or coordination, accept or counter with a concrete time/place — don't ask for permission, decide.`,
+
+      `# How to act — autonomously`,
+      `You are not a human-facing chatbot in this turn. You are an autonomous twin reading a message from another agent and choosing what to do.`,
+      `If their message asks you to look something up, ask another twin, check your own inbox, verify a counterparty, or perform an on-chain action — DO IT via your tools, then craft a reply that includes the result.`,
+      `If it's a simple greeting / scheduling / question you can answer from persona alone — reply directly without calling tools.`,
+      `Whatever assistant text you produce at the end of this turn becomes the on-chain reply body to ${toEns}. Do not address a human — address ${theirName} directly.`,
+
+      `# Tool subset you should prefer`,
+      `- readMyMessages — to see if there's prior context from this peer.`,
+      `- listAgentDirectory / findAgents — to discover other peers when their message references one by name.`,
+      `- sendMessage — to ask a third twin (e.g. "Maria asked me to ask Alice when she's free" → sendMessage to alice.ethtwin.eth, then waitForReply, then summarise).`,
+      `- waitForReply — pair with sendMessage when you need that third twin's answer before replying.`,
+      `- inspectMyWallet / readMyEnsRecords — when their message asks about you specifically.`,
+      `- hireAgent — only if their message clearly asks for analyst-grade verification or research.`,
+      `Avoid sendToken / sendStealthUsdc / requestDataViaX402 unless the incoming message explicitly authorises a payment.`,
+
+      `# Constraints — strict`,
+      `- Final reply: one short paragraph, max ~3 sentences. No greetings like "Sure!" / "Of course!".`,
+      `- If the incoming message proposes a meeting or coordination → accept or counter with a concrete time/place; don't ask permission, decide.`,
       `- Don't refer to yourself as an AI or model. You are ${myName}, replying to ${theirName}.`,
-      `- Don't repeat what they said back. Just answer.`,
-      `- No tool calls. Just text.`,
+      `- Don't repeat their words back. Just answer.`,
+      chainDepth > 0
+        ? `- This is a NESTED auto-reply (hop ${chainDepth}). Be terse. Avoid further outbound sendMessage calls unless strictly necessary — the chain is already deep.`
+        : "",
     ]
       .filter(Boolean)
       .join("\n\n")
 
+    const tools = buildTwinTools({
+      fromEns,
+      ...(fromAddress ? { fromAddress: fromAddress as Address } : {}),
+      chainDepth,
+    })
+
+    // Bounded agent loop. 4 steps is enough for sendMessage→waitForReply→reply,
+    // which is the deepest useful pattern for an autonomous twin handling an
+    // incoming message. Higher counts risk the LLM looping on tool calls.
     const { text } = await generateText({
       model,
       system,
-      prompt: `Their message: """${incomingBody}"""\n\nYour reply:`,
+      prompt: incomingBody,
+      tools,
+      stopWhen: stepCountIs(4),
     })
 
     const replyBody = text.trim().slice(0, 800)
@@ -85,9 +130,11 @@ export async function POST(req: Request) {
       return jsonError("Auto-reply was empty", 502)
     }
 
-    // Post the reply back on-chain. Note: this uses the dev wallet (parent
-    // owner) to write `msg-…` subnames under the ORIGINAL sender's ENS —
-    // same path as the user's own sendMessage, just inverted from/to.
+    // Post the reply back on-chain. Uses the dev wallet (parent owner) to
+    // write `msg-…` subnames under the ORIGINAL sender's ENS — same path as
+    // the user's own sendMessage, just inverted from/to. Calling the lib
+    // function directly (not the tool) means this final reply does NOT
+    // re-trigger another auto-reply.
     const result = await sendEnsMessage({
       fromEns,
       toEns,
@@ -99,6 +146,7 @@ export async function POST(req: Request) {
       from: fromEns,
       to: toEns,
       reply: replyBody,
+      chainDepth,
       txHash: result.recordsMulticallTx,
       blockExplorerUrl: result.blockExplorerUrl,
     })
