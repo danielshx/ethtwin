@@ -16,7 +16,9 @@ import { StealthSend } from "@/components/stealth-send"
 import { History } from "@/components/history"
 import { VoiceTwin } from "@/components/voice-twin"
 import { NotificationPanel } from "@/components/notification-panel"
+import { MariaShell } from "@/components/maria-shell"
 import { addHistoryEntry } from "@/lib/history"
+import { useDemoMode } from "@/lib/use-demo-mode"
 import { Toaster } from "@/components/ui/sonner"
 import { toast } from "sonner"
 
@@ -54,6 +56,7 @@ function App() {
   const { connectWallet } = useConnectWallet()
   const [session, setSession] = useState<SessionState | null>(null)
   const [hydrated, setHydrated] = useState(false)
+  const demoMode = useDemoMode()
 
   useEffect(() => {
     try {
@@ -163,18 +166,22 @@ function App() {
             <Sparkles className="h-4 w-4" />
           </span>
           <span className="text-lg font-semibold tracking-tight">EthTwin</span>
-          <Badge
-            variant="secondary"
-            className="hidden font-mono text-[10px] sm:inline-flex"
-          >
-            ETHPrague 2026
-          </Badge>
+          {!demoMode ? (
+            <Badge
+              variant="secondary"
+              className="hidden font-mono text-[10px] sm:inline-flex"
+            >
+              ETHPrague 2026
+            </Badge>
+          ) : null}
         </div>
         {session ? (
           <div className="flex items-center gap-3 text-sm">
-            <span className="font-mono text-xs text-muted-foreground">
-              {session.ensName}
-            </span>
+            {!demoMode ? (
+              <span className="font-mono text-xs text-muted-foreground">
+                {session.ensName}
+              </span>
+            ) : null}
             <Button variant="ghost" size="sm" onClick={handleSignOut}>
               <LogOut className="h-4 w-4" />
             </Button>
@@ -185,7 +192,7 @@ function App() {
       <section className="relative z-10 mx-auto flex w-full max-w-5xl flex-col items-center gap-10 px-6 pb-16 pt-4 sm:px-10">
         {!session ? (
           <>
-            <Hero />
+            <Hero demoMode={demoMode} />
             <OnboardingFlow
               parentDomain={PARENT_DOMAIN}
               isAuthenticated={privy.authenticated}
@@ -195,6 +202,12 @@ function App() {
               onComplete={handleComplete}
             />
           </>
+        ) : demoMode ? (
+          <MariaShell
+            ensName={session.ensName}
+            walletAddress={smartWalletAddress ?? session.smartWalletAddress}
+            getAuthToken={() => privy.getAccessToken().catch(() => null)}
+          />
         ) : (
           <SignedInTabs
             session={session}
@@ -203,7 +216,7 @@ function App() {
           />
         )}
       </section>
-      {session ? (
+      {session && !demoMode ? (
         <NotificationPanel
           ensName={session.ensName}
           walletAddress={smartWalletAddress ?? session.smartWalletAddress}
@@ -338,7 +351,34 @@ function MissingEnv() {
   )
 }
 
-function Hero() {
+function Hero({ demoMode = false }: { demoMode?: boolean }) {
+  if (demoMode) {
+    return (
+      <div className="flex flex-col items-center gap-3 text-center">
+        <motion.h1
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+          className="text-4xl font-semibold tracking-tight sm:text-5xl"
+        >
+          Crypto for everyone —{" "}
+          <span className="bg-gradient-to-r from-primary to-amber-500 bg-clip-text text-transparent">
+            even my grandma
+          </span>
+          .
+        </motion.h1>
+        <motion.p
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.1 }}
+          className="max-w-xl text-base text-muted-foreground sm:text-lg"
+        >
+          Built for humans, not engineers. Voice. Names instead of addresses.
+          Private by default.
+        </motion.p>
+      </div>
+    )
+  }
   return (
     <div className="flex flex-col items-center gap-3 text-center">
       <motion.h1
@@ -365,11 +405,13 @@ function Hero() {
 }
 
 function BackgroundGlow() {
+  // In maria-mode the body gradient (see globals.css) carries the warm wash;
+  // these purple blobs would clash, so we hide them via the maria-mode class.
   return (
     <>
       <div
         aria-hidden
-        className="pointer-events-none absolute -top-40 left-1/2 h-[40rem] w-[40rem] -translate-x-1/2 rounded-full opacity-50 blur-3xl"
+        className="pointer-events-none absolute -top-40 left-1/2 h-[40rem] w-[40rem] -translate-x-1/2 rounded-full opacity-50 blur-3xl background-glow"
         style={{
           background:
             "radial-gradient(circle, oklch(0.6 0.2 290 / 0.5), transparent 65%)",
@@ -377,7 +419,7 @@ function BackgroundGlow() {
       />
       <div
         aria-hidden
-        className="pointer-events-none absolute bottom-[-20rem] right-[-10rem] h-[30rem] w-[30rem] rounded-full opacity-40 blur-3xl"
+        className="pointer-events-none absolute bottom-[-20rem] right-[-10rem] h-[30rem] w-[30rem] rounded-full opacity-40 blur-3xl background-glow"
         style={{
           background:
             "radial-gradient(circle, oklch(0.6 0.18 320 / 0.4), transparent 70%)",

@@ -120,6 +120,11 @@ export function VoiceTwin({
   const renewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const sessionRef = useRef<VoiceSession | null>(null)
   const scrollRef = useRef<HTMLDivElement | null>(null)
+  // FIFO of placeholder-IDs we pushed on speech_stopped. Whisper transcripts
+  // arrive after the assistant has already started speaking, so we reserve the
+  // slot now and fill it in when the transcription event lands — otherwise the
+  // assistant's reply renders ABOVE the user's question.
+  const pendingUserSlotsRef = useRef<string[]>([])
 
   // Auto-scroll transcript area when new content arrives.
   useEffect(() => {
@@ -154,6 +159,7 @@ export function VoiceTwin({
       audioElRef.current.srcObject = null
     }
     sessionRef.current = null
+    pendingUserSlotsRef.current = []
   }, [])
 
   useEffect(() => {
@@ -220,7 +226,7 @@ export function VoiceTwin({
       session: {
         modalities: ["audio", "text"],
         voice: "alloy",
-        input_audio_transcription: { model: "whisper-1" },
+        input_audio_transcription: { model: "whisper-1", language: "en" },
         tools,
         tool_choice: "auto",
       },
@@ -288,18 +294,41 @@ export function VoiceTwin({
         case "input_audio_buffer.speech_started":
           setState("listening")
           break
-        case "input_audio_buffer.speech_stopped":
+        case "input_audio_buffer.speech_stopped": {
           setState("thinking")
+          // Reserve a user slot now. The assistant's transcript deltas can
+          // arrive before Whisper finishes — without this slot the reply
+          // would render above the question.
+          const placeholderId = `pending-user-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+          pendingUserSlotsRef.current.push(placeholderId)
+          setTranscripts((prev) => [
+            ...prev,
+            { id: placeholderId, role: "user", text: "…", partial: true },
+          ])
           break
+        }
         case "conversation.item.input_audio_transcription.completed": {
           const e = evt as Extract<
             RealtimeServerEvent,
             { type: "conversation.item.input_audio_transcription.completed" }
           >
-          setTranscripts((prev) => [
-            ...prev,
-            { id: e.item_id, role: "user", text: e.transcript },
-          ])
+          const placeholderId = pendingUserSlotsRef.current.shift()
+          setTranscripts((prev) => {
+            if (placeholderId) {
+              const idx = prev.findIndex((t) => t.id === placeholderId)
+              if (idx !== -1) {
+                const next = [...prev]
+                next[idx] = {
+                  id: e.item_id,
+                  role: "user",
+                  text: e.transcript,
+                  partial: false,
+                }
+                return next
+              }
+            }
+            return [...prev, { id: e.item_id, role: "user", text: e.transcript }]
+          })
           break
         }
         case "response.audio_transcript.delta": {

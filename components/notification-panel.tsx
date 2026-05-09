@@ -7,7 +7,8 @@
 // the user never has to switch to the History tab to know "did anything
 // happen?". A bell badge counts unread items since the last open.
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
+import { useTwinSound } from "@/lib/use-twin-sound"
 import { motion, AnimatePresence } from "framer-motion"
 import {
   ArrowDownLeft,
@@ -55,11 +56,21 @@ export function NotificationPanel({ ensName, walletAddress, className }: Props) 
   )
   // Open by default — the feature only earns its real estate when it's visible.
   const [open, setOpen] = useState(true)
+  const sound = useTwinSound()
+  const lastSeenCount = useRef(items.length)
 
   // Marking-as-read on open keeps the badge from re-popping every render.
   useEffect(() => {
     if (open) markAllRead()
   }, [open, items.length, markAllRead])
+
+  // Play a soft ding whenever new items land (Tom's reply, incoming tx).
+  useEffect(() => {
+    if (items.length > lastSeenCount.current) {
+      sound.play("receive", 0.45)
+    }
+    lastSeenCount.current = items.length
+  }, [items.length, sound])
 
   if (!ensName) return null
 

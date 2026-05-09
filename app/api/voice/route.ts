@@ -66,7 +66,11 @@ export async function POST(req: Request) {
     // Fresh twin or ENS read flake — fall back to defaults.
   }
 
-  const systemPrompt = buildSystemPrompt(records, ensName)
+  const systemPrompt = [
+    buildSystemPrompt(records, ensName),
+    `# Language`,
+    `Always speak and respond in English, regardless of the language the user speaks to you in. If the user addresses you in another language, understand them but reply in English.`,
+  ].join("\n\n")
 
   let res: Response
   try {
@@ -81,7 +85,7 @@ export async function POST(req: Request) {
         voice: REALTIME_VOICE,
         instructions: systemPrompt,
         modalities: ["audio", "text"],
-        input_audio_transcription: { model: "whisper-1" },
+        input_audio_transcription: { model: "whisper-1", language: "en" },
       }),
     })
   } catch (error) {

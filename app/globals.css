@@ -138,3 +138,63 @@ body {
     @apply font-sans;
   }
 }
+
+/* Maria-Mode — warm, large, jargon-free aesthetic for the demo persona.
+   Toggle via NEXT_PUBLIC_DEMO_MODE=1 or ?demoMode=1.
+   Activates a soft cream/coral/sage palette and bumps interactive sizing. */
+html.maria-mode {
+  --background: oklch(0.97 0.02 80);
+  --foreground: oklch(0.22 0.04 30);
+  --card: oklch(1 0.01 80);
+  --card-foreground: oklch(0.22 0.04 30);
+  --popover: oklch(1 0.01 80);
+  --popover-foreground: oklch(0.22 0.04 30);
+  --primary: oklch(0.68 0.16 25);
+  --primary-foreground: oklch(0.99 0.01 80);
+  --secondary: oklch(0.93 0.04 80);
+  --secondary-foreground: oklch(0.22 0.04 30);
+  --muted: oklch(0.93 0.03 70);
+  --muted-foreground: oklch(0.45 0.04 40);
+  --accent: oklch(0.85 0.08 145);
+  --accent-foreground: oklch(0.22 0.04 30);
+  --destructive: oklch(0.6 0.22 25);
+  --border: oklch(0.85 0.04 70 / 70%);
+  --input: oklch(0.9 0.03 70);
+  --ring: oklch(0.68 0.16 25);
+  --radius: 1rem;
+  color-scheme: light;
+}
+
+html.maria-mode body {
+  background:
+    radial-gradient(circle at 20% 10%, oklch(0.94 0.06 40 / 0.7), transparent 55%),
+    radial-gradient(circle at 80% 90%, oklch(0.93 0.07 145 / 0.5), transparent 60%),
+    oklch(0.97 0.02 80);
+  color: var(--foreground);
+}
+
+html.maria-mode {
+  font-size: 17px;
+}
+
+html.maria-mode button,
+html.maria-mode .maria-tap {
+  min-height: 56px;
+  font-size: 1.05rem;
+}
+
+html.maria-mode .maria-hero-tap {
+  min-height: 80px;
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+html.maria-mode h1,
+html.maria-mode h2 {
+  letter-spacing: -0.02em;
+}
+
+html.maria-mode .background-glow {
+  display: none;
+}

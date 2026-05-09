@@ -3,6 +3,8 @@
 > **Purpose:** A pre-recorded 3-min video that plays in Tab 4 as a fallback if the live demo collapses (Wifi, mic, RPC, Apify, anything).
 >
 > **Rule:** This video is *insurance*, not the show. Record it the night before. If live works, never play it.
+>
+> **⚠️ Pivot 2026-05-09:** Story neu auf **Maria/Tom** geschärft. Aufnahme **muss** dieselben Beats wie `docs/06-Demo-Skript.md` haben — kein "Twin pays Apify $XYZ"-Sentiment-Beat mehr, stattdessen Maria→Tom-Send + Verify-Beat + Reveal. Die Shot List unten ist noch auf den alten Skript-Stand und muss vor der Aufnahme überarbeitet werden.
 
 ---
 
