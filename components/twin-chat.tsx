@@ -36,6 +36,10 @@ type TwinChatProps = {
   /** Required when editable so the dialog can sign the on-chain text-record
    *  update with the viewer's Privy session. */
   getAuthToken?: () => Promise<string | null>
+  /** Seed a one-shot prompt the chat will auto-send on next mount or when
+   *  the value changes. Used by Maria-Shell's quick-send tap cards. */
+  seedPrompt?: string | null
+  onSeedConsumed?: () => void
 }
 
 // Reads the env var Next.js inlines at build time so the badge auto-adapts
@@ -115,7 +119,13 @@ function clearChatHistory(ens: string) {
   }
 }
 
-export function TwinChat({ ensName, className, getAuthToken }: TwinChatProps) {
+export function TwinChat({
+  ensName,
+  className,
+  getAuthToken,
+  seedPrompt,
+  onSeedConsumed,
+}: TwinChatProps) {
   const transport = useMemo(
     () =>
       new DefaultChatTransport({
@@ -161,6 +171,16 @@ export function TwinChat({ ensName, className, getAuthToken }: TwinChatProps) {
     if (!node) return
     node.scrollTo({ top: node.scrollHeight, behavior: "smooth" })
   }, [messages])
+
+  // Quick-send seed: when Maria-Shell pushes a phrase, fire it once and
+  // signal upstream so the same phrase doesn't replay on every re-render.
+  const seededRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!seedPrompt || seededRef.current === seedPrompt) return
+    seededRef.current = seedPrompt
+    sendMessage({ text: seedPrompt })
+    onSeedConsumed?.()
+  }, [seedPrompt, sendMessage, onSeedConsumed])
 
   function onSubmit(e: React.FormEvent) {
     e.preventDefault()

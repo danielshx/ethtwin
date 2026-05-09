@@ -8,9 +8,10 @@
 // (EIP-5564 stealth, ENS resolution, cosmic-seed flag, Base Sepolia tx).
 // This is the visual bridge to the Pitch's Reveal-Beat ("what Maria didn't see").
 
-import { useEffect, useState } from "react"
+import { useEffect, useId, useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { useTwinSound } from "@/lib/use-twin-sound"
+import { SendCelebration } from "@/components/send-celebration"
 import {
   Check,
   ChevronDown,
@@ -68,6 +69,8 @@ export function ReceiptPostcard({
   const friendly = recipientEnsName ? recipientEnsName.split(".")[0] : "recipient"
   const fiat = fiatLabel(amount)
   const sound = useTwinSound()
+  const cardId = useId()
+  const cardClassId = `receipt-${cardId.replace(/[:#]/g, "")}`
 
   useEffect(() => {
     sound.play("done", 0.4)
@@ -80,8 +83,13 @@ export function ReceiptPostcard({
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.45, ease: "easeOut" }}
-      className={`mx-auto w-full max-w-md ${className}`}
+      className={`mx-auto w-full max-w-md ${className} ${cardClassId}`}
+      data-receipt-id={cardClassId}
     >
+      <SendCelebration
+        trigger={txHash ?? cardClassId}
+        originSelector={`.${cardClassId}`}
+      />
       <div className="relative">
         {/* Front: warm postcard. Slides up + fades when X-ray opens. */}
         <motion.div

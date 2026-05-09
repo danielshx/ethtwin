@@ -60,18 +60,19 @@ Sub: *"The first crypto interface built for humans, not engineers."*
 
 ---
 
-### [0:20 – 0:55] Send Beat — Voice → Stealth-Send
+### [0:20 – 0:55] Send Beat — Voice → Send
 
-**Cut zu Tab 1 (Maria's Phone-View).**
+**Cut zu Tab 1 (Maria's Phone-View, `?demoMode=1`).**
 
 | t | Aktion | Was sichtbar ist |
 |---|---|---|
-| 0:20 | Maria öffnet App, Face-ID-Touch | Login → maria.ethtwin.eth Avatar groß |
-| 0:25 | Voice-Button gedrückt, Maria sagt: *"Send Tom 100 dollars"* | Listening-Orb pulst |
-| 0:33 | Twin antwortet (voice + visual): *"Sending 100 USDC to tom.ethtwin.eth — that's Tom Schmidt, your grandson. Confirm?"* | Plain-English-Card mit Tom-Avatar, ENS-Name, Beziehungs-Hint |
-| 0:42 | Maria Face-ID-Touch | Passkey-Approval-Toast |
-| 0:45 | **Cosmic-Orb Mikro-Pulse** (1.5 s) während Stealth-Send | Subtile Animation, kein eigener Tab |
-| 0:50 | "✓ Sent" Card | Tx-Hash-Pill (klickbar im Reveal), Confetti optional |
+| 0:20 | Maria öffnet App, Face-ID-Touch | Login → MariaShell mit großem breathing Avatar + Gamification-Pills |
+| 0:23 | (Optional) Tap auf Tom-Quick-Send-Card mit "$100" | Phrase wird in Chat geseedet — Voice-Button als Alternative |
+| 0:25 | ODER: Voice-Button, Maria sagt: *"Send Tom 100 dollars"* | Listening-Orb pulst |
+| 0:33 | Twin antwortet (voice + visual): *"Sending 100 dollars to tom.ethtwin.eth — that's Tom, your grandson. Confirm?"* | Plain-English-Card mit Tom-Avatar |
+| 0:42 | Maria Face-ID-Touch | Passkey-Approval |
+| 0:45 | **Cosmic-Pulse + Confetti** beim Postcard-Mount (T1-39) | Warm radial overlay (1.5s) + 80 Coral/Amber/Sage-Particle-Shower |
+| 0:50 | **Receipt-Postcard** rendert | Großer Tom-Avatar, "100 dollars · sent to tom · just now", Show-what-really-happened-Toggle |
 
 **Sprecher währenddessen:**
 > *"Eine Anweisung, ein Touch, fertig. Maria sieht keine Hex-Adressen, keine Gas-Fees, keine Seed-Phrasen. Nur Tom."*
@@ -111,7 +112,7 @@ Sub: *"The first crypto interface built for humans, not engineers."*
 
 ### [1:50 – 2:40] **REVEAL BEAT** — alle Bounties einlösen
 
-**Cut. Schwarzer Screen. 2-Sekunden-Pause.**
+**Maria tippt auf "Show what really happened"** — Receipt-Postcard peelt nach hinten, X-ray-Layer enthüllt sich auf der gleichen Karte. **Dann Cut auf großen Slide.**
 
 > *"Was Maria nicht gesehen hat:"*
 
@@ -121,11 +122,13 @@ Sub: *"The first crypto interface built for humans, not engineers."*
 >
 > ✓ **Keine Hex-Adressen.** Jeder Mensch hat einen ENS-Twin. `maria.ethtwin.eth`, `tom.ethtwin.eth` — auf Sepolia ENS, on-chain.
 >
-> ✓ **Privatsphäre by default.** Marias 100 USDC gingen an eine **EIP-5564 Stealth Address**. Niemand außer Tom kann sie auslesen.
+> ✓ **Privatsphäre verfügbar.** Wenn Maria *"send privately"* sagt, geht der Send durch eine **EIP-5564 Stealth Address** mit `stealth-meta-address` Text Record auf Toms ENS. Show-Tab "Private send" demonstriert das live.
 >
-> ✓ **Randomness aus dem Weltall.** Die Stealth-Adresse wurde mit echter cTRNG-Entropie aus einem Orbitport-Satelliten geseedet. Nicht VRF, nicht pseudo-random. Echtes cosmic noise.
+> ✓ **Randomness aus dem Weltall.** Die Stealth-Adresse wird mit echter cTRNG-Entropie aus einem Orbitport-Satelliten geseedet. Nicht VRF, nicht pseudo-random. Echtes cosmic noise.
 >
 > ✓ **Agent-zu-Agent Vertrauen.** Marias Twin hat den analyst-Agent über **ENSIP-25 + ERC-8004 IdentityRegistry** verifiziert und über **x402** bezahlt — alles auf Base, alles on-chain.
+
+**Hinweis (intern):** Stealth ist seit 2026-05-09 OPT-IN nicht Default — Marias normaler "Send Tom 100" geht über `sendToken` (Sepolia USDC, EIP-5564 inactive). Für den Reveal entweder a) im Demo-Skript einen zweiten Send mit "send privately" zeigen, oder b) die Stealth-Capability beim Reveal als "available on demand" framen statt "happened automatically".
 
 **Sprecher abschließend:**
 > *"Crypto isn't hard. It's just been built for engineers. Until now."*

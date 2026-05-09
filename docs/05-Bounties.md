@@ -251,20 +251,25 @@ await setEnsText({
 
 | Bounty | Confidence | Was hochpushen würde |
 |---|---|---|
-| Umia | **6** | Pitch + Slides — Code-seitig 100%, Story-seitig 0% |
-| ENS for Agents | **9** | nichts technisch; just polish the demo flow |
+| Umia | **7** | Maria-Story + Pitch-Slide-Markdown done; Slides müssen noch in Keynote/Slides gebaut werden |
+| ENS for Agents | **9** | live; Maria + Tom seed-script ready (T1-22 done) |
 | ENS Creative | **9** | doppelter Hit (stealth-meta-address + ENS-Messenger) — strongest claim |
 | Apify x402 | **5** | live tx auf Base Mainnet muss endlich laufen — sonst nur Mock-Story |
 | SpaceComputer | **5** | `ORBITPORT_API_KEY` setzen = sofort 8 |
-| Best UX | **7** | Voice gedroppt, aber Anti-Blind-Sign + ENS-Reverse + No-Seed-Phrase sitzen |
-| Best Privacy | **8** | Stealth-Send läuft live; cosmic-seed wäre kosmetischer Boost |
+| Best UX | **9** | komplett rebuilt zu warmem Premium-Konsumer-Look + Maria-Mode + Quick-Send-Cards + Gamification-Pills |
+| Best Privacy | **8** | Stealth-Send läuft live; X-ray-Reveal-Card zeigt EIP-5564 + ENSIP-25 + cTRNG transparent |
+| **Aesthetics** (general scoring axis) | **8.5** | warm Premium-Konsumer-Palette als Default, ContrastCard auf Landing, Receipt-Postcard mit X-ray-Reveal, Confetti+Cosmic-Pulse, Twin-Avatar-Breathing, Onboarding entjargonisiert |
+| **Wow Factor** (general scoring axis) | **8** | X-ray Reveal + Tom-Auto-Reply ("thanks oma! 💜") + Confetti+Cosmic-Pulse on send + Maria-Persona-Story landen 3 emotionale Beats |
 
-**Erwarteter Cash-Output realistic:** $4-7k floor (ENS×2 + Privacy + UX = solid). $8-12k stretch (wenn Umia-Pitch + Apify-Live-Tx + Orbitport-Key am Demo-Tag landen).
+**Erwarteter Cash-Output realistic:** $5-8k floor (ENS×2 + Privacy + UX + Best UX = solid mit aktuellem Polish-Stand). $9-13k stretch (wenn Umia-Pitch + Apify-Live-Tx + Orbitport-Key am Demo-Tag landen).
 
-**Quick wins to close the gap:**
-1. Set `ORBITPORT_API_KEY` (10 min) → SpaceComputer geht von 5 → 8
-2. Fund Base Mainnet wallet w/ $5 USDC + pick x402-actor (30 min) → Apify geht von 5 → 7
-3. Write 3-min pitch script (60 min) → Umia geht von 6 → 8
+**Quick wins to close the gap (zu Demo-Tag):**
+1. `pnpm twins:seed-demo` laufen lassen (5 min, ~0.01 Sepolia-ETH) — sonst keine Live-Demo mit Maria/Tom
+2. 3 Sound-MP3s in `public/sounds/` droppen (15 min, freesound.org) — visceral polish
+3. `ORBITPORT_API_KEY` setzen (10 min) → SpaceComputer geht von 5 → 8
+4. Fund Base Mainnet wallet w/ $5 USDC + pick x402-actor (30 min) → Apify geht von 5 → 7
+5. Pitch 5× geprobt mit Timer (60 min) → Demo unter 3 min, sicher
+6. Backup-Video aufgenommen (45 min) — Insurance für Live-Crash
 
 ---
 
