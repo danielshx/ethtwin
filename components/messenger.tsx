@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { motion } from "framer-motion"
 import { Loader2, Mail, Search, Send, Users } from "lucide-react"
 import { toast } from "sonner"
@@ -14,6 +14,7 @@ import { displayNameFromEns } from "@/lib/ens"
 import { cn } from "@/lib/utils"
 import { AgentProfileDialog } from "@/components/agent-profile"
 import { EnsAvatar } from "@/components/ens-avatar"
+import { BountyTrail } from "@/components/bounty-trail"
 
 type AgentEntry = {
   ens: string
@@ -135,6 +136,15 @@ export function Messenger({ myEnsName, getAuthToken, className }: MessengerProps
     if (!selected) return []
     return [...chainMessages, ...pendingMessages].sort((a, b) => a.at - b.at)
   }, [chainMessages, pendingMessages, selected])
+
+  // Auto-scroll the message list to the newest item whenever the thread
+  // grows (new chain message landed or optimistic message pushed). The ref
+  // points to a trailing sentinel rendered after the last bubble.
+  const threadEndRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    if (!selected) return
+    threadEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" })
+  }, [thread.length, selected])
 
   // Load agent directory once on mount.
   const loadAgents = useCallback(async () => {
@@ -491,9 +501,11 @@ export function Messenger({ myEnsName, getAuthToken, className }: MessengerProps
                   </span>
                 </div>
               </button>
-              <Badge variant="secondary" className="ml-auto font-mono text-[10px]">
-                ENS-native
-              </Badge>
+              <BountyTrail
+                tags={["ens", "ctrng", "kms"]}
+                className="ml-auto"
+                showLabel={false}
+              />
             </>
           ) : (
             <div className="flex items-center gap-2">
@@ -516,11 +528,16 @@ export function Messenger({ myEnsName, getAuthToken, className }: MessengerProps
               </div>
             ) : thread.length === 0 ? (
               <div className="mx-auto max-w-xs rounded-lg bg-card/80 px-4 py-6 text-center text-sm text-muted-foreground">
-                No messages yet. Say hi — every message you send becomes a sub-subname under{" "}
-                <code className="font-mono text-xs text-foreground/80">{selected}</code> on Sepolia ENS.
+                No messages yet. Say hi — every message lives in a chat
+                sub-subdomain under{" "}
+                <code className="font-mono text-xs text-foreground/80">{myEnsName}</code> on Sepolia ENS.
               </div>
             ) : (
-              renderThreadWithDateSeparators(thread, myEnsName)
+              <>
+                {renderThreadWithDateSeparators(thread, myEnsName)}
+                {/* Sentinel for auto-scroll-to-newest. */}
+                <div ref={threadEndRef} aria-hidden />
+              </>
             )}
           </div>
         </ScrollArea>
@@ -554,7 +571,12 @@ export function Messenger({ myEnsName, getAuthToken, className }: MessengerProps
               </Button>
             </div>
             <p className="mt-1.5 px-1 font-mono text-[10px] text-muted-foreground">
-              Stored on-chain · creates <span className="text-foreground/70">msg-…{".".concat(selected)}</span> · ~24s
+              Stored on-chain · text record on{" "}
+              <span className="text-foreground/70">
+                chat-{displayNameFromEns(selected).displayName.toLowerCase()}.
+                {myEnsName.split(".")[0]}.ethtwin.eth
+              </span>{" "}
+              · stealth-encrypted · ~24s
             </p>
           </form>
         ) : null}

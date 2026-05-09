@@ -7,6 +7,18 @@ import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { clearHistory, useHistory, type HistoryEntry, type HistoryKind } from "@/lib/history"
+import { BountyTrail, type BountyTag } from "@/components/bounty-trail"
+
+// Mapping of action → which bounty integrations participated. Used by the
+// history Row to surface a "powered by" trail under each entry, matching
+// the per-action chips on the live UI surfaces.
+const KIND_BOUNTY_TAGS: Record<HistoryKind, BountyTag[]> = {
+  mint: ["ens", "ensip25", "kms", "ctrng", "stealth"],
+  message: ["ens", "ctrng", "kms"],
+  "stealth-send": ["ens", "stealth", "ctrng", "kms"],
+  transfer: ["ens", "kms"],
+  other: [],
+}
 import { cn } from "@/lib/utils"
 
 type FilterKind = HistoryKind | "all"
@@ -429,6 +441,13 @@ function Row({
               {entry.errorMessage}
             </p>
           )}
+          {!failed && KIND_BOUNTY_TAGS[entry.kind].length > 0 ? (
+            <BountyTrail
+              tags={KIND_BOUNTY_TAGS[entry.kind]}
+              className="mt-1.5"
+              showLabel={false}
+            />
+          ) : null}
           <div className="mt-1 flex flex-wrap items-center gap-3 font-mono text-[10px] text-muted-foreground">
             <span>{ts}</span>
             {entry.explorerUrl && (

@@ -9,7 +9,6 @@ import { Input } from "@/components/ui/input"
 import { OnboardingFlow, type OnboardingResult } from "@/components/onboarding-flow"
 import { TwinChat } from "@/components/twin-chat"
 import { Messenger } from "@/components/messenger"
-import { TokenTransfer } from "@/components/token-transfer"
 import { StealthSend } from "@/components/stealth-send"
 import { History } from "@/components/history"
 import { VoiceTwin } from "@/components/voice-twin"
@@ -342,8 +341,11 @@ function SignedInTabs({
   session: Session
   onTwinDeleted?: () => void
 }) {
+  // The "Send" tab is the stealth flow only — every payment goes via
+  // EIP-5564 stealth addresses seeded from Orbitport cTRNG, signed by
+  // SpaceComputer KMS. The non-stealth transfer tab was removed.
   const [tab, setTab] = useState<
-    "chat" | "voice" | "messenger" | "transfer" | "stealth" | "history"
+    "chat" | "voice" | "messenger" | "send" | "history"
   >("chat")
   return (
     <div className="flex w-full max-w-3xl flex-col gap-4">
@@ -354,8 +356,7 @@ function SignedInTabs({
           { value: "chat", label: "Chat" },
           { value: "voice", label: "Voice" },
           { value: "messenger", label: "Messages" },
-          { value: "transfer", label: "Send" },
-          { value: "stealth", label: "Private send" },
+          { value: "send", label: "Send" },
           { value: "history", label: "Activity" },
         ]}
       />
@@ -379,13 +380,7 @@ function SignedInTabs({
           getAuthToken={NO_AUTH_TOKEN}
           className="w-full border-border/60 bg-card shadow-sm"
         />
-      ) : tab === "transfer" ? (
-        <TokenTransfer
-          myEnsName={session.ens}
-          getAuthToken={NO_AUTH_TOKEN}
-          className="w-full border-border/60 bg-card shadow-sm"
-        />
-      ) : tab === "stealth" ? (
+      ) : tab === "send" ? (
         <StealthSend
           myEnsName={session.ens}
           getAuthToken={NO_AUTH_TOKEN}

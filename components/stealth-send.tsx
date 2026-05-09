@@ -26,6 +26,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { CosmicOrb } from "@/components/cosmic-orb"
 import { AgentProfileDialog } from "@/components/agent-profile"
 import { EnsAvatar } from "@/components/ens-avatar"
+import { BountyTrail } from "@/components/bounty-trail"
 import { addHistoryEntry } from "@/lib/history"
 import { cn } from "@/lib/utils"
 
@@ -411,6 +412,14 @@ function ResultCard({
           <span className="text-amber-300">⚠ stealth SDK fell back to mock</span>
         ) : null}
       </div>
+      <BountyTrail
+        tags={
+          result.cosmicSeeded
+            ? ["ens", "stealth", "ctrng", "kms"]
+            : ["ens", "stealth", "kms"]
+        }
+        className="pt-1"
+      />
     </motion.div>
   )
 }

@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { CosmicOrb, useCosmicSeed } from "./cosmic-orb"
+import { BountyTrail } from "./bounty-trail"
 import { cn } from "@/lib/utils"
 
 export type OnboardingResult = {
@@ -322,6 +323,10 @@ export function OnboardingFlow({
                 <Badge variant="secondary" className="font-mono text-[10px]">
                   ENSIP-25 · stealth-meta-address set · KMS-signed
                 </Badge>
+                <BountyTrail
+                  tags={["ens", "ensip25", "kms", "ctrng", "stealth"]}
+                  className="justify-center"
+                />
                 {recoveryCode ? (
                   <div className="mt-2 w-full max-w-md rounded-lg border border-primary/40 bg-primary/5 p-4 text-left">
                     <div className="mb-1.5 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-primary">
