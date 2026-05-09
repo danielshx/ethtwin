@@ -11,6 +11,7 @@
 import { isAddress, getAddress, type Address, type Hex } from "viem"
 import { jsonError } from "@/lib/api-guard"
 import { decodeTx } from "@/lib/tx-decoder"
+import { readAddrFast } from "@/lib/ens"
 
 export const runtime = "nodejs"
 export const maxDuration = 15
@@ -113,14 +114,29 @@ async function fetchTxsForChain(
 export async function GET(req: Request) {
   const url = new URL(req.url)
   const address = url.searchParams.get("address")
+  const ens = url.searchParams.get("ens")
   const chainsParam = url.searchParams.get("chains") ?? "sepolia,base-sepolia"
-  const limitParam = url.searchParams.get("limit") ?? "20"
+  const limitParam = url.searchParams.get("limit") ?? "50"
 
-  if (!address || !isAddress(address)) {
-    return jsonError("?address=<0x…> is required", 400)
+  // Resolve `ens=name.ethtwin.eth` to its on-chain `addr` text record so
+  // the History tab is canonically the activity of the agent's ENS-bound
+  // wallet, not whatever wallet happens to be connected in the browser.
+  let checksummed: Address
+  let resolvedFromEns: string | null = null
+  if (ens) {
+    const resolved = await readAddrFast(ens).catch(() => null)
+    if (!resolved || !isAddress(resolved)) {
+      return jsonError(`Could not resolve addr record for ${ens}`, 404)
+    }
+    checksummed = getAddress(resolved) as Address
+    resolvedFromEns = ens
+  } else if (address && isAddress(address)) {
+    checksummed = getAddress(address) as Address
+  } else {
+    return jsonError("?address=<0x…> or ?ens=<name.ethtwin.eth> is required", 400)
   }
-  const limit = Math.min(50, Math.max(1, Number(limitParam) || 20))
-  const checksummed = getAddress(address) as Address
+
+  const limit = Math.min(50, Math.max(1, Number(limitParam) || 50))
 
   const apiKey = process.env.ETHERSCAN_API_KEY?.trim() || undefined
 
@@ -137,6 +153,7 @@ export async function GET(req: Request) {
     return Response.json({
       ok: true,
       address: checksummed,
+      ens: resolvedFromEns,
       chains: chainKeys,
       entries,
       // Hint to the client UI that more transactions exist than we returned.

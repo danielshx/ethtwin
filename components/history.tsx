@@ -92,26 +92,41 @@ export function History({ className, ensName, walletAddress }: HistoryProps) {
   const localEntries = useHistory({ ens: ensName })
   const [walletTxs, setWalletTxs] = useState<WalletTx[]>([])
   const [walletLoading, setWalletLoading] = useState(false)
+  const [resolvedAddress, setResolvedAddress] = useState<string | null>(walletAddress ?? null)
   const [filter, setFilter] = useState<FilterKind>("all")
 
+  // Prefer the ENS-bound `addr` record over the browser's connected wallet —
+  // History is meant to show the agent's full on-chain activity, which is
+  // tied to the address registered under their ENS subdomain.
   const loadWalletHistory = useCallback(async () => {
-    if (!walletAddress) {
+    if (!ensName && !walletAddress) {
       setWalletTxs([])
       return
     }
     setWalletLoading(true)
     try {
-      const res = await fetch(
-        `/api/wallet-history?address=${encodeURIComponent(walletAddress)}&chains=sepolia,base-sepolia&limit=20`,
-      )
-      const data = (await res.json()) as { ok: boolean; entries?: WalletTx[] }
-      if (data.ok && data.entries) setWalletTxs(data.entries)
+      const params = new URLSearchParams({
+        chains: "sepolia,base-sepolia",
+        limit: "50",
+      })
+      if (ensName) params.set("ens", ensName)
+      else if (walletAddress) params.set("address", walletAddress)
+      const res = await fetch(`/api/wallet-history?${params.toString()}`)
+      const data = (await res.json()) as {
+        ok: boolean
+        address?: string
+        entries?: WalletTx[]
+      }
+      if (data.ok) {
+        if (data.entries) setWalletTxs(data.entries)
+        if (data.address) setResolvedAddress(data.address)
+      }
     } catch {
       // best-effort — if Etherscan is rate-limited we just show local + server entries
     } finally {
       setWalletLoading(false)
     }
-  }, [walletAddress])
+  }, [ensName, walletAddress])
 
   useEffect(() => {
     loadWalletHistory()
@@ -126,9 +141,9 @@ export function History({ className, ensName, walletAddress }: HistoryProps) {
     )
     const walletEntries = walletTxs
       .filter((tx) => !seenTxHashes.has(tx.txHash.toLowerCase()))
-      .map((tx) => walletTxToHistoryEntry(tx, walletAddress ?? null))
+      .map((tx) => walletTxToHistoryEntry(tx, resolvedAddress ?? walletAddress ?? null))
     return [...localEntries, ...walletEntries].sort((a, b) => b.at - a.at)
-  }, [localEntries, walletTxs, walletAddress])
+  }, [localEntries, walletTxs, walletAddress, resolvedAddress])
 
   const filtered = useMemo(() => {
     if (filter === "all") return entries
@@ -146,16 +161,21 @@ export function History({ className, ensName, walletAddress }: HistoryProps) {
       <header className="flex items-center gap-2 border-b border-white/10 px-5 py-3">
         <HistoryIcon className="h-4 w-4 text-muted-foreground" />
         <span className="text-sm font-medium">History</span>
+        {resolvedAddress && (
+          <span className="hidden font-mono text-[10px] text-muted-foreground sm:inline">
+            · {resolvedAddress.slice(0, 6)}…{resolvedAddress.slice(-4)}
+          </span>
+        )}
         <Badge variant="secondary" className="ml-auto font-mono text-[10px]">
           {entries.length} entries
         </Badge>
-        {walletAddress && (
+        {(ensName || walletAddress) && (
           <Button
             variant="ghost"
             size="sm"
             onClick={loadWalletHistory}
             disabled={walletLoading}
-            title="Refresh on-chain wallet history"
+            title="Refresh full on-chain history of this twin's ENS-bound wallet"
             className="h-7 px-2 text-muted-foreground hover:text-primary"
           >
             {walletLoading ? (

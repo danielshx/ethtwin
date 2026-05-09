@@ -13,7 +13,10 @@
 // neon. Heavier than a tool-pill, lighter than the cosmic orb.
 
 import { motion } from "framer-motion"
-import { ShieldCheck, ShieldAlert, Sparkles } from "lucide-react"
+import { ShieldCheck, ShieldAlert } from "lucide-react"
+import { AvatarImage } from "@/components/agent-profile"
+import { buildAvatarUrl } from "@/lib/twin-profile"
+import { displayNameFromEns } from "@/lib/ens"
 import { cn } from "@/lib/utils"
 
 type X402FlowProps = {
@@ -60,6 +63,8 @@ function Node({
   align: "start" | "end"
   pulse?: boolean
 }) {
+  const label = ens.split(".")[0] ?? ens
+  const { displayName } = displayNameFromEns(ens)
   return (
     <div
       className={cn(
@@ -70,9 +75,14 @@ function Node({
       <span className="text-[9px] uppercase tracking-[0.2em] text-muted-foreground">
         {role}
       </span>
-      <div className="flex items-center gap-1.5">
-        <span className="relative grid h-6 w-6 place-items-center rounded-full bg-primary/15 text-primary">
-          <Sparkles className="h-3 w-3" />
+      <div
+        className={cn(
+          "flex items-center gap-1.5",
+          align === "end" ? "flex-row-reverse" : "flex-row",
+        )}
+      >
+        <span className="relative inline-block">
+          <AvatarImage src={buildAvatarUrl(label)} ens={ens} size={24} />
           {pulse ? (
             <motion.span
               aria-hidden
@@ -87,7 +97,10 @@ function Node({
             />
           ) : null}
         </span>
-        <span className="font-mono text-[11px] text-primary/90">{ens}</span>
+        <div className={cn("flex flex-col leading-tight", align === "end" ? "items-end" : "items-start")}>
+          <span className="text-[11px] font-medium text-foreground/90">{displayName}</span>
+          <span className="font-mono text-[9px] text-muted-foreground">{ens}</span>
+        </div>
       </div>
     </div>
   )

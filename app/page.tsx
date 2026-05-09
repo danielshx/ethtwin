@@ -274,6 +274,7 @@ function SignedInTabs({
       {tab === "chat" ? (
         <TwinChat
           ensName={session.ensName}
+          getAuthToken={getAuthToken}
           className="h-[70dvh] w-full border-white/10 bg-card/80 backdrop-blur"
         />
       ) : tab === "voice" ? (

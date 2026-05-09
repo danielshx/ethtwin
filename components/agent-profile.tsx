@@ -1,7 +1,8 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { ExternalLink, Loader2 } from "lucide-react"
+import { Check, ExternalLink, Loader2, Pencil, X } from "lucide-react"
+import { toast } from "sonner"
 import {
   Dialog,
   DialogContent,
@@ -9,8 +10,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
+import { addHistoryEntry } from "@/lib/history"
 import { displayNameFromEns } from "@/lib/ens"
+import { buildAvatarUrl } from "@/lib/twin-profile"
 import { cn } from "@/lib/utils"
 
 type AgentProfile = {
@@ -30,15 +35,31 @@ type AgentProfileDialogProps = {
   ens: string | null
   open: boolean
   onOpenChange: (open: boolean) => void
+  /** When true, the dialog renders an Edit button so the viewer can update
+   *  avatar + description on-chain via /api/profile. Pass true only when the
+   *  dialog is showing the *viewer's own* twin. */
+  editable?: boolean
+  getAuthToken?: () => Promise<string | null>
 }
 
-export function AgentProfileDialog({ ens, open, onOpenChange }: AgentProfileDialogProps) {
+export function AgentProfileDialog({
+  ens,
+  open,
+  onOpenChange,
+  editable,
+  getAuthToken,
+}: AgentProfileDialogProps) {
   const [profile, setProfile] = useState<AgentProfile | null>(null)
   const [loading, setLoading] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [draftAvatar, setDraftAvatar] = useState("")
+  const [draftDescription, setDraftDescription] = useState("")
+  const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     if (!open || !ens) {
       setProfile(null)
+      setEditing(false)
       return
     }
     let cancelled = false
@@ -47,7 +68,11 @@ export function AgentProfileDialog({ ens, open, onOpenChange }: AgentProfileDial
       .then((r) => r.json())
       .then((data) => {
         if (cancelled) return
-        if (data.ok) setProfile(data as AgentProfile)
+        if (data.ok) {
+          setProfile(data as AgentProfile)
+          setDraftAvatar(data.avatar ?? "")
+          setDraftDescription(data.description ?? "")
+        }
       })
       .catch(() => {
         // best-effort — UI shows a fallback
@@ -60,17 +85,133 @@ export function AgentProfileDialog({ ens, open, onOpenChange }: AgentProfileDial
     }
   }, [open, ens])
 
+  async function handleSave() {
+    if (!ens || !getAuthToken) return
+    const trimmedAvatar = draftAvatar.trim()
+    const trimmedDesc = draftDescription.trim()
+    const avatarChanged = trimmedAvatar !== (profile?.avatar ?? "")
+    const descChanged = trimmedDesc !== (profile?.description ?? "")
+    if (!avatarChanged && !descChanged) {
+      setEditing(false)
+      return
+    }
+    setSaving(true)
+    try {
+      const token = await getAuthToken()
+      if (!token) {
+        toast.error("Not authenticated.")
+        return
+      }
+      const payload: { privyToken: string; ens: string; avatar?: string; description?: string } = {
+        privyToken: token,
+        ens,
+      }
+      if (avatarChanged) payload.avatar = trimmedAvatar
+      if (descChanged) payload.description = trimmedDesc
+
+      const res = await fetch("/api/profile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+      const ct = res.headers.get("content-type") ?? ""
+      if (!ct.includes("application/json")) {
+        const text = await res.text()
+        toast.error(
+          res.status === 504
+            ? "Vercel timed out — your update may still land. Refresh in ~30s."
+            : `Server error ${res.status}: ${text.slice(0, 120)}`,
+        )
+        return
+      }
+      const data = (await res.json()) as {
+        ok: boolean
+        error?: string
+        txHash?: string
+        blockExplorerUrl?: string
+      }
+      if (!data.ok) {
+        toast.error(data.error ?? "Profile update failed")
+        return
+      }
+
+      const summaryBits: string[] = []
+      if (avatarChanged) summaryBits.push("avatar")
+      if (descChanged) summaryBits.push("bio")
+      toast.success(`Updated ${summaryBits.join(" + ")} on-chain`, {
+        description: data.blockExplorerUrl,
+      })
+      addHistoryEntry({
+        kind: "other",
+        status: "success",
+        chain: "sepolia",
+        summary: `Updated ${summaryBits.join(" + ")} on ${ens}`,
+        description: "ENS text records on Sepolia",
+        txHash: data.txHash,
+        explorerUrl: data.blockExplorerUrl,
+        syncTo: { ens, getAuthToken },
+      })
+      // Optimistic local update so the dialog shows the new values immediately;
+      // the on-chain copy will catch up on next reload.
+      setProfile((prev) =>
+        prev
+          ? {
+              ...prev,
+              avatar: avatarChanged ? trimmedAvatar : prev.avatar,
+              description: descChanged ? trimmedDesc : prev.description,
+            }
+          : prev,
+      )
+      setEditing(false)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Profile update failed"
+      toast.error(msg)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  function resetDrafts() {
+    if (!profile) return
+    setDraftAvatar(profile.avatar ?? "")
+    setDraftDescription(profile.description ?? "")
+  }
+
+  function suggestRandomAvatar() {
+    if (!ens) return
+    const label = ens.split(".")[0] ?? ens
+    // Append a random component so Pollinations regenerates a different image
+    // for the same label. Seed differs → image differs.
+    const variant = `${label}-${Math.floor(Math.random() * 9_000) + 1_000}`
+    setDraftAvatar(buildAvatarUrl(variant))
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle className="text-lg">
-            {ens ? displayNameFromEns(ens).displayName : "Agent"}
-          </DialogTitle>
-          <DialogDescription className="font-mono text-xs text-muted-foreground">
-            {ens}
-          </DialogDescription>
-          {profile?.description ? (
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0 flex-1">
+              <DialogTitle className="text-lg">
+                {ens ? displayNameFromEns(ens).displayName : "Agent"}
+              </DialogTitle>
+              <DialogDescription className="font-mono text-xs text-muted-foreground">
+                {ens}
+              </DialogDescription>
+            </div>
+            {editable && !editing && profile ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setEditing(true)}
+                className="h-7 gap-1 px-2 text-[11px]"
+              >
+                <Pencil className="h-3 w-3" />
+                Edit
+              </Button>
+            ) : null}
+          </div>
+          {profile?.description && !editing ? (
             <p className="pt-2 text-sm">{profile.description}</p>
           ) : null}
         </DialogHeader>
@@ -78,6 +219,86 @@ export function AgentProfileDialog({ ens, open, onOpenChange }: AgentProfileDial
         {loading || !profile ? (
           <div className="flex h-48 items-center justify-center">
             <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+          </div>
+        ) : editing ? (
+          <div className="grid gap-4">
+            <div className="flex items-center gap-4">
+              <AvatarImage
+                src={draftAvatar.trim() || null}
+                ens={profile.ens}
+                size={88}
+              />
+              <div className="flex flex-1 flex-col gap-1.5">
+                <label className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                  Avatar URL
+                </label>
+                <Input
+                  value={draftAvatar}
+                  onChange={(e) => setDraftAvatar(e.target.value)}
+                  placeholder="https://…/avatar.png"
+                  className="font-mono text-xs"
+                  disabled={saving}
+                />
+                <button
+                  type="button"
+                  onClick={suggestRandomAvatar}
+                  disabled={saving}
+                  className="self-start text-[10px] text-primary/80 hover:text-primary hover:underline"
+                >
+                  ✨ regenerate avatar
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label className="mb-1 block text-[10px] uppercase tracking-wider text-muted-foreground">
+                Bio
+              </label>
+              <textarea
+                value={draftDescription}
+                onChange={(e) => setDraftDescription(e.target.value)}
+                placeholder="One-line bio for your twin"
+                disabled={saving}
+                maxLength={280}
+                rows={3}
+                className="w-full resize-none rounded-md border border-white/10 bg-background/60 px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/50 disabled:opacity-50"
+              />
+              <div className="mt-1 text-right font-mono text-[10px] text-muted-foreground">
+                {draftDescription.length}/280
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 border-t border-white/10 pt-3">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  resetDrafts()
+                  setEditing(false)
+                }}
+                disabled={saving}
+              >
+                <X className="h-3.5 w-3.5" />
+                Cancel
+              </Button>
+              <Button size="sm" onClick={handleSave} disabled={saving}>
+                {saving ? (
+                  <>
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Writing on-chain…
+                  </>
+                ) : (
+                  <>
+                    <Check className="h-3.5 w-3.5" />
+                    Save on ENS
+                  </>
+                )}
+              </Button>
+            </div>
+            <p className="font-mono text-[10px] text-muted-foreground">
+              Stored on Sepolia ENS as <span className="text-foreground/80">avatar</span> +{" "}
+              <span className="text-foreground/80">description</span> text records · ~24s to land.
+            </p>
           </div>
         ) : (
           <div className="grid gap-4">

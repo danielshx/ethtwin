@@ -464,9 +464,7 @@ export function Messenger({ myEnsName, getAuthToken, className }: MessengerProps
                 <code className="font-mono text-xs text-foreground/80">{selected}</code> on Sepolia ENS.
               </div>
             ) : (
-              thread.map((m) => (
-                <MessageBubble key={m.label} message={m} mine={m.from.toLowerCase() === myEnsName.toLowerCase()} />
-              ))
+              renderThreadWithDateSeparators(thread, myEnsName)
             )}
           </div>
         </ScrollArea>
@@ -533,6 +531,54 @@ function EmptyState() {
       </p>
     </motion.div>
   )
+}
+
+function dayKey(unixSec: number): string {
+  const d = new Date(unixSec * 1000)
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`
+}
+
+function dayLabel(unixSec: number): string {
+  const d = new Date(unixSec * 1000)
+  const now = new Date()
+  const today = dayKey(Math.floor(now.getTime() / 1000))
+  const yesterday = new Date(now)
+  yesterday.setDate(now.getDate() - 1)
+  const ydKey = dayKey(Math.floor(yesterday.getTime() / 1000))
+  const k = dayKey(unixSec)
+  if (k === today) return "Today"
+  if (k === ydKey) return "Yesterday"
+  // Same year → "Mar 12"; otherwise "Mar 12, 2025"
+  if (d.getFullYear() === now.getFullYear()) {
+    return d.toLocaleDateString([], { month: "short", day: "numeric" })
+  }
+  return d.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })
+}
+
+function renderThreadWithDateSeparators(thread: Message[], myEnsName: string) {
+  const items: React.ReactNode[] = []
+  let lastKey: string | null = null
+  for (const m of thread) {
+    const k = dayKey(m.at)
+    if (k !== lastKey) {
+      items.push(
+        <div key={`sep-${k}`} className="flex justify-center py-1">
+          <span className="rounded-full bg-card/80 px-3 py-1 font-mono text-[10px] uppercase tracking-wider text-muted-foreground ring-1 ring-white/5">
+            {dayLabel(m.at)}
+          </span>
+        </div>,
+      )
+      lastKey = k
+    }
+    items.push(
+      <MessageBubble
+        key={m.label}
+        message={m}
+        mine={m.from.toLowerCase() === myEnsName.toLowerCase()}
+      />,
+    )
+  }
+  return items
 }
 
 function MessageBubble({ message, mine }: { message: Message; mine: boolean }) {
