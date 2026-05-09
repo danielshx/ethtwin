@@ -115,6 +115,14 @@ Diese Spikes klären Annahmen bevor wir bauen — falls ein Spike fehlschlägt, 
 - [ ] **T1-35** **Hero-Image für README + Devfolio**: einzelne Visualisierung — Marias Phone-Frame, Toms Avatar, Cosmic-Pulse, "100 USDC". Speichern als `public/hero.png`, einbinden in README + Devfolio-Submission.
 - [ ] **T1-36** **Twin spricht Deutsch (optional Toggle)**: Voice-Tab `lang`-Param `de` setzt OpenAI Realtime Voice + System-Prompt auf Deutsch (`"Du bist Maria's Twin. Antworte auf Deutsch."`). Macht die Stuttgart-67-Persona glaubwürdig. Default bleibt Englisch.
 
+### 🎮 Intuitiv-für-Oma + Gamification (added 2026-05-09)
+
+- [x] **T1-37** **Quick-Send-Cards in MariaShell**: 3 große Avatar-Tap-Cards (Tom / Daniel / Alice) mit vor-konfigurierten Beträgen ($5/$25/$100). Tap → injectet Phrase in TwinChat via neue `seedPrompt`/`onSeedConsumed` Props. Oma muss kein Voice nutzen — nur tippen.
+- [x] **T1-38** **Gamification-Strip**: 3 Pills oben in der MariaShell — "100% private" (ShieldCheck), "Level N · {title}" (Sparkles), "{N} transactions". State in `localStorage.ethtwin.maria.stats`, levelt mit jedem ack hoch (Just Started → Comfy User → Twin Believer → Crypto Pro).
+- [x] **T1-39** **Confetti + Cosmic-Pulse beim Send-Erfolg**: neuer `components/send-celebration.tsx` Component, fires bei Postcard-Mount. `canvas-confetti` (warme Coral/Sage/Amber Farben) + radial cosmic mikro-pulse (1.5s overlay). Respektiert reduced-motion.
+- [x] **T1-40** **Side-by-Side-Contrast-Card**: neuer `components/contrast-card.tsx` Component zeigt Metamask-style "Confirm transaction" mit hex calldata + gas + nonce links, EthTwin-Postcard "100 dollars to Tom · Confirm with Face ID" rechts. Auto-staggered scroll-in animation. Eingebaut auf Landing-Page als "Same transaction. Two worlds." Sektion.
+- [x] **T1-41** **`pnpm twins:seed-demo`** — neues Script `scripts/seed-demo-twins.ts` mintet `maria.ethtwin.eth` + `tom.ethtwin.eth` mit DiceBear-Avatars, vollständigen Persona-Records, ENSIP-25 agent-registration, frische `stealth-meta-address` per `generateStealthMetaKeys()`, beide eingetragen in `agents.directory`. Idempotent — re-runs überspringen existierende Subnames.
+
 ---
 
 ## 🟨 Tier 2 — SHOULD HAVE (Wow-Layer)

@@ -17,6 +17,7 @@ import { History } from "@/components/history"
 import { VoiceTwin } from "@/components/voice-twin"
 import { NotificationPanel } from "@/components/notification-panel"
 import { MariaShell } from "@/components/maria-shell"
+import { ContrastCard } from "@/components/contrast-card"
 import { addHistoryEntry } from "@/lib/history"
 import { useDemoMode } from "@/lib/use-demo-mode"
 import { Toaster } from "@/components/ui/sonner"
@@ -198,6 +199,17 @@ function App() {
               onMint={handleMint}
               onComplete={handleComplete}
             />
+            <div className="w-full max-w-4xl space-y-4 pt-10">
+              <div className="text-center">
+                <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">
+                  Same transaction. Two worlds.
+                </h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Crypto today vs. crypto for everyone.
+                </p>
+              </div>
+              <ContrastCard />
+            </div>
           </>
         ) : demoMode ? (
           <MariaShell
