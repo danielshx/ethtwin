@@ -36,6 +36,30 @@ type MessengerProps = {
 
 const POLL_INTERVAL_MS = 15_000
 
+const SAVED_CHATS_KEY = (ens: string) => `ethtwin.savedChats.${ens.toLowerCase()}`
+
+function loadSavedChats(myEnsName: string): string[] {
+  if (typeof window === "undefined") return []
+  try {
+    const raw = window.localStorage.getItem(SAVED_CHATS_KEY(myEnsName))
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    if (Array.isArray(parsed)) return parsed.filter((x): x is string => typeof x === "string")
+  } catch {
+    // ignore
+  }
+  return []
+}
+
+function persistSavedChats(myEnsName: string, list: string[]) {
+  if (typeof window === "undefined") return
+  try {
+    window.localStorage.setItem(SAVED_CHATS_KEY(myEnsName), JSON.stringify(list))
+  } catch {
+    // ignore
+  }
+}
+
 export function Messenger({ myEnsName, getAuthToken, className }: MessengerProps) {
   const [agents, setAgents] = useState<AgentEntry[]>([])
   const [agentsLoading, setAgentsLoading] = useState(true)
@@ -47,6 +71,38 @@ export function Messenger({ myEnsName, getAuthToken, className }: MessengerProps
   const [composing, setComposing] = useState("")
   const [sending, setSending] = useState(false)
   const [profileEns, setProfileEns] = useState<string | null>(null)
+  const [savedChats, setSavedChats] = useState<string[]>([])
+
+  // Load saved chats from localStorage on mount / when ens changes.
+  useEffect(() => {
+    setSavedChats(loadSavedChats(myEnsName))
+  }, [myEnsName])
+
+  const saveChat = useCallback(
+    (ens: string) => {
+      const lower = ens.toLowerCase()
+      if (lower === myEnsName.toLowerCase()) return
+      setSavedChats((prev) => {
+        if (prev.some((e) => e.toLowerCase() === lower)) return prev
+        const next = [lower, ...prev]
+        persistSavedChats(myEnsName, next)
+        return next
+      })
+    },
+    [myEnsName],
+  )
+
+  const removeChat = useCallback(
+    (ens: string) => {
+      const lower = ens.toLowerCase()
+      setSavedChats((prev) => {
+        const next = prev.filter((e) => e.toLowerCase() !== lower)
+        persistSavedChats(myEnsName, next)
+        return next
+      })
+    },
+    [myEnsName],
+  )
 
   const selectedAgent = useMemo(
     () => agents.find((a) => a.ens.toLowerCase() === selected?.toLowerCase()),
@@ -113,11 +169,15 @@ export function Messenger({ myEnsName, getAuthToken, className }: MessengerProps
     return () => clearInterval(id)
   }, [selected, loadThread])
 
-  function selectAgent(ens: string) {
-    setSelected(ens)
-    setMyInbox([])
-    setTheirInbox([])
-  }
+  const selectAgent = useCallback(
+    (ens: string) => {
+      setSelected(ens)
+      setMyInbox([])
+      setTheirInbox([])
+      saveChat(ens)
+    },
+    [saveChat],
+  )
 
   function handleManualOpen() {
     const raw = manualInput.trim().toLowerCase()
@@ -131,11 +191,26 @@ export function Messenger({ myEnsName, getAuthToken, className }: MessengerProps
     setManualInput("")
   }
 
+  // Union of on-chain directory + locally saved chats (deduped, saved entries first).
+  const allEntries = useMemo<AgentEntry[]>(() => {
+    const byEns = new Map<string, AgentEntry>()
+    // saved first so they take precedence in ordering
+    for (const ens of savedChats) {
+      byEns.set(ens.toLowerCase(), { ens, addedAt: 0 })
+    }
+    for (const a of agents) {
+      const key = a.ens.toLowerCase()
+      const existing = byEns.get(key)
+      byEns.set(key, { ...a, ens: a.ens, addedAt: existing?.addedAt ?? a.addedAt })
+    }
+    return Array.from(byEns.values())
+  }, [agents, savedChats])
+
   const filteredAgents = useMemo(() => {
     const q = manualInput.trim().toLowerCase()
-    if (!q) return agents
-    return agents.filter((a) => a.ens.toLowerCase().includes(q))
-  }, [agents, manualInput])
+    if (!q) return allEntries
+    return allEntries.filter((a) => a.ens.toLowerCase().includes(q))
+  }, [allEntries, manualInput])
 
   async function handleSend() {
     const body = composing.trim()
@@ -233,7 +308,7 @@ export function Messenger({ myEnsName, getAuthToken, className }: MessengerProps
           <Users className="h-4 w-4 text-primary" />
           <span className="text-base font-semibold">Chats</span>
           <Badge variant="secondary" className="ml-auto font-mono text-[10px]">
-            {agents.length}
+            {allEntries.length}
           </Badge>
         </div>
 
@@ -262,9 +337,9 @@ export function Messenger({ myEnsName, getAuthToken, className }: MessengerProps
                 <Loader2 className="h-3 w-3 animate-spin" />
                 Loading directory…
               </div>
-            ) : agents.length === 0 ? (
+            ) : allEntries.length === 0 ? (
               <div className="px-2 py-3 text-xs text-muted-foreground">
-                No agents yet. Once others onboard, they appear here.
+                No agents yet. Type a name above to start a chat — they'll be saved here.
               </div>
             ) : filteredAgents.length === 0 ? (
               <div className="px-2 py-3 text-xs text-muted-foreground">
@@ -309,16 +384,29 @@ export function Messenger({ myEnsName, getAuthToken, className }: MessengerProps
                         </span>
                       </div>
                     </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        setProfileEns(a.ens)
-                      }}
-                      title="View profile"
-                      className="mr-2 px-1.5 py-1 text-[10px] text-muted-foreground opacity-0 transition group-hover:opacity-100 hover:text-primary"
-                    >
-                      info
-                    </button>
+                    <div className="mr-2 flex items-center gap-0.5 opacity-0 transition group-hover:opacity-100">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setProfileEns(a.ens)
+                        }}
+                        title="View profile"
+                        className="px-1.5 py-1 text-[10px] text-muted-foreground hover:text-primary"
+                      >
+                        info
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          if (selected === a.ens) setSelected(null)
+                          removeChat(a.ens)
+                        }}
+                        title="Remove from saved chats"
+                        className="px-1.5 py-1 text-[12px] leading-none text-muted-foreground hover:text-destructive"
+                      >
+                        ×
+                      </button>
+                    </div>
                   </div>
                 )
               })
