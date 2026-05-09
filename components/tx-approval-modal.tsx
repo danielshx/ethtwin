@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { ArrowRight, Loader2, ShieldCheck } from "lucide-react"
+import { ArrowRight, Loader2, ShieldAlert, ShieldCheck } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import {
@@ -29,6 +29,11 @@ export type TxIntent = {
   toEnsName?: string | null
   /** Reverse-resolved ENS name for the sender. See `toEnsName` above. */
   fromEnsName?: string | null
+  sourceVerified?: boolean
+  sourceProvider?: "local-abi" | "sourcify" | "none"
+  sourceMatch?: "full" | "partial"
+  sourceUrl?: string
+  sourceWarning?: string
 }
 
 type TxApprovalModalProps = {
@@ -99,6 +104,8 @@ export function TxApprovalModal({
           <p className="rounded-md bg-secondary/60 px-3 py-2.5 leading-relaxed">
             {intent.plainEnglish}
           </p>
+
+          <SourceVerification intent={intent} />
 
           <div className="space-y-2">
             <Row label="From" value={intent.fromEnsName ?? "Your twin"} mono={!intent.fromEnsName} />
@@ -179,6 +186,50 @@ export function TxApprovalModal({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  )
+}
+
+function SourceVerification({ intent }: { intent: TxIntent }) {
+  const hasCalldata = !!intent.data && intent.data !== "0x"
+  if (!hasCalldata) return null
+
+  if (intent.sourceVerified) {
+    const provider = intent.sourceProvider === "sourcify" ? "Sourcify" : "known ABI"
+    const match = intent.sourceMatch === "partial" ? "partial match" : "verified source"
+    return (
+      <div className="rounded-md border border-primary/25 bg-primary/10 px-3 py-2.5 text-xs">
+        <div className="flex items-center gap-2 text-primary">
+          <ShieldCheck className="h-4 w-4" />
+          <span className="font-medium">Contract checked · {provider}</span>
+        </div>
+        <p className="mt-1 text-muted-foreground">
+          {match}. Your twin decoded this call before asking you to sign.
+        </p>
+        {intent.sourceUrl ? (
+          <a
+            href={intent.sourceUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-1 inline-flex items-center gap-1 font-mono text-primary underline-offset-2 hover:underline"
+          >
+            view source <ArrowRight className="h-3 w-3" />
+          </a>
+        ) : null}
+      </div>
+    )
+  }
+
+  return (
+    <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 text-xs">
+      <div className="flex items-center gap-2 text-amber-700 dark:text-amber-300">
+        <ShieldAlert className="h-4 w-4" />
+        <span className="font-medium">Contract source not verified</span>
+      </div>
+      <p className="mt-1 text-muted-foreground">
+        {intent.sourceWarning ??
+          "Your twin could not verify this contract source. Review the calldata carefully before signing."}
+      </p>
+    </div>
   )
 }
 
