@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { motion } from "framer-motion"
-import { ArrowUpRight, Coins, Loader2, Send, ShieldCheck, Users } from "lucide-react"
+import { ArrowUpRight, Coins, Loader2, Send, ShieldAlert, ShieldCheck, Users } from "lucide-react"
 import { toast } from "sonner"
 import {
   createPublicClient,
@@ -71,6 +71,9 @@ const TOKENS: { id: Token; label: string }[] = [
 const RECENT_KEY = "ethtwin.transfers.recent.v1"
 const MAX_RECENT = 10
 const BASE_SEPOLIA_CHAIN_ID = 84532
+const MAX_UINT256 =
+  115792089237316195423570985008687907853269984665640564039457584007913129639935n
+const RISKY_APPROVAL_SPENDER: Address = "0x000000000000000000000000000000000000dEaD"
 
 // Demo safety caps mirror /api/transfer's hard caps. Bigger sends would
 // require a code change — intentional to keep the demo wallet from draining.
@@ -80,14 +83,25 @@ const MAX_USDC_RAW = parseUnits("1", 6)
 // Base Sepolia USDC. Same address used in lib/transfers.ts + lib/payments.ts.
 const USDC_BASE_SEPOLIA: Address = "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
 
-// Minimal ERC-20 transfer ABI for client-side calldata encoding.
-const ERC20_TRANSFER_ABI = [
+// Minimal ERC-20 ABI for client-side calldata encoding used by the normal
+// transfer path and the non-executable risky approval demo.
+const ERC20_REVIEW_ABI = [
   {
     name: "transfer",
     type: "function",
     stateMutability: "nonpayable",
     inputs: [
       { name: "to", type: "address" },
+      { name: "amount", type: "uint256" },
+    ],
+    outputs: [{ name: "", type: "bool" }],
+  },
+  {
+    name: "approve",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "spender", type: "address" },
       { name: "amount", type: "uint256" },
     ],
     outputs: [{ name: "", type: "bool" }],
@@ -219,6 +233,54 @@ export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTrans
     })
   }
 
+  async function handleRiskyApprovalDemo() {
+    setSending(true)
+    try {
+      const data = encodeFunctionData({
+        abi: ERC20_REVIEW_ABI,
+        functionName: "approve",
+        args: [RISKY_APPROVAL_SPENDER, MAX_UINT256],
+      })
+      const decoded = await describeTx({
+        to: USDC_BASE_SEPOLIA,
+        data,
+        chainId: BASE_SEPOLIA_CHAIN_ID,
+      })
+      const intent: TxIntent = {
+        to: USDC_BASE_SEPOLIA,
+        value: "Unlimited USDC approval",
+        data,
+        chain: "base-sepolia",
+        demoOnly: true,
+        plainEnglish: `Demo: Maria is about to grant an unlimited USDC approval to a suspicious spender.\n\n${decoded.english}`,
+        sourceVerified: decoded.verification.sourceVerified,
+        sourceProvider: decoded.verification.sourceProvider,
+        sourceMatch: decoded.verification.match,
+        sourceUrl: decoded.verification.sourceUrl,
+        sourceWarning: decoded.verification.warning,
+        riskLevel: decoded.risk.level,
+        riskLabel: decoded.risk.label,
+        riskReasons: decoded.risk.reasons,
+        riskRecommendation: decoded.risk.recommendation,
+        riskPatternIds: decoded.risk.patternIds,
+      }
+      setPendingMeta({
+        chain: "base-sepolia",
+        token: "USDC",
+        recipientInput: "Risky approval demo",
+        amount: "∞",
+        resolvedTo: RISKY_APPROVAL_SPENDER,
+      })
+      setPendingIntent(intent)
+      setModalOpen(true)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Could not prepare risky approval demo"
+      toast.error(msg)
+    } finally {
+      setSending(false)
+    }
+  }
+
   async function handleSend() {
     if (!canSend) return
 
@@ -256,7 +318,7 @@ export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTrans
         const data: Hex =
           token2send === "USDC"
             ? encodeFunctionData({
-                abi: ERC20_TRANSFER_ABI,
+                abi: ERC20_REVIEW_ABI,
                 functionName: "transfer",
                 args: [resolvedTo, requestedRaw],
               })
@@ -421,6 +483,10 @@ export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTrans
   async function handleReviewedTransferApprove(
     intent: TxIntent,
   ): Promise<{ hash: `0x${string}` }> {
+    if (intent.demoOnly) {
+      setModalOpen(false)
+      return { hash: "0x0" }
+    }
     if (!pendingMeta) {
       throw new Error("Missing tx context.")
     }
@@ -697,6 +763,19 @@ export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTrans
               </>
             )}
           </Button>
+
+          {canReviewBeforeSend ? (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleRiskyApprovalDemo}
+              disabled={sending}
+              className="border-amber-500/40 bg-amber-500/10 text-amber-700 hover:bg-amber-500/15 dark:text-amber-300"
+            >
+              <ShieldAlert className="mr-2 h-4 w-4" />
+              Try risky approval demo
+            </Button>
+          ) : null}
 
           {/* Recent transfers */}
           {recent.length > 0 && (
