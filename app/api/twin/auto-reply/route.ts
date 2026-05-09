@@ -114,18 +114,25 @@ export async function POST(req: Request) {
       chainDepth,
     })
 
-    // Bounded agent loop. 4 steps is enough for sendMessage→waitForReply→reply,
-    // which is the deepest useful pattern for an autonomous twin handling an
-    // incoming message. Higher counts risk the LLM looping on tool calls.
-    const { text } = await generateText({
+    // Bounded agent loop. 6 steps comfortably covers
+    // sendMessage→waitForReply→summarise (the deepest useful pattern) plus a
+    // verify-on-doubt chain. Capped via chainDepth elsewhere so deeper
+    // auto-reply hops can't keep nesting.
+    const { text, steps } = await generateText({
       model,
       system,
       prompt: incomingBody,
       tools,
-      stopWhen: stepCountIs(4),
+      stopWhen: stepCountIs(6),
     })
 
-    const replyBody = text.trim().slice(0, 800)
+    let replyBody = text.trim().slice(0, 800)
+    if (!replyBody) {
+      // The model exhausted its step budget on tools without composing a final
+      // assistant message. Salvage a reply from the last successful tool call
+      // so the original sender's `waitForReply` doesn't time out silently.
+      replyBody = synthesiseFallback(steps)
+    }
     if (!replyBody) {
       return jsonError("Auto-reply was empty", 502)
     }
@@ -156,4 +163,19 @@ export async function POST(req: Request) {
       502,
     )
   }
+}
+
+/** Best-effort textual fallback when the model spent its step budget on tools
+ *  without producing a final assistant message. We surface the most recent
+ *  meaningful tool outcome so the original sender's waitForReply still receives
+ *  *something* coherent on-chain instead of silently timing out. */
+function synthesiseFallback(steps: unknown): string {
+  if (!Array.isArray(steps) || steps.length === 0) return ""
+  for (let i = steps.length - 1; i >= 0; i--) {
+    const step = steps[i] as { text?: string }
+    if (typeof step?.text === "string" && step.text.trim()) {
+      return step.text.trim().slice(0, 800)
+    }
+  }
+  return "Got your message — I worked on it but couldn't compose a clean reply this round. Ping again if you need a confirmation."
 }
