@@ -101,14 +101,16 @@ export function decodeTx(tx: TxInput): DecodedTx {
 export async function describeTxWithVerification(tx: TxInput): Promise<TxDescription> {
   const local = decodeTx(tx)
   if (local.matched) {
+    const verification: SourceVerification = {
+      sourceVerified: true,
+      sourceProvider: lookupContract(local.to) ? "local-abi" : "none",
+      contractName: local.contractName,
+    }
+    const english = await provider(local)
     return {
       decoded: local,
-      english: await provider(local),
-      verification: {
-        sourceVerified: true,
-        sourceProvider: lookupContract(local.to) ? "local-abi" : "none",
-        contractName: local.contractName,
-      },
+      english: withVerificationSummary(english, verification),
+      verification,
     }
   }
 
@@ -130,34 +132,38 @@ export async function describeTxWithVerification(tx: TxInput): Promise<TxDescrip
       abi: verification.abi,
     })
     if (sourcifyDecoded) {
+      const sourceVerification: SourceVerification = {
+        sourceVerified: true,
+        sourceProvider: "sourcify",
+        match: verification.match,
+        contractName: verification.contractName ?? sourcifyDecoded.contractName,
+        sourceUrl: verification.sourceUrl,
+        metadataUrl: verification.metadataUrl,
+        ...(verification.match === "partial"
+          ? { warning: "Contract has a partial Sourcify match; review with extra care." }
+          : {}),
+      }
+      const english = await provider(sourcifyDecoded)
       return {
         decoded: sourcifyDecoded,
-        english: await provider(sourcifyDecoded),
-        verification: {
-          sourceVerified: true,
-          sourceProvider: "sourcify",
-          match: verification.match,
-          contractName: verification.contractName ?? sourcifyDecoded.contractName,
-          sourceUrl: verification.sourceUrl,
-          metadataUrl: verification.metadataUrl,
-          ...(verification.match === "partial"
-            ? { warning: "Contract has a partial Sourcify match; review with extra care." }
-            : {}),
-        },
+        english: withVerificationSummary(english, sourceVerification),
+        verification: sourceVerification,
       }
     }
   }
 
+  const sourceVerification: SourceVerification = {
+    sourceVerified: false,
+    sourceProvider: "sourcify",
+    warning:
+      verification.error ??
+      "Contract source could not be verified on Sourcify, so calldata could not be decoded from verified source.",
+  }
+  const english = await provider(local)
   return {
     decoded: local,
-    english: await provider(local),
-    verification: {
-      sourceVerified: false,
-      sourceProvider: "sourcify",
-      warning:
-        verification.error ??
-        "Contract source could not be verified on Sourcify, so calldata could not be decoded from verified source.",
-    },
+    english: withVerificationSummary(english, sourceVerification),
+    verification: sourceVerification,
   }
 }
 
@@ -235,6 +241,20 @@ function selectorOnlyFallback(args: {
     matched: false,
     summary: `Call ${args.selector} on ${args.to}${args.value > 0n ? ` with ${formatEth(args.value)} ETH` : ""}. (Calldata not recognized.)`,
   }
+}
+
+function withVerificationSummary(english: string, verification: SourceVerification): string {
+  if (verification.sourceVerified) {
+    if (verification.sourceProvider === "sourcify") {
+      const match = verification.match === "partial" ? "partial Sourcify match" : "Sourcify-verified source"
+      return `${english}\n\nSource check: ${match}${verification.contractName ? ` (${verification.contractName})` : ""}.`
+    }
+    if (verification.sourceProvider === "local-abi") {
+      return `${english}\n\nSource check: known local ABI.`
+    }
+    return `${english}\n\nSource check: no calldata contract verification needed.`
+  }
+  return `${english}\n\nSource check: unverified contract source. ${verification.warning ?? "Review carefully before signing."}`
 }
 
 function buildSummary(args: {
