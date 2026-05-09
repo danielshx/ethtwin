@@ -11,6 +11,7 @@ import {
   type Hex,
 } from "viem"
 import { FALLBACK_ABIS, KNOWN_CONTRACTS, lookupContract } from "./abis"
+import { getSourcifyVerification } from "./sourcify"
 
 export type TxInput = {
   to: Address
@@ -36,6 +37,22 @@ export type DecodedTx = {
   matched: boolean
   /** Human-readable summary built from the structured decode. Becomes the LLM input. */
   summary: string
+}
+
+export type SourceVerification = {
+  sourceVerified: boolean
+  sourceProvider: "local-abi" | "sourcify" | "none"
+  match?: "full" | "partial"
+  contractName?: string
+  sourceUrl?: string
+  metadataUrl?: string
+  warning?: string
+}
+
+export type TxDescription = {
+  decoded: DecodedTx
+  english: string
+  verification: SourceVerification
 }
 
 const EMPTY_DATA: Hex = "0x"
@@ -69,43 +86,78 @@ export function decodeTx(tx: TxInput): DecodedTx {
   }
 
   for (const { name: contractName, abi } of abisToTry) {
-    try {
-      const decoded = decodeFunctionData({ abi, data })
-      const fnDef = abi.find(
-        (item) => item.type === "function" && item.name === decoded.functionName,
-      )
-      const inputs =
-        fnDef && fnDef.type === "function" && Array.isArray(fnDef.inputs) ? fnDef.inputs : []
-      const args: DecodedArg[] = (decoded.args ?? []).map((value, i) => ({
-        name: inputs[i]?.name ?? `arg${i}`,
-        type: inputs[i]?.type ?? "unknown",
-        value,
-      }))
-      return {
-        to,
-        contractName,
-        functionName: decoded.functionName,
-        args,
-        value,
-        selector,
-        matched: true,
-        summary: buildSummary({ to, contractName, functionName: decoded.functionName, args, value }),
-      }
-    } catch {
-      // Try next ABI.
-    }
+    const decoded = decodeWithAbi({ to, data, value, selector, contractName, abi })
+    if (decoded) return decoded
   }
 
   // No ABI matched — selector-only fallback.
+  return selectorOnlyFallback({ to, value, selector, knownName: known?.name })
+}
+
+/**
+ * Decode a tx and enrich unknown contracts with Sourcify source verification.
+ * Existing local ABI matches remain deterministic and do not call the network.
+ */
+export async function describeTxWithVerification(tx: TxInput): Promise<TxDescription> {
+  const local = decodeTx(tx)
+  if (local.matched) {
+    return {
+      decoded: local,
+      english: await provider(local),
+      verification: {
+        sourceVerified: true,
+        sourceProvider: lookupContract(local.to) ? "local-abi" : "none",
+        contractName: local.contractName,
+      },
+    }
+  }
+
+  const data = (tx.data ?? EMPTY_DATA) as Hex
+  const value = tx.value ?? 0n
+  const selector = (data.length >= 10 ? data.slice(0, 10) : EMPTY_DATA) as Hex
+  const verification = await getSourcifyVerification({
+    chainId: tx.chainId,
+    address: local.to,
+  })
+
+  if (verification.verified && verification.abi) {
+    const sourcifyDecoded = decodeWithAbi({
+      to: local.to,
+      data,
+      value,
+      selector,
+      contractName: verification.contractName ?? "Sourcify-verified contract",
+      abi: verification.abi,
+    })
+    if (sourcifyDecoded) {
+      return {
+        decoded: sourcifyDecoded,
+        english: await provider(sourcifyDecoded),
+        verification: {
+          sourceVerified: true,
+          sourceProvider: "sourcify",
+          match: verification.match,
+          contractName: verification.contractName ?? sourcifyDecoded.contractName,
+          sourceUrl: verification.sourceUrl,
+          metadataUrl: verification.metadataUrl,
+          ...(verification.match === "partial"
+            ? { warning: "Contract has a partial Sourcify match; review with extra care." }
+            : {}),
+        },
+      }
+    }
+  }
+
   return {
-    to,
-    contractName: known?.name ?? "(unknown contract)",
-    functionName: `unknown(${selector})`,
-    args: [],
-    value,
-    selector,
-    matched: false,
-    summary: `Call ${selector} on ${to}${value > 0n ? ` with ${formatEth(value)} ETH` : ""}. (Calldata not recognized.)`,
+    decoded: local,
+    english: await provider(local),
+    verification: {
+      sourceVerified: false,
+      sourceProvider: "sourcify",
+      warning:
+        verification.error ??
+        "Contract source could not be verified on Sourcify, so calldata could not be decoded from verified source.",
+    },
   }
 }
 
@@ -120,13 +172,70 @@ export function setPlainEnglishProvider(fn: PlainEnglishProvider) {
   provider = fn
 }
 
-export async function describeTx(tx: TxInput): Promise<{ decoded: DecodedTx; english: string }> {
-  const decoded = decodeTx(tx)
-  const english = await provider(decoded)
-  return { decoded, english }
+export async function describeTx(tx: TxInput): Promise<TxDescription> {
+  return describeTxWithVerification(tx)
 }
 
 // ── Internal helpers ─────────────────────────────────────────────────────────
+
+function decodeWithAbi(args: {
+  to: Address
+  data: Hex
+  value: bigint
+  selector: Hex
+  contractName: string
+  abi: Abi
+}): DecodedTx | null {
+  try {
+    const decoded = decodeFunctionData({ abi: args.abi, data: args.data })
+    const fnDef = args.abi.find(
+      (item) => item.type === "function" && item.name === decoded.functionName,
+    )
+    const inputs =
+      fnDef && fnDef.type === "function" && Array.isArray(fnDef.inputs) ? fnDef.inputs : []
+    const decodedArgs: DecodedArg[] = (decoded.args ?? []).map((value, i) => ({
+      name: inputs[i]?.name ?? `arg${i}`,
+      type: inputs[i]?.type ?? "unknown",
+      value,
+    }))
+    return {
+      to: args.to,
+      contractName: args.contractName,
+      functionName: decoded.functionName,
+      args: decodedArgs,
+      value: args.value,
+      selector: args.selector,
+      matched: true,
+      summary: buildSummary({
+        to: args.to,
+        contractName: args.contractName,
+        functionName: decoded.functionName,
+        args: decodedArgs,
+        value: args.value,
+      }),
+    }
+  } catch {
+    return null
+  }
+}
+
+function selectorOnlyFallback(args: {
+  to: Address
+  value: bigint
+  selector: Hex
+  knownName?: string
+}): DecodedTx {
+  return {
+    to: args.to,
+    contractName: args.knownName ?? "(unknown contract)",
+    functionName: `unknown(${args.selector})`,
+    args: [],
+    value: args.value,
+    selector: args.selector,
+    matched: false,
+    summary: `Call ${args.selector} on ${args.to}${args.value > 0n ? ` with ${formatEth(args.value)} ETH` : ""}. (Calldata not recognized.)`,
+  }
+}
 
 function buildSummary(args: {
   to: Address
