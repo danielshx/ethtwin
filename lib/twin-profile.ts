@@ -5,10 +5,15 @@
 // Previously we used Pollinations.ai but it generates on-demand (5–15s) and
 // frequently times out, causing every twin to fall back to a letter initial.
 //
-// url — defaults to the public ethtwin.eth gateway. Override per-deploy via
+// url — points at the live deployment so anyone resolving the twin's ENS
+// `url` text record gets dropped at the actual app. Override per-deploy via
 // NEXT_PUBLIC_APP_URL.
 
-const DEFAULT_BASE_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://ethtwin.eth.limo"
+// Live deployment URL. eth.limo (the public ENS-to-HTTPS gateway) only
+// resolves *mainnet* ENS records, but our twins live on Sepolia ENS — using
+// `ethtwin.eth.limo` would dead-end. Point at the Vercel app instead.
+const DEFAULT_BASE_URL =
+  process.env.NEXT_PUBLIC_APP_URL ?? "https://ethtwin-woad.vercel.app"
 
 /**
  * Build a deterministic DiceBear avatar URL for an ENS label.

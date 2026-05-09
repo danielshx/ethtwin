@@ -4,7 +4,19 @@ import { useChat } from "@ai-sdk/react"
 import { DefaultChatTransport } from "ai"
 import { useMemo, useRef, useState, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { Send, Sparkles, Wand2, ShieldCheck, ShieldAlert } from "lucide-react"
+import {
+  ArrowUpRight,
+  Check,
+  Coins,
+  Lock,
+  Mail,
+  Send,
+  Sparkles,
+  Wand2,
+  Zap,
+  ShieldCheck,
+  ShieldAlert,
+} from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -417,26 +429,30 @@ function AgentDetail({
   }
   if (toolName === "sendMessage" && output.ok && output.blockExplorerUrl) {
     return (
-      <div className="ml-5 text-[11px] text-muted-foreground">
-        Message minted as <span className="font-mono text-primary/80">{output.messageEns ?? "subname"}</span>{" "}
-        ·{" "}
-        <a
-          href={output.blockExplorerUrl}
-          target="_blank"
-          rel="noreferrer"
-          className="text-primary hover:underline"
-        >
-          on-chain ↗
-        </a>
-      </div>
+      <ExplorerReceipt
+        kind="message"
+        title="Message landed on-chain"
+        subtitle={
+          output.toEns ? `to ${displayNameFromEns(output.toEns).displayName}` : undefined
+        }
+        chain="sepolia"
+        explorerUrl={output.blockExplorerUrl}
+        txHash={output.txHash}
+      />
     )
   }
   if (toolName === "sendToken" && output.ok && output.blockExplorerUrl) {
     const recipient = output.recipientInput ?? output.to ?? "recipient"
+    const recipName =
+      typeof recipient === "string" && recipient.includes(".")
+        ? displayNameFromEns(recipient).displayName
+        : shortAddrInline(String(recipient))
     return (
       <ExplorerReceipt
-        title={`Sent ${output.amount ?? "tokens"} → ${recipient}`}
-        subtitle={output.chain ? `on ${output.chain}` : undefined}
+        kind="token"
+        title={`Sent ${output.amount ?? "tokens"}`}
+        subtitle={`to ${recipName}`}
+        chain={output.chain}
         explorerUrl={output.blockExplorerUrl}
         txHash={output.txHash}
       />
@@ -445,18 +461,31 @@ function AgentDetail({
   if (toolName === "sendStealthUsdc" && output.ok && output.blockExplorerUrl) {
     return (
       <ExplorerReceipt
-        title={`Sent ${output.amount ?? "USDC"} privately → ${output.recipientEnsName ?? "recipient"}`}
-        subtitle={output.stealthAddress ? `via stealth ${shortAddrInline(output.stealthAddress)}` : undefined}
+        kind="stealth"
+        title={`Sent ${output.amount ?? "USDC"} privately`}
+        subtitle={
+          output.recipientEnsName
+            ? `to ${displayNameFromEns(output.recipientEnsName).displayName}`
+            : undefined
+        }
+        chain={output.chain ?? "base-sepolia"}
         explorerUrl={output.blockExplorerUrl}
         txHash={output.txHash}
+        extraDetail={
+          output.stealthAddress
+            ? `stealth ${shortAddrInline(output.stealthAddress)}`
+            : undefined
+        }
       />
     )
   }
   if (toolName === "requestDataViaX402" && output.ok && output.blockExplorerUrl) {
     return (
       <ExplorerReceipt
+        kind="x402"
         title="x402 micropayment settled"
         subtitle={output.chain ? `on ${output.chain}` : undefined}
+        chain={output.chain}
         explorerUrl={output.blockExplorerUrl}
         txHash={output.txHash}
       />
@@ -477,10 +506,11 @@ function AgentDetail({
     )
   }
   // Generic catch-all: any tool result that exposes a tx hash + explorer URL
-  // gets a minimal receipt — protects against forgetting a future tool.
+  // gets a clean receipt — protects against forgetting a future tool.
   if (output.ok && output.blockExplorerUrl) {
     return (
       <ExplorerReceipt
+        kind="generic"
         title={`${toolName} confirmed`}
         explorerUrl={output.blockExplorerUrl}
         txHash={output.txHash}
@@ -495,39 +525,129 @@ function shortAddrInline(a: string): string {
   return `${a.slice(0, 6)}…${a.slice(-4)}`
 }
 
+type ReceiptKind = "token" | "stealth" | "message" | "x402" | "generic"
+
+const RECEIPT_THEME: Record<
+  ReceiptKind,
+  { icon: typeof Coins; iconClass: string; ringClass: string; gradientClass: string }
+> = {
+  token: {
+    icon: Coins,
+    iconClass: "text-emerald-300",
+    ringClass: "ring-emerald-400/20",
+    gradientClass: "from-emerald-500/10 via-emerald-500/5 to-transparent",
+  },
+  stealth: {
+    icon: Lock,
+    iconClass: "text-fuchsia-300",
+    ringClass: "ring-fuchsia-400/20",
+    gradientClass: "from-fuchsia-500/10 via-fuchsia-500/5 to-transparent",
+  },
+  message: {
+    icon: Mail,
+    iconClass: "text-sky-300",
+    ringClass: "ring-sky-400/20",
+    gradientClass: "from-sky-500/10 via-sky-500/5 to-transparent",
+  },
+  x402: {
+    icon: Zap,
+    iconClass: "text-amber-300",
+    ringClass: "ring-amber-400/20",
+    gradientClass: "from-amber-500/10 via-amber-500/5 to-transparent",
+  },
+  generic: {
+    icon: Sparkles,
+    iconClass: "text-primary",
+    ringClass: "ring-primary/20",
+    gradientClass: "from-primary/10 via-primary/5 to-transparent",
+  },
+}
+
 function ExplorerReceipt({
+  kind,
   title,
   subtitle,
+  chain,
   explorerUrl,
   txHash,
+  extraDetail,
 }: {
+  kind: ReceiptKind
   title: string
   subtitle?: string
+  chain?: string
   explorerUrl: string
   txHash?: string
+  extraDetail?: string
 }) {
+  const theme = RECEIPT_THEME[kind]
+  const Icon = theme.icon
   return (
-    <div className="ml-5 rounded-md border border-emerald-500/20 bg-emerald-500/5 px-2.5 py-1.5 text-[11px]">
-      <div className="flex items-center justify-between gap-2">
-        <span className="font-medium text-emerald-200/90">{title}</span>
+    <motion.div
+      initial={{ opacity: 0, y: 6, scale: 0.98 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={{ type: "spring", stiffness: 320, damping: 26 }}
+      className={cn(
+        "ml-5 mt-2 overflow-hidden rounded-xl bg-gradient-to-br ring-1",
+        theme.gradientClass,
+        theme.ringClass,
+      )}
+    >
+      <div className="flex items-start gap-3 px-3.5 py-3">
+        <span
+          className={cn(
+            "relative grid h-9 w-9 shrink-0 place-items-center rounded-full bg-background/70 ring-1",
+            theme.ringClass,
+          )}
+        >
+          <Icon className={cn("h-4 w-4", theme.iconClass)} />
+          <span className="absolute -bottom-0.5 -right-0.5 grid h-4 w-4 place-items-center rounded-full bg-emerald-400 text-emerald-950 ring-2 ring-background/80">
+            <Check className="h-2.5 w-2.5" strokeWidth={3} />
+          </span>
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <p className="truncate text-sm font-semibold text-foreground/95">
+              {title}
+            </p>
+            {chain ? (
+              <Badge
+                variant="secondary"
+                className="font-mono text-[9px] uppercase tracking-wider"
+              >
+                {chain}
+              </Badge>
+            ) : null}
+          </div>
+          {subtitle ? (
+            <p className="mt-0.5 truncate text-xs text-muted-foreground">
+              {subtitle}
+            </p>
+          ) : null}
+          {extraDetail ? (
+            <p className="mt-0.5 truncate font-mono text-[10px] text-muted-foreground">
+              {extraDetail}
+            </p>
+          ) : null}
+          {txHash ? (
+            <p className="mt-1 truncate font-mono text-[10px] text-muted-foreground/80">
+              tx · {shortAddrInline(txHash)}
+            </p>
+          ) : null}
+        </div>
         <a
           href={explorerUrl}
           target="_blank"
           rel="noreferrer"
-          className="inline-flex shrink-0 items-center gap-0.5 font-mono text-[10px] text-primary hover:underline"
+          className={cn(
+            "inline-flex shrink-0 items-center gap-1 self-center rounded-full px-3 py-1.5 text-[11px] font-medium transition",
+            "bg-background/70 text-foreground/90 ring-1 ring-white/10 hover:bg-primary/20 hover:text-primary hover:ring-primary/30",
+          )}
         >
-          on-chain ↗
+          Explorer <ArrowUpRight className="h-3 w-3" />
         </a>
       </div>
-      {subtitle ? (
-        <div className="mt-0.5 text-[10px] text-muted-foreground">{subtitle}</div>
-      ) : null}
-      {txHash ? (
-        <div className="mt-0.5 font-mono text-[10px] text-muted-foreground">
-          tx · {shortAddrInline(txHash)}
-        </div>
-      ) : null}
-    </div>
+    </motion.div>
   )
 }
 

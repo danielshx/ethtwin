@@ -14,10 +14,15 @@ const PARENT = PARENT_DOMAIN
 const LABEL = process.env.TWIN_LABEL ?? "daniel"
 const FQN = `${LABEL}.${PARENT}`
 
+// eth.limo only resolves *mainnet* ENS records — our subnames live on Sepolia,
+// so a `*.eth.limo` link would dead-end. Point at the live Vercel deploy
+// (overridable via NEXT_PUBLIC_APP_URL).
+const TWIN_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://ethtwin-woad.vercel.app"
+
 const TEXT_RECORDS: Record<string, string> = {
   description: "Daniel's AI Twin — voice-controlled co-pilot for his on-chain life.",
   avatar: "https://avatars.githubusercontent.com/u/1?v=4",
-  url: "https://ethtwin.eth.limo",
+  url: TWIN_URL,
   "twin.persona": "Concise, privacy-first, defaults to stealth addresses for value transfers.",
 }
 
