@@ -52,6 +52,8 @@ const CHAINS: Record<SupportedChain, ChainSpec> = {
   },
 }
 
+const DECIMAL_AMOUNT_RE = /^(?:\d+)(?:\.\d+)?$/
+
 const erc20Abi = [
   {
     name: "transfer",
@@ -147,15 +149,20 @@ export async function sendToken(args: {
   const spec = CHAINS[args.chain]
   if (!spec) throw new Error(`Unsupported chain: ${args.chain}`)
 
+  const amountText = String(args.amount).trim()
+  if (!DECIMAL_AMOUNT_RE.test(amountText)) {
+    throw new Error(
+      `Invalid amount "${amountText}". Please use a decimal number like 1 or 0.5.`,
+    )
+  }
+
   const recipient = await parseRecipient(args.to)
-  const { wallet, account } = getDevWalletClient(spec.chain)
+  const { account } = getDevWalletClient(spec.chain)
 
   // Pre-flight: confirm sender has enough of the requested asset + gas.
   const decimals = args.token === "ETH" ? 18 : 6
   const amount =
-    args.token === "ETH"
-      ? parseEther(String(args.amount))
-      : parseUnits(String(args.amount), 6)
+    args.token === "ETH" ? parseEther(amountText) : parseUnits(amountText, 6)
 
   const balance = await getTokenBalance({
     chain: args.chain,
