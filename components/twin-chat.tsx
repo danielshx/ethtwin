@@ -42,6 +42,9 @@ type TwinChatProps = {
   onSeedConsumed?: () => void
   /** Bubbled up from the profile dialog when the user deletes their twin. */
   onTwinDeleted?: () => void
+  /** Connected wallet address — passed into the profile dialog so the
+   *  "Bind vault" action knows who the vault owner should be. */
+  walletAddress?: string | null
 }
 
 // Reads the env var Next.js inlines at build time so the badge auto-adapts
@@ -128,6 +131,7 @@ export function TwinChat({
   seedPrompt,
   onSeedConsumed,
   onTwinDeleted,
+  walletAddress,
 }: TwinChatProps) {
   const transport = useMemo(
     () =>

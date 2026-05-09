@@ -92,21 +92,27 @@ export async function POST(req: Request) {
     let vaultSkipReason: string | null = null
     let postVaultNonce = startingNonce
     const factoryConfigured = isVaultEnabled()
-    const wantsVault = body.useVault === true && factoryConfigured
     const userIsDistinctFromDev =
       walletAddress.toLowerCase() !== devAccount.address.toLowerCase()
+    // Default to ON whenever a real user wallet + a configured factory are
+    // present. The client can still opt out with `useVault: false` (e.g. for
+    // an explicit "email-only" path), but we no longer require an opt-in.
+    const wantsVault =
+      factoryConfigured && body.useVault !== false && userIsDistinctFromDev
 
     // Loud diagnostic line so a mint without a vault is immediately legible
     // in the dev console: tells us which precondition failed.
-    if (!body.useVault) {
-      vaultSkipReason = "client passed useVault=false (likely email-only sign-in)"
-    } else if (!factoryConfigured) {
-      vaultSkipReason = "TWIN_VAULT_FACTORY env var not set — restart dev server after adding it"
+    if (!factoryConfigured) {
+      vaultSkipReason =
+        "TWIN_VAULT_FACTORY env var not set — restart dev server after adding it to .env.local"
     } else if (!userIsDistinctFromDev) {
-      vaultSkipReason = "user wallet equals dev wallet (DEV_WALLET_FALLBACK)"
+      vaultSkipReason =
+        "user wallet equals dev wallet (likely email-only Privy with no smart wallet yet)"
+    } else if (body.useVault === false) {
+      vaultSkipReason = "client explicitly passed useVault=false"
     }
 
-    if (wantsVault && userIsDistinctFromDev) {
+    if (wantsVault) {
       try {
         log("deploying vault…")
         const result = await deployVaultForUser(walletAddress)

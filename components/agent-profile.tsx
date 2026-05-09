@@ -29,6 +29,8 @@ type AgentProfile = {
   endpoint: string | null
   stealthMeta: string | null
   version: string | null
+  vault: string | null
+  vaultOwner: string | null
 }
 
 type AgentProfileDialogProps = {
@@ -44,6 +46,9 @@ type AgentProfileDialogProps = {
    *  The hosting app should sign-out / drop the session so the user is
    *  re-routed to onboarding. */
   onDeleted?: () => void
+  /** The user's currently-connected wallet address. Required to expose the
+   *  "Bind vault" action — that's the address that becomes the vault owner. */
+  walletAddress?: string | null
 }
 
 export function AgentProfileDialog({
@@ -53,6 +58,7 @@ export function AgentProfileDialog({
   editable,
   getAuthToken,
   onDeleted,
+  walletAddress,
 }: AgentProfileDialogProps) {
   const [profile, setProfile] = useState<AgentProfile | null>(null)
   const [loading, setLoading] = useState(false)
@@ -61,6 +67,7 @@ export function AgentProfileDialog({
   const [draftDescription, setDraftDescription] = useState("")
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [bindingVault, setBindingVault] = useState(false)
 
   useEffect(() => {
     if (!open || !ens) {
@@ -244,6 +251,65 @@ export function AgentProfileDialog({
     }
   }
 
+  async function handleBindVault() {
+    if (!ens) return
+    if (!walletAddress) {
+      toast.error("Connect a wallet first — the vault needs an owner.")
+      return
+    }
+    setBindingVault(true)
+    try {
+      const token = (await getAuthToken?.().catch(() => null)) ?? null
+      const res = await fetch("/api/profile/bind-vault", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ privyToken: token, ens, userWallet: walletAddress }),
+      })
+      const ct = res.headers.get("content-type") ?? ""
+      if (!ct.includes("application/json")) {
+        const text = await res.text()
+        toast.error(`Server error ${res.status}: ${text.slice(0, 160)}`)
+        return
+      }
+      const data = (await res.json()) as {
+        ok: boolean
+        error?: string
+        alreadyBound?: boolean
+        vaultAddress?: string
+        blockExplorerUrl?: string
+      }
+      if (!data.ok) {
+        toast.error(data.error ?? "Bind vault failed")
+        return
+      }
+      if (data.alreadyBound) {
+        toast.info("Already bound — refreshing profile")
+      } else {
+        toast.success(`Vault deployed: ${data.vaultAddress?.slice(0, 10)}…`, {
+          description: data.blockExplorerUrl,
+        })
+        addHistoryEntry({
+          kind: "other",
+          status: "success",
+          chain: "sepolia",
+          summary: `Bound vault to ${ens}`,
+          description: `Vault ${data.vaultAddress}`,
+          explorerUrl: data.blockExplorerUrl,
+          ...(getAuthToken ? { syncTo: { ens, getAuthToken } } : {}),
+        })
+      }
+      // Re-fetch the profile so the vault badge appears.
+      setProfile((prev) =>
+        prev ? { ...prev, vault: data.vaultAddress ?? prev.vault } : prev,
+      )
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Bind vault failed"
+      toast.error(msg)
+    } finally {
+      setBindingVault(false)
+    }
+  }
+
   function suggestRandomAvatar() {
     if (!ens) return
     const label = ens.split(".")[0] ?? ens
@@ -405,6 +471,75 @@ export function AgentProfileDialog({
                   </Field>
                 ) : null}
               </div>
+            </div>
+
+            {/* Vault status — live indicator + bind action when missing.
+             *  When bound, every chat-driven token send pulls from the user's
+             *  vault. When unbound, the agent falls back to the dev wallet. */}
+            <div className="rounded-md border border-border/60 bg-card/40 px-3 py-2.5">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <span
+                    className={cn(
+                      "inline-block h-1.5 w-1.5 rounded-full",
+                      profile.vault ? "bg-emerald-400" : "bg-amber-400",
+                    )}
+                  />
+                  <span className="text-xs font-medium">
+                    {profile.vault ? "Vault bound" : "No vault yet"}
+                  </span>
+                </div>
+                {editable && !profile.vault ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleBindVault}
+                    disabled={bindingVault || !walletAddress}
+                    className="h-7 px-2 text-[11px]"
+                    title={
+                      walletAddress
+                        ? "Deploy a TwinVault and bind it to this ENS — the agent will spend from your funds."
+                        : "Connect a wallet first to deploy a vault."
+                    }
+                  >
+                    {bindingVault ? (
+                      <>
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                        Binding…
+                      </>
+                    ) : (
+                      <>Bind vault</>
+                    )}
+                  </Button>
+                ) : null}
+              </div>
+              {profile.vault ? (
+                <div className="mt-1.5 grid gap-0.5 font-mono text-[10px] text-muted-foreground">
+                  <div>
+                    <span className="text-foreground/60">vault:</span>{" "}
+                    <a
+                      href={`https://sepolia.etherscan.io/address/${profile.vault}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-primary hover:underline"
+                    >
+                      {shortAddr(profile.vault)}
+                    </a>
+                  </div>
+                  {profile.vaultOwner ? (
+                    <div>
+                      <span className="text-foreground/60">owner:</span>{" "}
+                      {shortAddr(profile.vaultOwner)}
+                    </div>
+                  ) : null}
+                </div>
+              ) : (
+                <p className="mt-1 text-[10px] leading-relaxed text-muted-foreground">
+                  Token sends fall back to the dev wallet. Bind a vault to
+                  route the agent's spends through your own funds — capped by
+                  on-chain limits you set.
+                </p>
+              )}
             </div>
 
             {profile.capabilities ? (
