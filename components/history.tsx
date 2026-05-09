@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { ArrowUpRight, Coins, History as HistoryIcon, Loader2, MessageSquare, RefreshCw, Sparkles, Trash2 } from "lucide-react"
+import { ArrowUpRight, Coins, History as HistoryIcon, Loader2, MessageSquare, RefreshCw, Sparkles, ThumbsDown, ThumbsUp, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -10,6 +10,23 @@ import { clearHistory, useHistory, type HistoryEntry, type HistoryKind } from "@
 import { cn } from "@/lib/utils"
 
 type FilterKind = HistoryKind | "all"
+type FeedbackRating = "up" | "down"
+
+type FeedbackSummary = {
+  actionId?: string
+  targetEns?: string
+  up: number
+  down: number
+  total: number
+  score: number
+}
+
+type FeedbackState = {
+  rating?: FeedbackRating
+  summary?: FeedbackSummary
+  loading?: boolean
+  error?: string
+}
 
 type WalletTx = {
   txHash: `0x${string}`
@@ -56,6 +73,8 @@ type HistoryProps = {
   /** When set, the History tab also pulls the wallet's on-chain txs from
    *  Etherscan (Sepolia + Base Sepolia) and merges them into the list. */
   walletAddress?: string | null
+  /** Optional auth getter enables fair action feedback writes. */
+  getAuthToken?: () => Promise<string | null>
 }
 
 function walletTxToHistoryEntry(tx: WalletTx): HistoryEntry {
@@ -84,12 +103,13 @@ function walletTxToHistoryEntry(tx: WalletTx): HistoryEntry {
   }
 }
 
-export function History({ className, ensName, walletAddress }: HistoryProps) {
+export function History({ className, ensName, walletAddress, getAuthToken }: HistoryProps) {
   const localEntries = useHistory({ ens: ensName })
   const [walletTxs, setWalletTxs] = useState<WalletTx[]>([])
   const [walletLoading, setWalletLoading] = useState(false)
   const [resolvedAddress, setResolvedAddress] = useState<string | null>(walletAddress ?? null)
   const [filter, setFilter] = useState<FilterKind>("all")
+  const [feedbackByAction, setFeedbackByAction] = useState<Record<string, FeedbackState>>({})
 
   // Prefer the ENS-bound `addr` record over the browser's connected wallet —
   // History is meant to show the agent's full on-chain activity, which is
@@ -151,6 +171,99 @@ export function History({ className, ensName, walletAddress }: HistoryProps) {
     for (const e of entries) m[e.kind] = (m[e.kind] ?? 0) + 1
     return m
   }, [entries])
+
+  useEffect(() => {
+    let cancelled = false
+    const ids = entries.map((e) => e.id).slice(0, 25)
+    if (!ids.length) {
+      setFeedbackByAction({})
+      return
+    }
+    async function loadFeedback() {
+      const pairs = await Promise.all(
+        ids.map(async (id) => {
+          try {
+            const res = await fetch(`/api/feedback?actionId=${encodeURIComponent(id)}`)
+            const data = (await res.json()) as {
+              ok?: boolean
+              feedback?: Array<{ reviewerEns: string; rating: FeedbackRating }>
+              summary?: FeedbackSummary
+            }
+            const own = ensName
+              ? data.feedback?.find(
+                  (f) => f.reviewerEns.toLowerCase() === ensName.toLowerCase(),
+                )
+              : undefined
+            return [
+              id,
+              {
+                rating: own?.rating,
+                summary: data.summary,
+              } satisfies FeedbackState,
+            ] as const
+          } catch {
+            return [id, {} satisfies FeedbackState] as const
+          }
+        }),
+      )
+      if (!cancelled) setFeedbackByAction(Object.fromEntries(pairs))
+    }
+    void loadFeedback()
+    return () => {
+      cancelled = true
+    }
+  }, [entries, ensName])
+
+  const submitFeedback = useCallback(
+    async (entry: HistoryEntry, rating: FeedbackRating) => {
+      if (!ensName || !getAuthToken) return
+      setFeedbackByAction((prev) => ({
+        ...prev,
+        [entry.id]: { ...prev[entry.id], loading: true, error: undefined },
+      }))
+      try {
+        const token = await getAuthToken()
+        if (!token) throw new Error("Sign in again to review this action.")
+        const res = await fetch("/api/feedback", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            privyToken: token,
+            reviewerEns: ensName,
+            actionId: entry.id,
+            rating,
+            targetEns: entry.description?.endsWith(".eth") ? entry.description : undefined,
+          }),
+        })
+        const data = (await res.json().catch(() => ({}))) as {
+          ok?: boolean
+          error?: string
+          summary?: FeedbackSummary
+        }
+        if (!res.ok || !data.ok) {
+          throw new Error(data.error ?? `feedback failed (${res.status})`)
+        }
+        setFeedbackByAction((prev) => ({
+          ...prev,
+          [entry.id]: {
+            rating,
+            summary: data.summary,
+            loading: false,
+          },
+        }))
+      } catch (err) {
+        setFeedbackByAction((prev) => ({
+          ...prev,
+          [entry.id]: {
+            ...prev[entry.id],
+            loading: false,
+            error: err instanceof Error ? err.message : String(err),
+          },
+        }))
+      }
+    },
+    [ensName, getAuthToken],
+  )
 
   return (
     <Card className={cn("flex h-[70dvh] flex-col overflow-hidden", className)}>
@@ -222,7 +335,13 @@ export function History({ className, ensName, walletAddress }: HistoryProps) {
         ) : (
           <ol className="divide-y divide-border/40">
             {filtered.map((e) => (
-              <Row key={e.id} entry={e} />
+              <Row
+                key={e.id}
+                entry={e}
+                feedback={feedbackByAction[e.id]}
+                feedbackEnabled={!!ensName && !!getAuthToken && !e.id.startsWith("chain:")}
+                onFeedback={(rating) => submitFeedback(e, rating)}
+              />
             ))}
           </ol>
         )}
@@ -231,7 +350,17 @@ export function History({ className, ensName, walletAddress }: HistoryProps) {
   )
 }
 
-function Row({ entry }: { entry: HistoryEntry }) {
+function Row({
+  entry,
+  feedback,
+  feedbackEnabled,
+  onFeedback,
+}: {
+  entry: HistoryEntry
+  feedback?: FeedbackState
+  feedbackEnabled: boolean
+  onFeedback: (rating: FeedbackRating) => void
+}) {
   const Icon = KIND_ICON[entry.kind]
   const colorClass = KIND_COLOR[entry.kind]
   const date = new Date(entry.at * 1000)
@@ -288,7 +417,7 @@ function Row({ entry }: { entry: HistoryEntry }) {
               {entry.errorMessage}
             </p>
           )}
-          <div className="mt-1 flex items-center gap-3 font-mono text-[10px] text-muted-foreground">
+          <div className="mt-1 flex flex-wrap items-center gap-3 font-mono text-[10px] text-muted-foreground">
             <span>{ts}</span>
             {entry.explorerUrl && (
               <a
@@ -300,7 +429,46 @@ function Row({ entry }: { entry: HistoryEntry }) {
                 Explorer <ArrowUpRight className="h-3 w-3" />
               </a>
             )}
+            {feedbackEnabled ? (
+              <span className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-background/60 px-1.5 py-0.5">
+                <span className="mr-0.5 text-muted-foreground/80">Review</span>
+                <button
+                  type="button"
+                  disabled={feedback?.loading}
+                  onClick={() => onFeedback("up")}
+                  className={cn(
+                    "grid h-5 w-5 place-items-center rounded-full transition hover:bg-emerald-500/15 hover:text-emerald-300 disabled:opacity-50",
+                    feedback?.rating === "up" && "bg-emerald-500/15 text-emerald-300",
+                  )}
+                  title="Good decision"
+                >
+                  <ThumbsUp className="h-3 w-3" />
+                </button>
+                <button
+                  type="button"
+                  disabled={feedback?.loading}
+                  onClick={() => onFeedback("down")}
+                  className={cn(
+                    "grid h-5 w-5 place-items-center rounded-full transition hover:bg-amber-500/15 hover:text-amber-300 disabled:opacity-50",
+                    feedback?.rating === "down" && "bg-amber-500/15 text-amber-300",
+                  )}
+                  title="Bad decision"
+                >
+                  <ThumbsDown className="h-3 w-3" />
+                </button>
+                {feedback?.summary && feedback.summary.total > 0 ? (
+                  <span className="ml-1 text-muted-foreground/80">
+                    {feedback.summary.score > 0 ? "+" : ""}{feedback.summary.score}
+                  </span>
+                ) : null}
+              </span>
+            ) : null}
           </div>
+          {feedback?.error ? (
+            <p className="mt-1 font-mono text-[10px] text-amber-300/80">
+              {feedback.error}
+            </p>
+          ) : null}
         </div>
       </div>
     </li>
