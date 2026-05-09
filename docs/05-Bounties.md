@@ -1,6 +1,6 @@
 # 05 — Bounty-Stack (Verified May 2026)
 
-> Wir hitten 6+ Bounties realistisch. Realistic outcome: $8-12k cash.
+> Wir hitten 7+ Bounties realistisch. Realistic outcome: $8-12k cash.
 >
 > **Wichtigste Verifikation:** ENSIP-25 ist offizieller Standard für AI Agent Identity in ENS, ERC-8004 IdentityRegistry ist live auf Mainnet (seit 29. Jan 2026) + Base Sepolia. Wir implementieren beides = doppelter ENS-Bounty-Hit.
 
@@ -26,9 +26,10 @@ Das macht jeden Bounty zur natürlichen Konsequenz der Story. Volles Skript: `do
 | 5 | SpaceComputer cTRNG | 🟡 Wrapper grün | `ORBITPORT_API_KEY` für live Attestation |
 | 6 | Best UX Flow | 🟢 **Live inkl. Voice** | OpenAI Realtime über WebRTC im Voice-Tab — Listening/Thinking/Speaking-States, Function-Calls via `/api/twin-tool`. Wenn `OPENAI_API_KEY` fehlt → graceful 503 + Switch-to-Chat-Card. |
 | 7 | **Best Privacy by Design** | 🟢 **Live** | nichts — Stealth-Send läuft end-to-end |
+| 8 | **Sourcify — Contract Intelligence** | 🟢 **Live** | Risky-Approval-Demo im Send-Tab zeigen; optional Sourcify-first Decoder für noch stärkeren Sponsor-Claim |
 
 **Solid-Cash-Floor:** ENS×2 + Privacy + UX = ~$3-4k einigermaßen sicher.
-**Stretch-Add:** Umia + Apify + SpaceComputer wenn Pitch + live Tx + Orbitport-Key landen.
+**Stretch-Add:** Umia + Apify + SpaceComputer + Sourcify wenn Pitch + live Tx + Orbitport-Key + Risky-Demo landen.
 
 ---
 
@@ -247,6 +248,64 @@ await setEnsText({
 
 ---
 
+## 8. Sourcify — Contract Intelligence / Anti-Blind-Signing
+
+> **Status: 🟢 LIVE.** Sourcify ist als Contract-Intelligence-Layer im Send-Flow sichtbar. Base-Sepolia-Sends öffnen vor der Ausführung das `Sourcify Contract Intelligence` Review: **Inspect → Decode → Decide**. Zusätzlich gibt es im Send-Tab einen non-executable **Try risky approval demo** Button, der ein `approve(spender, maxUint256)` simuliert und als HIGH risk markiert.
+
+### Anforderung
+Build a tool, platform, or application that makes meaningful use of Sourcify's open dataset of verified smart contracts. Sourcify verification means open-source / inspectable — nicht automatisch safe. Besonders relevant: AI-powered contract explainer, risk highlighting, common vulnerability / wallet-risk patterns.
+
+### Wie wir hitten
+
+| Kriterium | Unsere Antwort |
+|---|---|
+| Use of Sourcify data | `lib/sourcify.ts` liest `full_match` / `partial_match` Metadata, ABI, Contract-Name und Source-URL aus `repo.sourcify.dev` für Mainnet, Sepolia und Base Sepolia |
+| Impact & usefulness | EthTwin verhindert Blind Signing für nicht-technische Nutzer: Maria sieht keine Hex-Calldata, sondern eine verständliche Sicherheitsentscheidung |
+| Technical execution | `/api/decode-transaction` routet Browser-Decoding serverseitig; `lib/tx-decoder.ts` verbindet Sourcify ABI Decode + Plain-English Summary + Risk Layer |
+| Novelty | Sourcify ist nicht nur Badge, sondern Schritt 1 eines agentischen Safety-Flows: **Inspect → Decode → Decide** |
+
+### 🔥 Core Framing
+
+> *"Sourcify does not tell Maria what is safe. It gives EthTwin verified source evidence, and EthTwin turns that evidence into a plain-English risk decision before she signs."*
+
+### Implementation
+
+- `lib/sourcify.ts` — Sourcify repository lookup for `metadata.json`, ABI, contract name, `full_match` / `partial_match`, source URL
+- `lib/tx-decoder.ts` — decodes tx calldata, uses Sourcify as fallback for unknown contracts, attaches source verification + risk summary
+- `lib/contract-risk.ts` — wallet-risk classifier on top of Sourcify-derived evidence
+- `app/api/decode-transaction/route.ts` — server-side decode API so Sourcify lookup does not depend on browser/CORS behavior
+- `components/tx-approval-modal.tsx` — visible UX: Sourcify Contract Intelligence, source check, risk check, high-risk acknowledgement, demo-only reviews
+- `components/token-transfer.tsx` — Base Sepolia sends always run Sourcify review before execution; `Try risky approval demo` shows the HIGH-risk approval path without sending a tx
+
+### Risk Patterns
+
+| Pattern | Risk | User-facing behavior |
+|---|---|---|
+| Unverified contract + calldata | HIGH | "Twin cannot inspect verified source" |
+| Unknown selector | HIGH | "Function could not be mapped to verified ABI" |
+| Unlimited ERC20 approval | HIGH | "Common wallet-drain risk" |
+| `setApprovalForAll(true)` | HIGH | "Collection-wide operator access" |
+| `transferFrom` | MEDIUM | "Check from/to/amount carefully" |
+| Sourcify partial match | MEDIUM | "Inspectable, but needs extra caution" |
+| Verified decoded transfer | LOW | "Understandable action; confirm recipient and amount" |
+
+### Demo Beat
+
+1. Open **Send** tab on Base Sepolia.
+2. Click **Try risky approval demo**.
+3. Modal shows `Sourcify Contract Intelligence`:
+   - Inspect: Sourcify / known ABI evidence
+   - Decode: unlimited USDC approval
+   - Decide: **HIGH — Unlimited token approval**
+4. Point out that it is **demo-only and non-executable**.
+5. Pitch line: *"Sourcify makes the code inspectable. EthTwin turns that inspectability into a safety decision Maria can understand."*
+
+### Mentor / Sponsor Feedback Incorporated
+
+Sourcify feedback was that verification should not be equated with safety. We changed the product accordingly: Sourcify is the open-source evidence layer, and EthTwin adds a separate wallet-risk pattern layer before presenting any recommendation.
+
+---
+
 ## 📊 Score-Matrix für Self-Assessment (refreshed 2026-05-09)
 
 | Bounty | Confidence | Was hochpushen würde |
@@ -258,6 +317,7 @@ await setEnsText({
 | SpaceComputer | **5** | `ORBITPORT_API_KEY` setzen = sofort 8 |
 | Best UX | **9** | komplett rebuilt zu warmem Premium-Konsumer-Look + Maria-Mode + Quick-Send-Cards + Gamification-Pills |
 | Best Privacy | **8** | Stealth-Send läuft live; X-ray-Reveal-Card zeigt EIP-5564 + ENSIP-25 + cTRNG transparent |
+| Sourcify Contract Intelligence | **8** | Risky-Approval-Demo live zeigen; noch stärker mit Sourcify-first Decode für normale ERC20-Sends |
 | **Aesthetics** (general scoring axis) | **8.5** | warm Premium-Konsumer-Palette als Default, ContrastCard auf Landing, Receipt-Postcard mit X-ray-Reveal, Confetti+Cosmic-Pulse, Twin-Avatar-Breathing, Onboarding entjargonisiert |
 | **Wow Factor** (general scoring axis) | **8** | X-ray Reveal + Tom-Auto-Reply ("thanks oma! 💜") + Confetti+Cosmic-Pulse on send + Maria-Persona-Story landen 3 emotionale Beats |
 
@@ -289,3 +349,5 @@ ETHPrague erlaubt **dasselbe Projekt für mehrere Bounties einzureichen**. Siche
 - EIP-5564: https://eips.ethereum.org/EIPS/eip-5564
 - x402 protocol: https://docs.cdp.coinbase.com/x402/welcome
 - Apify x402: https://docs.apify.com/platform/integrations/x402
+- Sourcify repository: https://repo.sourcify.dev/
+- Sourcify docs: https://docs.sourcify.dev/
