@@ -12,6 +12,7 @@ import {
   Mail,
   Send,
   Sparkles,
+  Trash2,
   Wand2,
   Zap,
   ShieldCheck,
@@ -66,6 +67,54 @@ function chainLabel(): string {
   return network ?? "the chain"
 }
 
+// localStorage key for twin chat history. Keyed per-ENS so signing in as a
+// different twin starts a clean conversation.
+const CHAT_HISTORY_KEY = (ens: string) => `ethtwin.twinchat.${ens.toLowerCase()}`
+const CHAT_HISTORY_VERSION = 1
+const CHAT_HISTORY_LIMIT = 200 // hard cap so localStorage doesn't bloat indefinitely
+
+type StoredChat = {
+  v: number
+  messages: unknown[]
+}
+
+function loadChatHistory(ens: string): unknown[] {
+  if (typeof window === "undefined") return []
+  try {
+    const raw = window.localStorage.getItem(CHAT_HISTORY_KEY(ens))
+    if (!raw) return []
+    const parsed = JSON.parse(raw) as StoredChat
+    if (parsed.v !== CHAT_HISTORY_VERSION || !Array.isArray(parsed.messages)) {
+      return []
+    }
+    return parsed.messages
+  } catch {
+    return []
+  }
+}
+
+function saveChatHistory(ens: string, messages: unknown[]) {
+  if (typeof window === "undefined") return
+  try {
+    const trimmed = messages.slice(-CHAT_HISTORY_LIMIT)
+    window.localStorage.setItem(
+      CHAT_HISTORY_KEY(ens),
+      JSON.stringify({ v: CHAT_HISTORY_VERSION, messages: trimmed }),
+    )
+  } catch {
+    // out of quota — drop quietly
+  }
+}
+
+function clearChatHistory(ens: string) {
+  if (typeof window === "undefined") return
+  try {
+    window.localStorage.removeItem(CHAT_HISTORY_KEY(ens))
+  } catch {
+    // ignore
+  }
+}
+
 export function TwinChat({ ensName, className, getAuthToken }: TwinChatProps) {
   const transport = useMemo(
     () =>
@@ -76,7 +125,7 @@ export function TwinChat({ ensName, className, getAuthToken }: TwinChatProps) {
     [ensName],
   )
 
-  const { messages, sendMessage, status, stop } = useChat({
+  const { messages, sendMessage, status, stop, setMessages } = useChat({
     transport,
   })
 
@@ -84,6 +133,28 @@ export function TwinChat({ ensName, className, getAuthToken }: TwinChatProps) {
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const isStreaming = status === "submitted" || status === "streaming"
   const [profileOpen, setProfileOpen] = useState(false)
+  const hydratedRef = useRef(false)
+
+  // Hydrate persisted messages on mount (or when the user switches twins).
+  useEffect(() => {
+    hydratedRef.current = false
+    const persisted = loadChatHistory(ensName)
+    if (persisted.length > 0) {
+      // The stored messages were taken straight from useChat — they conform
+      // to UIMessage. Cast through unknown to satisfy the strict generic.
+      setMessages(persisted as Parameters<typeof setMessages>[0])
+    } else {
+      setMessages([])
+    }
+    hydratedRef.current = true
+  }, [ensName, setMessages])
+
+  // Persist after each change (skip the very first render so we don't write
+  // an empty array before hydration finishes).
+  useEffect(() => {
+    if (!hydratedRef.current) return
+    saveChatHistory(ensName, messages)
+  }, [messages, ensName])
 
   useEffect(() => {
     const node = scrollRef.current
@@ -97,6 +168,12 @@ export function TwinChat({ ensName, className, getAuthToken }: TwinChatProps) {
     if (!text || isStreaming) return
     sendMessage({ text })
     setInput("")
+  }
+
+  function handleClear() {
+    if (!confirm("Clear this conversation? The agent loses everything you've talked about.")) return
+    clearChatHistory(ensName)
+    setMessages([])
   }
 
   return (
@@ -117,15 +194,29 @@ export function TwinChat({ ensName, className, getAuthToken }: TwinChatProps) {
             </div>
           </div>
         </button>
-        <Badge variant="secondary" className="font-mono text-[10px]">
-          <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-emerald-400" />
-          live on {chainLabel()}
-        </Badge>
+        <div className="flex items-center gap-1.5">
+          <Badge variant="secondary" className="font-mono text-[10px]">
+            <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-emerald-400" />
+            live on {chainLabel()}
+          </Badge>
+          {messages.length > 0 ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={handleClear}
+              title="Clear conversation history"
+              className="h-7 px-2 text-muted-foreground hover:text-destructive"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          ) : null}
+        </div>
       </header>
 
       <div
         ref={scrollRef}
-        className="flex-1 overflow-y-auto px-4 py-5"
+        className="min-h-0 flex-1 overflow-y-auto px-4 py-5"
       >
         {messages.length === 0 ? (
           <EmptyState onPick={(text) => sendMessage({ text })} />
