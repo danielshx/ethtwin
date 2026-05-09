@@ -29,6 +29,7 @@ import { AgentProfileDialog } from "@/components/agent-profile"
 import { EnsAvatar } from "@/components/ens-avatar"
 import { TxApprovalModal, type TxIntent } from "@/components/tx-approval-modal"
 import { useEnsName } from "@/lib/use-ens-name"
+import { describeTx } from "@/lib/tx-decoder"
 
 type AgentEntry = {
   ens: string
@@ -69,6 +70,7 @@ const TOKENS: { id: Token; label: string }[] = [
 
 const RECENT_KEY = "ethtwin.transfers.recent.v1"
 const MAX_RECENT = 10
+const BASE_SEPOLIA_CHAIN_ID = 84532
 
 // Demo safety caps mirror /api/transfer's hard caps. Bigger sends would
 // require a code change — intentional to keep the demo wallet from draining.
@@ -258,15 +260,27 @@ export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTrans
                 args: [resolvedTo, requestedRaw],
               })
             : "0x"
+        const txTo = token2send === "USDC" ? USDC_BASE_SEPOLIA : resolvedTo
+        const decoded = await describeTx({
+          to: txTo,
+          value: token2send === "ETH" ? requestedRaw : undefined,
+          data,
+          chainId: BASE_SEPOLIA_CHAIN_ID,
+        })
         const intent: TxIntent = {
-          to: token2send === "USDC" ? USDC_BASE_SEPOLIA : resolvedTo,
+          to: txTo,
           value: token2send === "ETH" ? `${amt} ETH` : `${amt} USDC`,
           data,
           chain: "base-sepolia",
           plainEnglish:
             token2send === "ETH"
-              ? `Send ${amt} ETH on Base Sepolia to ${recip}.`
-              : `Send ${amt} USDC on Base Sepolia to ${recip}.`,
+              ? `Send ${amt} ETH on Base Sepolia to ${recip}.\n\n${decoded.english}`
+              : decoded.english,
+          sourceVerified: decoded.verification.sourceVerified,
+          sourceProvider: decoded.verification.sourceProvider,
+          sourceMatch: decoded.verification.match,
+          sourceUrl: decoded.verification.sourceUrl,
+          sourceWarning: decoded.verification.warning,
         }
         setPendingMeta({
           chain: chain2send,
@@ -398,6 +412,7 @@ export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTrans
     const meta = pendingMeta
     const value =
       meta.token === "ETH" ? parseEther(meta.amount) : 0n
+
     // The smart-wallet client is already pinned to Base Sepolia via
     // `SmartWalletsProvider` + `supportedChains` in `app/providers.tsx`,
     // so we omit `chain` here. (Passing it tripped a viem 2.47 vs 2.48
