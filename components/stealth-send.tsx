@@ -182,27 +182,9 @@ export function StealthSend({ myEnsName, getAuthToken, className }: StealthSendP
     if (!canSend) return
     setError(null)
     setResult(null)
+    setSample(null)
 
-    // 1. Cosmic seed — purely visual, but fetched live.
-    setPhase("fetching")
-    let seed: CosmicSample | null = null
-    try {
-      const res = await fetch("/api/cosmic-seed")
-      if (!res.ok) throw new Error(`cosmic-seed HTTP ${res.status}`)
-      seed = (await res.json()) as CosmicSample
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "cosmic seed failed")
-      setPhase("idle")
-      return
-    }
-
-    // Hold the orb in fetching for ~1.4s so the animation reads.
-    await new Promise((r) => setTimeout(r, 1400))
-    setSample(seed)
-    setPhase("revealed")
-    await new Promise((r) => setTimeout(r, 700))
-
-    // 2. Sourcify contract-intelligence review before the actual stealth tx.
+    // 1. Sourcify contract-intelligence review before the actual stealth tx.
     setPhase("reviewing")
     try {
       const intent = await buildSourcifyReviewIntent()
@@ -256,9 +238,7 @@ export function StealthSend({ myEnsName, getAuthToken, className }: StealthSendP
         status: "success",
         chain: "base-sepolia",
         summary: `Stealth USDC → ${data.recipientEnsName}`,
-        description: `${data.amountHuman} USDC to one-time stealth address ${data.stealthAddress}.${
-          data.cosmicSeeded ? " Seeded from cTRNG attestation." : ""
-        }`,
+        description: `${data.amountHuman} USDC to one-time stealth address ${data.stealthAddress}.`,
         txHash: data.txHash,
         explorerUrl: data.blockExplorerUrl,
         syncTo: { ens: myEnsName, getAuthToken },
@@ -515,11 +495,7 @@ function ResultCard({
         ) : null}
       </div>
       <BountyTrail
-        tags={
-          result.cosmicSeeded
-            ? ["ens", "stealth", "ctrng", "kms", "sourcify"]
-            : ["ens", "stealth", "kms", "sourcify"]
-        }
+        tags={["ens", "stealth", "kms", "sourcify"]}
         className="pt-1"
       />
     </motion.div>

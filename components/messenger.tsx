@@ -502,7 +502,7 @@ export function Messenger({ myEnsName, getAuthToken, className }: MessengerProps
                 </div>
               </button>
               <BountyTrail
-                tags={["ens", "ctrng", "kms"]}
+                tags={["ens", "kms"]}
                 className="ml-auto"
                 showLabel={false}
               />

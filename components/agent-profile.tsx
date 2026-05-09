@@ -448,7 +448,7 @@ export function AgentProfileDialog({
                   "ens",
                   "ensip25",
                   ...(profile.kmsKeyId ? (["kms"] as const) : []),
-                  ...(profile.stealthMeta ? (["stealth", "ctrng"] as const) : []),
+                  ...(profile.stealthMeta ? (["stealth"] as const) : []),
                 ] as BountyTag[]
               }
               className="pt-1"

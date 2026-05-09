@@ -14,9 +14,9 @@ import { cn } from "@/lib/utils"
 // history Row to surface a "powered by" trail under each entry, matching
 // the per-action chips on the live UI surfaces.
 const KIND_BOUNTY_TAGS: Record<HistoryKind, BountyTag[]> = {
-  mint: ["ens", "ensip25", "kms", "ctrng", "stealth"],
-  message: ["ens", "ctrng", "kms"],
-  "stealth-send": ["ens", "stealth", "ctrng", "kms"],
+  mint: ["ens", "ensip25", "kms", "stealth"],
+  message: ["ens", "kms"],
+  "stealth-send": ["ens", "stealth", "kms"],
   transfer: ["ens", "kms", "sourcify"],
   other: [],
 }

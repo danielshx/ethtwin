@@ -2,14 +2,13 @@
 
 import { useRef, useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { CheckCircle2, Copy, Loader2, Sparkles } from "lucide-react"
+import { CheckCircle2, Copy, Satellite, Sparkles } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
-import { CosmicOrb, useCosmicSeed } from "./cosmic-orb"
 import { BountyTrail } from "./bounty-trail"
 import { cn } from "@/lib/utils"
 
@@ -18,6 +17,8 @@ export type OnboardingResult = {
   username: string
   /** The KMS-derived EVM address bound to the twin's ENS `addr` record. */
   smartWalletAddress: `0x${string}` | string
+  /** Legacy cosmic attestation — kept for compatibility, always empty
+   *  under the KMS-only flow. */
   cosmicAttestation: string
   /** SpaceComputer KMS KeyId for this twin's signing key. */
   kmsKeyId?: string | null
@@ -30,7 +31,7 @@ export type OnboardingResult = {
 // flow has no auth methods — the server mints + signs.
 export type AuthMethod = "any" | "passkey" | "wallet"
 
-type Step = "intro" | "username" | "cosmic" | "minting" | "done"
+type Step = "intro" | "username" | "minting" | "done"
 
 type OnboardingFlowProps = {
   parentDomain?: string
@@ -72,14 +73,13 @@ export function OnboardingFlow({
     kmsKeyId: string | null
     recoveryCode: string | null
   } | null>(null)
-  const cosmic = useCosmicSeed()
 
   async function handleStart() {
     setError(null)
     setStep("username")
   }
 
-  async function handleCosmic() {
+  async function handleProceed() {
     setError(null)
 
     // Pre-flight: is this username already taken? With KMS-only auth there's
@@ -105,11 +105,8 @@ export function OnboardingFlow({
       // canonical error if the name really is taken.
     }
 
-    setStep("cosmic")
-    const sample = await cosmic.fetchSeed()
-    if (!sample) {
-      setError("cosmic seed unavailable — using local entropy")
-    }
+    // Skip the cosmic step entirely — the KMS-only flow doesn't need cTRNG.
+    handleMint()
   }
 
   async function handleMint() {
@@ -122,7 +119,7 @@ export function OnboardingFlow({
       const mintResult = await onMint({
         username,
         smartWalletAddress: "",
-        cosmicAttestation: cosmic.sample?.attestation ?? "mock-attestation",
+        cosmicAttestation: "",
       })
       const effectiveAddress = mintResult.walletAddress ?? null
       if (!effectiveAddress) {
@@ -150,7 +147,7 @@ export function OnboardingFlow({
             ensName: mintResult.ensName,
             username,
             smartWalletAddress: effectiveAddress,
-            cosmicAttestation: cosmic.sample?.attestation ?? "mock-attestation",
+            cosmicAttestation: "",
             kmsKeyId: mintResult.kmsKeyId ?? null,
             recoveryCode: null,
           })
@@ -166,7 +163,7 @@ export function OnboardingFlow({
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "mint failed")
-      setStep("cosmic")
+      setStep("username")
     }
   }
 
@@ -178,7 +175,7 @@ export function OnboardingFlow({
       ensName: ctx.ensName,
       username,
       smartWalletAddress: ctx.effectiveAddress,
-      cosmicAttestation: cosmic.sample?.attestation ?? "mock-attestation",
+      cosmicAttestation: "",
       kmsKeyId: ctx.kmsKeyId,
       recoveryCode: ctx.recoveryCode,
     })
@@ -254,7 +251,7 @@ export function OnboardingFlow({
                 </p>
               </div>
               <Button
-                onClick={handleCosmic}
+                onClick={handleProceed}
                 size="lg"
                 disabled={!isValid(username)}
               >
@@ -263,40 +260,32 @@ export function OnboardingFlow({
             </StepShell>
           )}
 
-          {(step === "cosmic" || step === "minting") && (
-            <StepShell key="cosmic">
-              <div className="flex flex-col items-center gap-6">
-                <CosmicOrb phase={cosmic.phase} sample={cosmic.sample} />
+          {step === "minting" && (
+            <StepShell key="minting">
+              <div className="flex flex-col items-center gap-6 py-6">
+                <motion.div
+                  animate={{ scale: [1, 1.05, 1], opacity: [0.7, 1, 0.7] }}
+                  transition={{ duration: 2, repeat: Infinity }}
+                  className="grid h-20 w-20 place-items-center rounded-full bg-purple-500/20 text-purple-300"
+                >
+                  <Satellite className="h-10 w-10" />
+                </motion.div>
                 <div className="text-center">
                   <h2 className="text-xl font-semibold">
-                    {cosmic.phase === "revealed"
-                      ? "Cosmic seed received"
-                      : "Pulling entropy from orbit"}
+                    Minting your twin
                   </h2>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    {cosmic.phase === "revealed"
-                      ? "This seeds your stealth meta-key — only you can decrypt private payments."
-                      : "Orbitport cTRNG → satellite → your twin."}
+                    SpaceComputer KMS is generating your signing key.
+                    Sepolia ENS is registering{" "}
+                    <span className="font-mono text-foreground/85">
+                      {username}.{parentDomain}
+                    </span>
+                    .
                   </p>
                 </div>
-                <Button
-                  size="lg"
-                  onClick={handleMint}
-                  disabled={cosmic.phase !== "revealed" || step === "minting"}
-                >
-                  {step === "minting" ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Confirming on Sepolia…
-                    </>
-                  ) : (
-                    <>Mint {username}.{parentDomain}</>
-                  )}
-                </Button>
-                {step === "minting" && (
-                  <p className="text-center font-mono text-[10px] text-muted-foreground">
-                    txs broadcast — waiting for the next Sepolia block (~12-30s)…
-                  </p>
-                )}
+                <p className="text-center font-mono text-[10px] text-muted-foreground">
+                  txs broadcast — waiting for the next Sepolia block (~12-30s)…
+                </p>
               </div>
             </StepShell>
           )}
@@ -324,7 +313,7 @@ export function OnboardingFlow({
                   ENSIP-25 · stealth-meta-address set · KMS-signed
                 </Badge>
                 <BountyTrail
-                  tags={["ens", "ensip25", "kms", "ctrng", "stealth"]}
+                  tags={["ens", "ensip25", "kms", "stealth"]}
                   className="justify-center"
                 />
 
@@ -421,8 +410,8 @@ function StepShell({ children }: { children: React.ReactNode }) {
 }
 
 function StepIndicator({ step }: { step: Step }) {
-  const order: Step[] = ["intro", "username", "cosmic", "done"]
-  const idx = step === "minting" ? 2 : order.indexOf(step)
+  const order: Step[] = ["intro", "username", "minting", "done"]
+  const idx = order.indexOf(step)
   return (
     <div className="flex items-center gap-1.5 px-8 pt-6">
       {order.map((s, i) => (

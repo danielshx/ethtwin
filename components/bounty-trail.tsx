@@ -15,7 +15,6 @@ import {
   Globe,
   Satellite,
   ShieldCheck,
-  Sparkles,
   Zap,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
@@ -25,7 +24,6 @@ export type BountyTag =
   | "ens"
   | "ensip25"
   | "kms"
-  | "ctrng"
   | "stealth"
   | "sourcify"
   | "x402"
@@ -61,14 +59,6 @@ const META: Record<BountyTag, BountyMeta> = {
       "Every transaction (mint, message, send) is signed by KMS server-side.",
     Icon: Satellite,
     tone: "text-purple-400",
-  },
-  ctrng: {
-    label: "cTRNG",
-    tip:
-      "Cosmic randomness from SpaceComputer Orbitport seeds AES nonces and stealth ephemeral keys. " +
-      "Each payment carries an attestation hash provable on-chain.",
-    Icon: Sparkles,
-    tone: "text-amber-400",
   },
   stealth: {
     label: "EIP-5564",
