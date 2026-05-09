@@ -97,6 +97,7 @@ function App() {
       ensName: string
       walletAddress?: string
       kmsKeyId?: string | null
+      kmsPublicKey?: string | null
       recoveryCode?: string
     }
     // Persist the recovery code right after mint — this is the artefact
@@ -115,6 +116,7 @@ function App() {
       ensName: data.ensName,
       walletAddress: data.walletAddress,
       kmsKeyId: data.kmsKeyId ?? null,
+      kmsPublicKey: data.kmsPublicKey ?? null,
       recoveryCode: data.recoveryCode,
     }
   }

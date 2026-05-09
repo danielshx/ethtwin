@@ -93,6 +93,7 @@ export async function POST(req: Request) {
     // published as a `twin.kms-key-id` text record so any reader can resolve
     // ENS → KMS key → cryptographic provenance.
     let kmsKeyId: string | null = null
+    let kmsPublicKey: string | null = null
     let walletAddress: Address
     const wantsKms =
       body.useKms !== false &&
@@ -106,6 +107,7 @@ export async function POST(req: Request) {
       log("creating KMS-managed ETHEREUM key…")
       const kms = await createTwinKey(body.username)
       kmsKeyId = kms.keyId
+      kmsPublicKey = kms.publicKey
       walletAddress = kms.address
       log(`KMS key ${kmsKeyId} → ${walletAddress}`)
     } else if (body.smartWalletAddress) {
@@ -255,6 +257,11 @@ export async function POST(req: Request) {
       recordsTx,
       walletAddress,
       kmsKeyId,
+      // Uncompressed secp256k1 public key (65 bytes, 0x04 prefix). This is
+      // the cryptographic artifact that proves the address was derived from
+      // a real KMS key — anyone can hash it and confirm it matches the
+      // on-chain `addr` record. Surface it in the UI as the "true" KMS key.
+      kmsPublicKey,
       // Plaintext recovery code — the client must persist this and surface
       // it to the user. Required to log back in from a different browser.
       recoveryCode,

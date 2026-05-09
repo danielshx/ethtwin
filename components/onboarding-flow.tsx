@@ -44,6 +44,7 @@ type OnboardingFlowProps = {
     ensName: string
     walletAddress?: string
     kmsKeyId?: string | null
+    kmsPublicKey?: string | null
     recoveryCode?: string
   }>
   onComplete: (result: OnboardingResult) => void
@@ -71,6 +72,7 @@ export function OnboardingFlow({
     ensName: string
     effectiveAddress: string
     kmsKeyId: string | null
+    kmsPublicKey: string | null
     recoveryCode: string | null
   } | null>(null)
 
@@ -159,6 +161,7 @@ export function OnboardingFlow({
         ensName: mintResult.ensName,
         effectiveAddress,
         kmsKeyId: mintResult.kmsKeyId ?? null,
+        kmsPublicKey: mintResult.kmsPublicKey ?? null,
         recoveryCode: mintResult.recoveryCode ?? null,
       }
     } catch (e) {
@@ -317,28 +320,53 @@ export function OnboardingFlow({
                   className="justify-center"
                 />
 
-                {/* SpaceComputer KMS provenance — surfaces the real keyId
-                 *  + derived address so the sponsor can see this twin is
-                 *  satellite-attested, not a local dev key. */}
+                {/* SpaceComputer KMS provenance — surfaces the real keyId,
+                 *  derived address, and the cryptographic public key. The
+                 *  public key is the verifiable artefact: anyone can hash it
+                 *  and confirm it derives the on-chain `addr` record. */}
                 {mintCtxRef.current?.kmsKeyId ? (
                   <div className="w-full max-w-md rounded-lg border border-purple-500/30 bg-purple-500/5 p-3 text-left">
                     <div className="mb-1 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wider text-purple-300">
-                      <Sparkles className="h-3 w-3" /> SpaceComputer KMS key
+                      <Satellite className="h-3 w-3" /> SpaceComputer KMS key
                     </div>
-                    <div className="grid gap-0.5 font-mono text-[10px] leading-relaxed text-muted-foreground">
-                      <div>
-                        keyId ·{" "}
-                        <span className="text-foreground/85">
+                    <div className="grid gap-1 font-mono text-[10px] leading-relaxed text-muted-foreground">
+                      <div className="flex items-start gap-1.5">
+                        <span className="shrink-0 text-foreground/55">keyId</span>
+                        <span className="break-all text-foreground/85">
                           {mintCtxRef.current.kmsKeyId}
                         </span>
                       </div>
-                      <div>
-                        addr ·{" "}
-                        <span className="text-foreground/85">
+                      <div className="flex items-start gap-1.5">
+                        <span className="shrink-0 text-foreground/55">addr</span>
+                        <span className="break-all text-foreground/85">
                           {mintCtxRef.current.effectiveAddress}
                         </span>
                       </div>
+                      {mintCtxRef.current.kmsPublicKey ? (
+                        <div className="flex items-start gap-1.5">
+                          <span className="shrink-0 text-foreground/55">pubKey</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigator.clipboard
+                                .writeText(mintCtxRef.current?.kmsPublicKey ?? "")
+                                .catch(() => {})
+                              toast.success("KMS public key copied")
+                            }}
+                            title="Click to copy — uncompressed secp256k1 public key (65 bytes)"
+                            className="break-all text-left text-foreground/85 hover:underline"
+                          >
+                            {mintCtxRef.current.kmsPublicKey}
+                          </button>
+                        </div>
+                      ) : null}
                     </div>
+                    <p className="mt-2 text-[10px] leading-snug text-purple-200/70">
+                      The public key is your &ldquo;true&rdquo; KMS identity.
+                      Hash it (keccak256, last 20 bytes) and you get the
+                      address above — that&apos;s how anyone can verify this
+                      twin is signed by a real Orbitport key, not a dev wallet.
+                    </p>
                   </div>
                 ) : null}
                 {recoveryCode ? (
