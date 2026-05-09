@@ -90,10 +90,10 @@ export function TwinChat({ ensName, className, getAuthToken }: TwinChatProps) {
 
   return (
     <Card className={cn("flex flex-col gap-0 overflow-hidden p-0", className)}>
-      <header className="flex items-center justify-between border-b border-white/10 px-4 py-3">
+      <header className="flex items-center justify-between border-b border-border/60 px-4 py-3">
         <button
           onClick={() => setProfileOpen(true)}
-          className="flex items-center gap-2.5 rounded-md px-1 -mx-1 py-1 text-left hover:bg-white/5"
+          className="flex items-center gap-2.5 rounded-md px-1 -mx-1 py-1 text-left hover:bg-secondary/40"
           title="View profile"
         >
           <AvatarImage src={avatarUrl} ens={ensName} size={36} />
@@ -145,7 +145,7 @@ export function TwinChat({ ensName, className, getAuthToken }: TwinChatProps) {
 
       <form
         onSubmit={onSubmit}
-        className="flex items-center gap-2 border-t border-white/10 px-3 py-3"
+        className="flex items-center gap-2 border-t border-border/60 px-3 py-3"
       >
         <Input
           value={input}
@@ -242,7 +242,7 @@ function MessagePart({
       state === "output-available" && output?.ok ? "done" : "active"
     return (
       <div className="my-2 space-y-1.5">
-        <div className="flex flex-wrap items-center gap-2 rounded-md border border-white/10 bg-black/30 px-2.5 py-1.5 text-xs">
+        <div className="flex flex-wrap items-center gap-2 rounded-md border border-border/60 bg-secondary/60 px-2.5 py-1.5 text-xs">
           <Wand2 className="h-3.5 w-3.5 text-primary" />
           <span className="font-mono text-primary/90">{toolName}</span>
           <span className="text-muted-foreground">·</span>
@@ -598,37 +598,60 @@ function ThinkingDots() {
   )
 }
 
-const PROMPTS = [
-  "What do you know about my wallet?",
-  "Who else is here on ethtwin.eth?",
-  "What's stored in my ENS profile right now?",
-  "Any new messages in my inbox?",
+const PROMPTS: Array<{ icon: string; text: string; subtitle: string }> = [
+  { icon: "💸", text: "Send 5 dollars to alice", subtitle: "Pay anyone by name" },
+  { icon: "🔍", text: "Who else is here?", subtitle: "Browse other twins" },
+  { icon: "📬", text: "Any new messages?", subtitle: "Check your inbox" },
+  { icon: "👤", text: "Show me my profile", subtitle: "What people see about you" },
 ]
 
 function EmptyState({ onPick }: { onPick: (text: string) => void }) {
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-4 py-10 text-center">
-      <span className="grid h-12 w-12 place-items-center rounded-full bg-primary/15 text-primary">
-        <Sparkles className="h-5 w-5" />
-      </span>
+    <div className="flex h-full flex-col items-center justify-center gap-6 py-10 text-center">
+      <motion.span
+        initial={{ scale: 0.7, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        transition={{ duration: 0.5, ease: "easeOut" }}
+        className="grid h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br from-primary to-amber-400 text-primary-foreground shadow-lg shadow-primary/20"
+      >
+        <Sparkles className="h-6 w-6" />
+      </motion.span>
       <div className="space-y-1">
-        <p className="text-sm font-medium">Your twin is online.</p>
-        <p className="text-xs text-muted-foreground">
-          Try one of these — or ask anything in plain English.
+        <p className="text-base font-semibold tracking-tight">Your twin is ready.</p>
+        <p className="text-sm text-muted-foreground">
+          Tap a suggestion or ask anything in plain English.
         </p>
       </div>
-      <div className="flex flex-wrap justify-center gap-2">
+      <motion.div
+        initial="hidden"
+        animate="show"
+        variants={{
+          show: { transition: { staggerChildren: 0.06 } },
+          hidden: {},
+        }}
+        className="grid w-full max-w-md grid-cols-2 gap-2"
+      >
         {PROMPTS.map((p) => (
-          <button
-            key={p}
+          <motion.button
+            key={p.text}
             type="button"
-            onClick={() => onPick(p)}
-            className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs text-white/80 transition hover:border-primary/40 hover:bg-primary/10 hover:text-white"
+            onClick={() => onPick(p.text)}
+            variants={{
+              hidden: { opacity: 0, y: 6 },
+              show: { opacity: 1, y: 0 },
+            }}
+            whileHover={{ y: -2 }}
+            transition={{ duration: 0.2 }}
+            className="group flex items-start gap-2.5 rounded-2xl border border-border/60 bg-card px-3 py-2.5 text-left text-xs shadow-sm transition hover:border-primary/40 hover:shadow-md"
           >
-            {p}
-          </button>
+            <span className="text-lg leading-none">{p.icon}</span>
+            <span className="flex flex-col">
+              <span className="font-medium text-foreground">{p.text}</span>
+              <span className="text-[10px] text-muted-foreground">{p.subtitle}</span>
+            </span>
+          </motion.button>
         ))}
-      </div>
+      </motion.div>
     </div>
   )
 }

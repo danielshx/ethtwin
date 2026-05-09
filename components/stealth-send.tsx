@@ -197,7 +197,7 @@ export function StealthSend({ myEnsName, getAuthToken, className }: StealthSendP
 
   return (
     <Card className={cn("flex flex-col gap-0 overflow-hidden p-0", className)}>
-      <header className="flex items-center justify-between border-b border-white/10 px-4 py-3">
+      <header className="flex items-center justify-between border-b border-border/60 px-4 py-3">
         <div className="flex items-center gap-2">
           <span className="grid h-7 w-7 place-items-center rounded-full bg-primary/20 text-primary">
             <Lock className="h-4 w-4" />
@@ -247,7 +247,7 @@ export function StealthSend({ myEnsName, getAuthToken, className }: StealthSendP
                       key={a.ens}
                       onClick={() => pickAgent(a.ens)}
                       className={cn(
-                        "group inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-card/60 px-2 py-1 text-xs transition hover:bg-white/10",
+                        "group inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-card/80 px-2 py-1 text-xs transition hover:bg-secondary/60",
                         recipient === a.ens && "border-primary/40 bg-primary/10",
                       )}
                     >

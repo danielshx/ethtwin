@@ -154,7 +154,7 @@ export function History({ className, ensName, walletAddress }: HistoryProps) {
 
   return (
     <Card className={cn("flex h-[70dvh] flex-col overflow-hidden", className)}>
-      <header className="flex items-center gap-2 border-b border-white/10 px-5 py-3">
+      <header className="flex items-center gap-2 border-b border-border/60 px-5 py-3">
         <HistoryIcon className="h-4 w-4 text-muted-foreground" />
         <span className="text-sm font-medium">History</span>
         {resolvedAddress && (
@@ -196,7 +196,7 @@ export function History({ className, ensName, walletAddress }: HistoryProps) {
       </header>
 
       {/* Filter chips */}
-      <div className="flex items-center gap-1.5 border-b border-white/10 px-5 py-3">
+      <div className="flex items-center gap-1.5 border-b border-border/60 px-5 py-3">
         {FILTERS.map((f) => (
           <button
             key={f.id}
@@ -205,7 +205,7 @@ export function History({ className, ensName, walletAddress }: HistoryProps) {
               "rounded-full px-3 py-1 font-mono text-[10px] transition",
               filter === f.id
                 ? "bg-primary/20 text-primary"
-                : "bg-white/5 text-muted-foreground hover:bg-white/10",
+                : "bg-secondary/40 text-muted-foreground hover:bg-secondary/60",
             )}
           >
             {f.label}
@@ -220,7 +220,7 @@ export function History({ className, ensName, walletAddress }: HistoryProps) {
         {filtered.length === 0 ? (
           <EmptyState filter={filter} />
         ) : (
-          <ol className="divide-y divide-white/5">
+          <ol className="divide-y divide-border/40">
             {filtered.map((e) => (
               <Row key={e.id} entry={e} />
             ))}
@@ -248,7 +248,7 @@ function Row({ entry }: { entry: HistoryEntry }) {
         <span
           className={cn(
             "mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full",
-            failed ? "bg-destructive/20 text-destructive" : "bg-white/5",
+            failed ? "bg-destructive/20 text-destructive" : "bg-secondary/40",
             !failed && colorClass,
           )}
         >

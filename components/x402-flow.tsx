@@ -39,7 +39,7 @@ export function X402Flow({
   return (
     <div
       className={cn(
-        "ml-5 mt-1 mb-1 rounded-md border border-white/10 bg-black/30 px-3 py-3",
+        "ml-5 mt-1 mb-1 rounded-md border border-border/60 bg-secondary/40 px-3 py-3",
         className,
       )}
     >

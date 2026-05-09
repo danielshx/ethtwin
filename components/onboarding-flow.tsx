@@ -180,7 +180,7 @@ export function OnboardingFlow({
   return (
     <Card
       className={cn(
-        "relative w-full max-w-xl overflow-hidden border-white/10 bg-card/80 p-0 backdrop-blur",
+        "relative w-full max-w-xl overflow-hidden border-border/60 bg-card/95 p-0 backdrop-blur",
         className,
       )}
     >
@@ -190,17 +190,18 @@ export function OnboardingFlow({
         <AnimatePresence mode="wait">
           {step === "intro" && (
             <StepShell key="intro">
-              <h2 className="text-2xl font-semibold tracking-tight">
-                Spawn your AI twin
+              <h2 className="text-3xl font-semibold tracking-tight">
+                Set up your twin
               </h2>
-              <p className="text-sm text-muted-foreground">
-                A long-lived agent that lives in ENS, transacts on your behalf,
-                and coordinates with other twins. No seed phrase, no extension.
+              <p className="text-base text-muted-foreground">
+                Your personal assistant for sending money, talking to friends,
+                and keeping things private. No seed phrase. Just you, your face,
+                and a name.
               </p>
-              <div className="my-2 grid gap-2 text-sm">
-                <Bullet>Identity lives in ENS — persona + stealth keys + capabilities</Bullet>
-                <Bullet>Privacy-first payments via EIP-5564 stealth addresses</Bullet>
-                <Bullet>Talks to other twins through on-chain ENS messaging</Bullet>
+              <div className="my-2 grid gap-2.5 text-sm">
+                <Bullet>Send money by saying a name out loud</Bullet>
+                <Bullet>Private by default — no one sees what you send</Bullet>
+                <Bullet>Lives at <span className="font-medium text-foreground">yourname.ethtwin.eth</span></Bullet>
               </div>
 
               <div className="mt-2 grid gap-3">
@@ -208,7 +209,7 @@ export function OnboardingFlow({
                   onClick={() => handleAuth("any")}
                   disabled={authBusy}
                   size="lg"
-                  className="relative h-12 overflow-hidden bg-gradient-to-r from-primary to-fuchsia-500 text-primary-foreground shadow-lg shadow-primary/25 transition hover:shadow-primary/40"
+                  className="relative h-14 overflow-hidden rounded-2xl bg-primary text-primary-foreground text-base font-semibold shadow-lg shadow-primary/20 transition hover:shadow-primary/30"
                 >
                   {authBusy ? (
                     <>
@@ -216,7 +217,7 @@ export function OnboardingFlow({
                     </>
                   ) : (
                     <>
-                      <Sparkles className="mr-2 h-4 w-4" /> Create new twin agent
+                      <Sparkles className="mr-2 h-4 w-4" /> Get started
                     </>
                   )}
                 </Button>
@@ -227,23 +228,23 @@ export function OnboardingFlow({
                     disabled={authBusy}
                     variant="outline"
                     size="lg"
-                    className="h-11 border-white/15 bg-white/5 hover:border-primary/40 hover:bg-primary/10"
+                    className="h-12 rounded-xl border-border bg-card hover:border-primary/40 hover:bg-primary/5"
                   >
-                    <KeyRound className="mr-2 h-4 w-4" /> Sign in with passkey
+                    <KeyRound className="mr-2 h-4 w-4" /> Use Face ID
                   </Button>
                   <Button
                     onClick={() => handleAuth("wallet")}
                     disabled={authBusy}
                     variant="outline"
                     size="lg"
-                    className="h-11 border-white/15 bg-white/5 hover:border-primary/40 hover:bg-primary/10"
+                    className="h-12 rounded-xl border-border bg-card hover:border-primary/40 hover:bg-primary/5"
                   >
-                    <Wallet className="mr-2 h-4 w-4" /> Connect wallet
+                    <Wallet className="mr-2 h-4 w-4" /> I have a wallet
                   </Button>
                 </div>
 
-                <p className="text-center font-mono text-[10px] text-muted-foreground">
-                  Returning users land back in their existing twin automatically.
+                <p className="text-center text-xs text-muted-foreground">
+                  Already have a twin? Tap Get started — we&apos;ll bring you back.
                 </p>
               </div>
             </StepShell>
@@ -259,7 +260,7 @@ export function OnboardingFlow({
               </p>
               <div className="space-y-2">
                 <Label htmlFor="username">Username</Label>
-                <div className="flex items-stretch overflow-hidden rounded-md border border-white/10 bg-black/20">
+                <div className="flex items-stretch overflow-hidden rounded-md border border-border/60 bg-secondary/50">
                   <Input
                     id="username"
                     autoFocus
@@ -388,7 +389,7 @@ function StepIndicator({ step }: { step: Step }) {
           key={s}
           className={cn(
             "h-1 flex-1 rounded-full transition-colors",
-            i <= idx ? "bg-primary" : "bg-white/10",
+            i <= idx ? "bg-primary" : "bg-secondary/60",
           )}
         />
       ))}

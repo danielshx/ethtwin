@@ -261,14 +261,14 @@ export function AgentProfileDialog({
                 disabled={saving}
                 maxLength={280}
                 rows={3}
-                className="w-full resize-none rounded-md border border-white/10 bg-background/60 px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/50 disabled:opacity-50"
+                className="w-full resize-none rounded-md border border-border/60 bg-background/60 px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/50 disabled:opacity-50"
               />
               <div className="mt-1 text-right font-mono text-[10px] text-muted-foreground">
                 {draftDescription.length}/280
               </div>
             </div>
 
-            <div className="flex items-center justify-end gap-2 border-t border-white/10 pt-3">
+            <div className="flex items-center justify-end gap-2 border-t border-border/60 pt-3">
               <Button
                 variant="ghost"
                 size="sm"
@@ -433,7 +433,7 @@ function PersonaBlock({ raw }: { raw: string }) {
         Persona
       </div>
       {parsed ? (
-        <div className="rounded-md border border-white/10 bg-card/40 px-3 py-2 text-xs">
+        <div className="rounded-md border border-border/60 bg-card/40 px-3 py-2 text-xs">
           {Object.entries(parsed).map(([k, v]) => (
             <div key={k} className="flex gap-2">
               <span className="min-w-20 font-mono text-muted-foreground">{k}</span>
@@ -442,7 +442,7 @@ function PersonaBlock({ raw }: { raw: string }) {
           ))}
         </div>
       ) : (
-        <p className="rounded-md border border-white/10 bg-card/40 px-3 py-2 text-xs">{raw}</p>
+        <p className="rounded-md border border-border/60 bg-card/40 px-3 py-2 text-xs">{raw}</p>
       )}
     </div>
   )

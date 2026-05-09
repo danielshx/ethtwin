@@ -441,8 +441,8 @@ export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTrans
   return (
     <Card className={cn("grid h-[70dvh] grid-cols-[260px_1fr] overflow-hidden", className)}>
       {/* Sidebar — directory, identical pattern to messenger */}
-      <aside className="flex flex-col border-r border-white/10 bg-card/50">
-        <div className="flex items-center gap-2 border-b border-white/10 px-4 py-3">
+      <aside className="flex flex-col border-r border-border/60 bg-card/50">
+        <div className="flex items-center gap-2 border-b border-border/60 px-4 py-3">
           <Users className="h-4 w-4 text-muted-foreground" />
           <span className="text-sm font-medium">Agents</span>
           <Badge variant="secondary" className="ml-auto font-mono text-[10px]">
@@ -450,7 +450,7 @@ export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTrans
           </Badge>
         </div>
 
-        <div className="space-y-1 border-b border-white/10 px-3 py-3">
+        <div className="space-y-1 border-b border-border/60 px-3 py-3">
           <Input
             placeholder="alice.ethtwin.eth or 0x…"
             value={recipient}
@@ -482,7 +482,7 @@ export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTrans
                     key={a.ens}
                     className={cn(
                       "group flex items-center gap-2.5 rounded-md transition",
-                      isSelected ? "bg-primary/15" : "hover:bg-white/5",
+                      isSelected ? "bg-primary/15" : "hover:bg-secondary/40",
                     )}
                   >
                     <button
@@ -524,7 +524,7 @@ export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTrans
 
       {/* Main — send form + recent history */}
       <section className="flex flex-col overflow-hidden">
-        <header className="flex items-center gap-2 border-b border-white/10 px-5 py-3">
+        <header className="flex items-center gap-2 border-b border-border/60 px-5 py-3">
           <Coins className="h-4 w-4 text-muted-foreground" />
           <span className="text-sm font-medium">Send tokens</span>
           <Badge variant="secondary" className="ml-auto font-mono text-[10px]">
@@ -537,7 +537,7 @@ export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTrans
           <motion.div
             initial={{ opacity: 0, y: 4 }}
             animate={{ opacity: 1, y: 0 }}
-            className="rounded-md border border-white/10 bg-card/40 px-4 py-3"
+            className="rounded-md border border-border/60 bg-card/40 px-4 py-3"
           >
             <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
               Recipient
@@ -545,7 +545,7 @@ export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTrans
             {recipient ? (
               <button
                 onClick={() => recipient.includes(".") && setProfileEns(recipient)}
-                className="mt-1 flex items-center gap-2 rounded-md px-1 -mx-1 py-1 text-left hover:bg-white/5"
+                className="mt-1 flex items-center gap-2 rounded-md px-1 -mx-1 py-1 text-left hover:bg-secondary/40"
                 disabled={!recipient.includes(".")}
                 title={recipient.includes(".") ? "View profile" : undefined}
               >
@@ -681,7 +681,7 @@ export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTrans
                     href={r.blockExplorerUrl}
                     target="_blank"
                     rel="noreferrer"
-                    className="flex items-center justify-between rounded-md border border-white/10 bg-card/40 px-3 py-2 text-xs transition hover:border-primary/30 hover:bg-primary/5"
+                    className="flex items-center justify-between rounded-md border border-border/60 bg-card/40 px-3 py-2 text-xs transition hover:border-primary/30 hover:bg-primary/5"
                   >
                     <div>
                       <div className="font-mono">

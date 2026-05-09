@@ -7,16 +7,16 @@ import { cn } from "@/lib/utils";
 const geist = Geist({subsets:['latin'],variable:'--font-sans'});
 
 export const metadata: Metadata = {
-  title: "EthTwin — AI co-pilot for your on-chain life",
+  title: "EthTwin — Crypto for everyone, even my grandma",
   description:
-    "Voice-first AI Twin that lives in ENS, hires agents via x402, and uses cosmic randomness for stealth privacy.",
+    "The first crypto interface built for humans, not engineers. Voice-first. Privacy by default. Lives in ENS.",
 }
 
 export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className={cn("dark", "font-sans", geist.variable)}>
+    <html lang="en" className={cn("font-sans", geist.variable)}>
       <body className="min-h-dvh antialiased">
         <Providers>{children}</Providers>
       </body>

@@ -501,23 +501,23 @@ export function VoiceTwin({
 
   return (
     <Card className={cn("flex flex-col gap-0 overflow-hidden p-0", className)}>
-      <header className="flex items-center justify-between border-b border-white/10 px-4 py-3">
-        <div className="flex items-center gap-2">
-          <span className="grid h-8 w-8 place-items-center rounded-full bg-primary/15 text-primary">
+      <header className="flex items-center justify-between border-b border-border/60 px-5 py-4">
+        <div className="flex items-center gap-3">
+          <span className="grid h-10 w-10 place-items-center rounded-2xl bg-gradient-to-br from-primary/20 to-amber-300/20 text-primary">
             <Mic className="h-4 w-4" />
           </span>
           <div className="leading-tight">
-            <div className="text-sm font-medium">Voice with {ensName}</div>
+            <div className="text-base font-semibold">Talk to your twin</div>
             <div className="text-xs text-muted-foreground">
-              gpt-4o-realtime · WebRTC
+              Just say what you want
             </div>
           </div>
         </div>
-        <Badge variant="secondary" className="font-mono text-[10px]">
+        <Badge variant="secondary" className="rounded-full px-2.5 py-1 text-[10px] font-medium">
           <span
             className={cn(
-              "mr-1 inline-block h-1.5 w-1.5 rounded-full",
-              isLive ? "bg-emerald-400" : "bg-white/40",
+              "mr-1.5 inline-block h-1.5 w-1.5 rounded-full",
+              isLive ? "bg-emerald-500" : "bg-muted-foreground/40",
             )}
           />
           {labelForState(state)}
@@ -557,7 +557,7 @@ export function VoiceTwin({
       </div>
 
       {state === "unavailable" ? (
-        <div className="border-t border-white/10 px-4 py-5">
+        <div className="border-t border-border/60 px-4 py-5">
           <div className="flex items-start gap-3 rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-3">
             <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-300" />
             <div className="flex-1 space-y-2">
@@ -586,7 +586,7 @@ export function VoiceTwin({
 
       <div
         ref={scrollRef}
-        className="max-h-[40dvh] flex-1 overflow-y-auto border-t border-white/10 px-4 py-4"
+        className="max-h-[40dvh] flex-1 overflow-y-auto border-t border-border/60 px-4 py-4"
       >
         {transcripts.length === 0 ? (
           <p className="py-6 text-center text-xs text-muted-foreground">

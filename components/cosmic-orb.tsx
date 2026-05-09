@@ -94,7 +94,7 @@ export function CosmicOrb({
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="text-xs uppercase tracking-[0.25em] text-white/60"
+              className="text-xs uppercase tracking-[0.25em] text-muted-foreground"
             >
               Cosmic Seed
             </motion.div>
@@ -105,7 +105,7 @@ export function CosmicOrb({
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="text-xs uppercase tracking-[0.25em] text-white/80"
+              className="text-xs uppercase tracking-[0.25em] text-foreground/85"
             >
               Listening to the cosmos…
             </motion.div>
@@ -118,13 +118,13 @@ export function CosmicOrb({
               exit={{ opacity: 0 }}
               className="flex flex-col items-center gap-1"
             >
-              <span className="text-[10px] uppercase tracking-[0.25em] text-white/60">
+              <span className="text-[10px] uppercase tracking-[0.25em] text-muted-foreground">
                 cTRNG seed
               </span>
-              <span className="font-mono text-xs text-white/90">
+              <span className="font-mono text-xs text-foreground">
                 {short(sample.bytes)}
               </span>
-              <span className="text-[10px] text-white/40">
+              <span className="text-[10px] text-muted-foreground">
                 attestation {short(sample.attestation, 6)}
               </span>
             </motion.div>

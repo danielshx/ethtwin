@@ -44,7 +44,7 @@ export default function HomePage() {
     <main className="relative min-h-dvh overflow-hidden bg-background">
       <BackgroundGlow />
       {PRIVY_CONFIGURED ? <App /> : <MissingEnv />}
-      <Toaster theme="dark" />
+      <Toaster />
     </main>
   )
 }
@@ -161,19 +161,16 @@ function App() {
   return (
     <>
       <header className="relative z-10 flex items-center justify-between px-6 py-5 sm:px-10">
-        <div className="flex items-center gap-2">
-          <span className="grid h-8 w-8 place-items-center rounded-full bg-primary/20 text-primary">
+        <div className="flex items-center gap-2.5">
+          <motion.span
+            initial={{ scale: 0.8, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ duration: 0.4 }}
+            className="grid h-9 w-9 place-items-center rounded-2xl bg-gradient-to-br from-primary to-amber-400 text-primary-foreground shadow-md shadow-primary/20"
+          >
             <Sparkles className="h-4 w-4" />
-          </span>
+          </motion.span>
           <span className="text-lg font-semibold tracking-tight">EthTwin</span>
-          {!demoMode ? (
-            <Badge
-              variant="secondary"
-              className="hidden font-mono text-[10px] sm:inline-flex"
-            >
-              ETHPrague 2026
-            </Badge>
-          ) : null}
         </div>
         {session ? (
           <div className="flex items-center gap-3 text-sm">
@@ -241,94 +238,99 @@ function SignedInTabs({
   const getAuthToken = () => privy.getAccessToken().catch(() => null)
   return (
     <div className="flex w-full max-w-3xl flex-col gap-4">
-      <div className="flex items-center gap-1 self-center rounded-full border border-white/10 bg-card/60 p-1 text-xs backdrop-blur">
-        <Button
-          variant={tab === "chat" ? "default" : "ghost"}
-          size="sm"
-          className="rounded-full"
-          onClick={() => setTab("chat")}
-        >
-          Twin Chat
-        </Button>
-        <Button
-          variant={tab === "voice" ? "default" : "ghost"}
-          size="sm"
-          className="rounded-full"
-          onClick={() => setTab("voice")}
-        >
-          Voice
-        </Button>
-        <Button
-          variant={tab === "messenger" ? "default" : "ghost"}
-          size="sm"
-          className="rounded-full"
-          onClick={() => setTab("messenger")}
-        >
-          ENS Messenger
-        </Button>
-        <Button
-          variant={tab === "transfer" ? "default" : "ghost"}
-          size="sm"
-          className="rounded-full"
-          onClick={() => setTab("transfer")}
-        >
-          Send Tokens
-        </Button>
-        <Button
-          variant={tab === "stealth" ? "default" : "ghost"}
-          size="sm"
-          className="rounded-full"
-          onClick={() => setTab("stealth")}
-        >
-          Stealth Send
-        </Button>
-        <Button
-          variant={tab === "history" ? "default" : "ghost"}
-          size="sm"
-          className="rounded-full"
-          onClick={() => setTab("history")}
-        >
-          History
-        </Button>
-      </div>
+      <SegmentedTabs
+        value={tab}
+        onChange={setTab}
+        items={[
+          { value: "chat", label: "Chat" },
+          { value: "voice", label: "Voice" },
+          { value: "messenger", label: "Messages" },
+          { value: "transfer", label: "Send" },
+          { value: "stealth", label: "Private send" },
+          { value: "history", label: "Activity" },
+        ]}
+      />
       {tab === "chat" ? (
         <TwinChat
           ensName={session.ensName}
           getAuthToken={getAuthToken}
-          className="h-[70dvh] w-full border-white/10 bg-card/80 backdrop-blur"
+          className="h-[70dvh] w-full border-border/60 bg-card shadow-sm"
         />
       ) : tab === "voice" ? (
         <VoiceTwin
           ensName={session.ensName}
           getAuthToken={getAuthToken}
           onSwitchToChat={() => setTab("chat")}
-          className="w-full border-white/10 bg-card/80 backdrop-blur"
+          className="w-full border-border/60 bg-card shadow-sm"
         />
       ) : tab === "messenger" ? (
         <Messenger
           myEnsName={session.ensName}
           getAuthToken={getAuthToken}
-          className="w-full border-white/10 bg-card/80 backdrop-blur"
+          className="w-full border-border/60 bg-card shadow-sm"
         />
       ) : tab === "transfer" ? (
         <TokenTransfer
           myEnsName={session.ensName}
           getAuthToken={getAuthToken}
-          className="w-full border-white/10 bg-card/80 backdrop-blur"
+          className="w-full border-border/60 bg-card shadow-sm"
         />
       ) : tab === "stealth" ? (
         <StealthSend
           myEnsName={session.ensName}
           getAuthToken={getAuthToken}
-          className="w-full border-white/10 bg-card/80 backdrop-blur"
+          className="w-full border-border/60 bg-card shadow-sm"
         />
       ) : (
         <History
           ensName={session.ensName}
           walletAddress={walletAddress ?? session.smartWalletAddress}
-          className="w-full border-white/10 bg-card/80 backdrop-blur"
+          className="w-full border-border/60 bg-card shadow-sm"
         />
       )}
+    </div>
+  )
+}
+
+function SegmentedTabs<T extends string>({
+  value,
+  onChange,
+  items,
+}: {
+  value: T
+  onChange: (v: T) => void
+  items: ReadonlyArray<{ value: T; label: string }>
+}) {
+  return (
+    <div className="relative flex w-full max-w-2xl items-center self-center rounded-full border border-border/60 bg-card/80 p-1 text-xs shadow-sm">
+      {items.map((it) => {
+        const active = it.value === value
+        return (
+          <button
+            key={it.value}
+            type="button"
+            onClick={() => onChange(it.value)}
+            className="relative flex-1 rounded-full px-3 py-2 text-center font-medium transition"
+          >
+            {active ? (
+              <motion.span
+                layoutId="seg-tab-active"
+                className="absolute inset-0 rounded-full bg-primary text-primary-foreground shadow"
+                transition={{ type: "spring", duration: 0.4, bounce: 0.2 }}
+              />
+            ) : null}
+            <span
+              className={
+                active
+                  ? "relative z-10 text-primary-foreground"
+                  : "relative z-10 text-muted-foreground hover:text-foreground"
+              }
+            >
+              {it.label}
+            </span>
+          </button>
+        )
+      })}
     </div>
   )
 }
@@ -337,7 +339,7 @@ function MissingEnv() {
   return (
     <section className="relative z-10 mx-auto flex min-h-dvh w-full max-w-3xl flex-col items-center justify-center gap-6 px-6 text-center">
       <Hero />
-      <Card className="max-w-md border-white/10 bg-card/80 p-6 text-left text-sm">
+      <Card className="max-w-md border-border/60 bg-card/95 p-6 text-left text-sm">
         <p className="font-medium text-foreground">Privy not configured</p>
         <p className="mt-1 text-muted-foreground">
           Set <code className="font-mono text-xs">NEXT_PUBLIC_PRIVY_APP_ID</code> in
@@ -380,17 +382,18 @@ function Hero({ demoMode = false }: { demoMode?: boolean }) {
     )
   }
   return (
-    <div className="flex flex-col items-center gap-3 text-center">
+    <div className="flex flex-col items-center gap-4 text-center">
       <motion.h1
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
-        className="text-4xl font-semibold tracking-tight sm:text-5xl"
+        className="max-w-3xl text-4xl font-semibold tracking-tight sm:text-6xl"
       >
-        The AI co-pilot for your{" "}
-        <span className="bg-gradient-to-r from-primary to-fuchsia-400 bg-clip-text text-transparent">
-          on-chain life
+        Crypto for everyone —{" "}
+        <span className="bg-gradient-to-r from-primary to-amber-500 bg-clip-text text-transparent">
+          even my grandma
         </span>
+        .
       </motion.h1>
       <motion.p
         initial={{ opacity: 0, y: 10 }}
@@ -398,7 +401,8 @@ function Hero({ demoMode = false }: { demoMode?: boolean }) {
         transition={{ duration: 0.5, delay: 0.1 }}
         className="max-w-xl text-base text-muted-foreground sm:text-lg"
       >
-        Voice-first. Privacy by default. Lives in ENS. Hires other agents via x402.
+        Send money by saying a name. Stay private without thinking about it.
+        Built for humans, not engineers.
       </motion.p>
     </div>
   )

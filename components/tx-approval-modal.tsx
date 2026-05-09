@@ -121,7 +121,7 @@ export function TxApprovalModal({
           </div>
 
           {intent.data && intent.data !== "0x" && (
-            <details className="group rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs">
+            <details className="group rounded-md border border-border/60 bg-secondary/60 px-3 py-2 text-xs">
               <summary className="cursor-pointer select-none font-mono text-muted-foreground group-open:text-foreground">
                 raw calldata
               </summary>

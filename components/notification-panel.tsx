@@ -77,14 +77,14 @@ export function NotificationPanel({ ensName, walletAddress, className }: Props) 
   return (
     <Card
       className={cn(
-        "fixed bottom-4 right-4 z-50 w-[22rem] overflow-hidden border-white/10 bg-card/95 p-0 shadow-2xl backdrop-blur",
+        "fixed bottom-4 right-4 z-50 w-[22rem] overflow-hidden border-border/60 bg-card/95 p-0 shadow-2xl backdrop-blur",
         className,
       )}
     >
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center justify-between border-b border-white/10 bg-card/60 px-3 py-2 hover:bg-white/5"
+        className="flex w-full items-center justify-between border-b border-border/60 bg-card/80 px-3 py-2 hover:bg-secondary/40"
       >
         <span className="flex items-center gap-2">
           <span className="relative">
@@ -149,7 +149,7 @@ export function NotificationPanel({ ensName, walletAddress, className }: Props) 
                   activity will pop in here in real time.
                 </div>
               ) : (
-                <ul className="divide-y divide-white/5">
+                <ul className="divide-y divide-border/40">
                   <AnimatePresence initial={false}>
                     {items.map((n) => (
                       <motion.li
@@ -193,7 +193,7 @@ function NotificationRow({ n }: { n: Notification }) {
       ) : (
         <span
           className={cn(
-            "mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full bg-white/5",
+            "mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full bg-secondary/40",
             colorClass,
           )}
         >

@@ -303,8 +303,8 @@ export function Messenger({ myEnsName, getAuthToken, className }: MessengerProps
   return (
     <Card className={cn("grid h-[78dvh] grid-cols-[300px_1fr] overflow-hidden p-0", className)}>
       {/* Sidebar — on-chain directory, WhatsApp-style chat list */}
-      <aside className="flex flex-col border-r border-white/10 bg-card/40">
-        <div className="flex items-center gap-2 border-b border-white/10 px-4 py-4">
+      <aside className="flex flex-col border-r border-border/60 bg-card/40">
+        <div className="flex items-center gap-2 border-b border-border/60 px-4 py-4">
           <Users className="h-4 w-4 text-primary" />
           <span className="text-base font-semibold">Chats</span>
           <Badge variant="secondary" className="ml-auto font-mono text-[10px]">
@@ -312,7 +312,7 @@ export function Messenger({ myEnsName, getAuthToken, className }: MessengerProps
           </Badge>
         </div>
 
-        <div className="border-b border-white/10 px-3 py-3">
+        <div className="border-b border-border/60 px-3 py-3">
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -325,7 +325,7 @@ export function Messenger({ myEnsName, getAuthToken, className }: MessengerProps
                   handleManualOpen()
                 }
               }}
-              className="h-9 rounded-full border-white/10 bg-background/60 pl-8 pr-3 font-mono text-xs"
+              className="h-9 rounded-full border-border/60 bg-background/60 pl-8 pr-3 font-mono text-xs"
             />
           </div>
         </div>
@@ -362,7 +362,7 @@ export function Messenger({ myEnsName, getAuthToken, className }: MessengerProps
                       "group relative flex items-center gap-3 border-l-2 transition cursor-pointer",
                       isSelected
                         ? "border-l-primary bg-primary/10"
-                        : "border-l-transparent hover:bg-white/5",
+                        : "border-l-transparent hover:bg-secondary/40",
                     )}
                   >
                     <button
@@ -417,12 +417,12 @@ export function Messenger({ myEnsName, getAuthToken, className }: MessengerProps
 
       {/* Main — chat view */}
       <section className="flex flex-col bg-card/20">
-        <header className="flex items-center gap-3 border-b border-white/10 bg-card/60 px-5 py-3.5">
+        <header className="flex items-center gap-3 border-b border-border/60 bg-card/80 px-5 py-3.5">
           {selected ? (
             <>
               <button
                 onClick={() => setProfileEns(selected)}
-                className="flex items-center gap-3 rounded-md px-1 -mx-1 py-1 hover:bg-white/5"
+                className="flex items-center gap-3 rounded-md px-1 -mx-1 py-1 hover:bg-secondary/40"
                 title="View profile"
               >
                 <AvatarImage src={selectedAgent?.avatar ?? null} ens={selected} size={40} />
@@ -459,7 +459,7 @@ export function Messenger({ myEnsName, getAuthToken, className }: MessengerProps
                 Reading on-chain inbox…
               </div>
             ) : thread.length === 0 ? (
-              <div className="mx-auto max-w-xs rounded-lg bg-card/60 px-4 py-6 text-center text-sm text-muted-foreground">
+              <div className="mx-auto max-w-xs rounded-lg bg-card/80 px-4 py-6 text-center text-sm text-muted-foreground">
                 No messages yet. Say hi — every message you send becomes a sub-subname under{" "}
                 <code className="font-mono text-xs text-foreground/80">{selected}</code> on Sepolia ENS.
               </div>
@@ -471,7 +471,7 @@ export function Messenger({ myEnsName, getAuthToken, className }: MessengerProps
 
         {selected ? (
           <form
-            className="border-t border-white/10 bg-card/40 px-4 py-3"
+            className="border-t border-border/60 bg-card/40 px-4 py-3"
             onSubmit={(e) => {
               e.preventDefault()
               handleSend()
@@ -483,7 +483,7 @@ export function Messenger({ myEnsName, getAuthToken, className }: MessengerProps
                 onChange={(e) => setComposing(e.target.value)}
                 placeholder={`Type a message to ${displayNameFromEns(selected).displayName}…`}
                 disabled={sending}
-                className="rounded-full border-white/15 bg-background/60 px-4 text-sm"
+                className="rounded-full border-border/70 bg-background/60 px-4 text-sm"
               />
               <Button
                 type="submit"
@@ -563,7 +563,7 @@ function renderThreadWithDateSeparators(thread: Message[], myEnsName: string) {
     if (k !== lastKey) {
       items.push(
         <div key={`sep-${k}`} className="flex justify-center py-1">
-          <span className="rounded-full bg-card/80 px-3 py-1 font-mono text-[10px] uppercase tracking-wider text-muted-foreground ring-1 ring-white/5">
+          <span className="rounded-full bg-card/95 px-3 py-1 font-mono text-[10px] uppercase tracking-wider text-muted-foreground ring-1 ring-white/5">
             {dayLabel(m.at)}
           </span>
         </div>,
@@ -593,7 +593,7 @@ function MessageBubble({ message, mine }: { message: Message; mine: boolean }) {
           "group max-w-[78%] rounded-2xl px-3.5 py-2 text-sm shadow-sm",
           mine
             ? "rounded-br-sm bg-primary/85 text-primary-foreground"
-            : "rounded-bl-sm bg-card/80 text-foreground/95 ring-1 ring-white/5",
+            : "rounded-bl-sm bg-card/95 text-foreground/95 ring-1 ring-white/5",
         )}
       >
         <p className="whitespace-pre-wrap break-words leading-relaxed">{message.body}</p>
