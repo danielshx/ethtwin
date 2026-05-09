@@ -63,7 +63,11 @@ const RECORDS_TO_CLEAR = [
 ] as const
 
 const deleteBodySchema = z.object({
-  privyToken: z.string().min(1),
+  // Optional: email-only / wallet-only flows may not yet have a Privy access
+  // token. Onboarding has the same relaxed contract — every write is signed
+  // by the dev wallet anyway, so the Privy check is opportunistic, not
+  // load-bearing.
+  privyToken: z.string().nullable().optional(),
   ens: z
     .string()
     .min(3)
@@ -75,13 +79,15 @@ export async function POST(req: Request) {
   if (!parsed.ok) return parsed.response
   const { privyToken, ens } = parsed.data
 
-  try {
-    await verifyAuthToken(privyToken)
-  } catch (error) {
-    return jsonError(
-      error instanceof Error ? error.message : "Privy token verification failed",
-      401,
-    )
+  if (privyToken) {
+    try {
+      await verifyAuthToken(privyToken)
+    } catch (error) {
+      return jsonError(
+        error instanceof Error ? error.message : "Privy token verification failed",
+        401,
+      )
+    }
   }
 
   try {

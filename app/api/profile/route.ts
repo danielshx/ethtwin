@@ -27,7 +27,8 @@ const SEPOLIA_MAX_PRIORITY_FEE_PER_GAS = 1_500_000_000n // 1.5 gwei
 
 const profileBodySchema = z
   .object({
-    privyToken: z.string().min(1),
+    // Optional — see /api/profile/delete for the same rationale.
+    privyToken: z.string().nullable().optional(),
     ens: z.string().min(3).regex(/\.ethtwin\.eth$/i, "Must be an ethtwin.eth subname"),
     avatar: z.string().url().optional(),
     description: z.string().max(280).optional(),
@@ -42,13 +43,15 @@ export async function POST(req: Request) {
   if (!parsed.ok) return parsed.response
   const { privyToken, ens, avatar, description } = parsed.data
 
-  try {
-    await verifyAuthToken(privyToken)
-  } catch (error) {
-    return jsonError(
-      error instanceof Error ? error.message : "Privy token verification failed",
-      401,
-    )
+  if (privyToken) {
+    try {
+      await verifyAuthToken(privyToken)
+    } catch (error) {
+      return jsonError(
+        error instanceof Error ? error.message : "Privy token verification failed",
+        401,
+      )
+    }
   }
 
   try {

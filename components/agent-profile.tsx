@@ -92,7 +92,7 @@ export function AgentProfileDialog({
   }, [open, ens])
 
   async function handleSave() {
-    if (!ens || !getAuthToken) return
+    if (!ens) return
     const trimmedAvatar = draftAvatar.trim()
     const trimmedDesc = draftDescription.trim()
     const avatarChanged = trimmedAvatar !== (profile?.avatar ?? "")
@@ -103,12 +103,14 @@ export function AgentProfileDialog({
     }
     setSaving(true)
     try {
-      const token = await getAuthToken()
-      if (!token) {
-        toast.error("Not authenticated.")
-        return
-      }
-      const payload: { privyToken: string; ens: string; avatar?: string; description?: string } = {
+      // Same relaxed-auth pattern as handleDelete / onboarding.
+      const token = (await getAuthToken?.().catch(() => null)) ?? null
+      const payload: {
+        privyToken: string | null
+        ens: string
+        avatar?: string
+        description?: string
+      } = {
         privyToken: token,
         ens,
       }
@@ -155,7 +157,7 @@ export function AgentProfileDialog({
         description: "ENS text records on Sepolia",
         txHash: data.txHash,
         explorerUrl: data.blockExplorerUrl,
-        syncTo: { ens, getAuthToken },
+        ...(getAuthToken ? { syncTo: { ens, getAuthToken } } : {}),
       })
       // Optimistic local update so the dialog shows the new values immediately;
       // the on-chain copy will catch up on next reload.
@@ -184,18 +186,16 @@ export function AgentProfileDialog({
   }
 
   async function handleDelete() {
-    if (!ens || !getAuthToken) return
+    if (!ens) return
     const confirmed = confirm(
       `Delete ${ens} forever?\n\nThis wipes the on-chain ENS subdomain (addr + every text record) and removes it from the directory. The action is irreversible.`,
     )
     if (!confirmed) return
     setDeleting(true)
     try {
-      const token = await getAuthToken()
-      if (!token) {
-        toast.error("Not authenticated.")
-        return
-      }
+      // Privy access token is best-effort — email-only / fresh wallet sessions
+      // may not have one yet. The server treats it as optional.
+      const token = (await getAuthToken?.().catch(() => null)) ?? null
       const res = await fetch("/api/profile/delete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -232,7 +232,7 @@ export function AgentProfileDialog({
         description: "Cleared ENS subdomain records + orphaned in registry",
         txHash: data.txHash,
         explorerUrl: data.blockExplorerUrl,
-        syncTo: { ens, getAuthToken },
+        ...(getAuthToken ? { syncTo: { ens, getAuthToken } } : {}),
       })
       onOpenChange(false)
       onDeleted?.()
