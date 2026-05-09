@@ -7,7 +7,7 @@ import {
   summarizeTargetFeedback,
   upsertActionFeedback,
 } from "@/lib/feedback-server"
-import { readServerHistory } from "@/lib/history-server"
+import { appendServerHistory, readServerHistory } from "@/lib/history-server"
 
 export const runtime = "nodejs"
 
@@ -39,6 +39,17 @@ export async function GET(req: Request) {
   }
 }
 
+const actionSnapshotSchema = z.object({
+  kind: z.enum(["transfer", "message", "mint", "stealth-send", "other"]),
+  status: z.enum(["success", "failed", "pending"]),
+  summary: z.string().min(1).max(500),
+  description: z.string().max(2000).optional(),
+  txHash: z.string().optional(),
+  explorerUrl: z.string().url().optional(),
+  chain: z.string().optional(),
+  errorMessage: z.string().max(1000).optional(),
+})
+
 const postBodySchema = z.object({
   privyToken: z.string().min(1),
   reviewerEns: z.string().min(1),
@@ -46,6 +57,7 @@ const postBodySchema = z.object({
   rating: z.enum(["up", "down"]),
   targetEns: z.string().optional(),
   reason: z.string().max(500).optional(),
+  action: actionSnapshotSchema.optional(),
 })
 
 export async function POST(req: Request) {
@@ -64,9 +76,27 @@ export async function POST(req: Request) {
 
   // Fairness guard:
   // reviewer may only review actions that actually exist in their history.
+  // If the client has a local app-created action that has not synced yet, it
+  // can include an inline snapshot; we first append that exact action to server
+  // history, then review it. This keeps reviews action-scoped without breaking
+  // on optimistic local history rows.
   try {
     const history = await readServerHistory(body.reviewerEns)
-    const exists = history.some((e) => e.id === body.actionId)
+    let exists = history.some((e) => e.id === body.actionId)
+    if (!exists && body.action) {
+      await appendServerHistory(body.reviewerEns, {
+        id: body.actionId,
+        kind: body.action.kind,
+        status: body.action.status,
+        summary: body.action.summary,
+        description: body.action.description,
+        txHash: body.action.txHash,
+        explorerUrl: body.action.explorerUrl,
+        chain: body.action.chain,
+        errorMessage: body.action.errorMessage,
+      })
+      exists = true
+    }
     if (!exists) {
       return jsonError(
         `Action ${body.actionId} does not exist in ${body.reviewerEns} history`,
