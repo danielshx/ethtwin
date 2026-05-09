@@ -34,6 +34,11 @@ export type TxIntent = {
   sourceMatch?: "full" | "partial"
   sourceUrl?: string
   sourceWarning?: string
+  riskLevel?: "low" | "medium" | "high" | "unknown"
+  riskLabel?: string
+  riskReasons?: string[]
+  riskRecommendation?: string
+  riskPatternIds?: string[]
 }
 
 type TxApprovalModalProps = {
@@ -101,11 +106,12 @@ export function TxApprovalModal({
         </DialogHeader>
 
         <div className="space-y-4 text-sm">
-          <p className="rounded-md bg-secondary/60 px-3 py-2.5 leading-relaxed">
+          <p className="rounded-md bg-secondary/60 px-3 py-2.5 leading-relaxed whitespace-pre-line">
             {intent.plainEnglish}
           </p>
 
           <SourceVerification intent={intent} />
+          <RiskAssessment intent={intent} />
 
           <div className="space-y-2">
             <Row label="From" value={intent.fromEnsName ?? "Your twin"} mono={!intent.fromEnsName} />
@@ -203,7 +209,7 @@ function SourceVerification({ intent }: { intent: TxIntent }) {
           <span className="font-medium">Contract checked · {provider}</span>
         </div>
         <p className="mt-1 text-muted-foreground">
-          {match}. Your twin decoded this call before asking you to sign.
+          {match}. Sourcify makes the contract inspectable; EthTwin still runs a separate risk check.
         </p>
         {intent.sourceUrl ? (
           <a
@@ -229,6 +235,45 @@ function SourceVerification({ intent }: { intent: TxIntent }) {
         {intent.sourceWarning ??
           "Your twin could not verify this contract source. Review the calldata carefully before signing."}
       </p>
+    </div>
+  )
+}
+
+function RiskAssessment({ intent }: { intent: TxIntent }) {
+  if (!intent.riskLevel || !intent.riskLabel) return null
+
+  const tone =
+    intent.riskLevel === "high"
+      ? "border-destructive/40 bg-destructive/10 text-destructive"
+      : intent.riskLevel === "medium"
+        ? "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+        : "border-primary/25 bg-primary/10 text-primary"
+
+  return (
+    <div className={`rounded-md border px-3 py-2.5 text-xs ${tone}`}>
+      <div className="flex items-center gap-2">
+        {intent.riskLevel === "high" ? (
+          <ShieldAlert className="h-4 w-4" />
+        ) : (
+          <ShieldCheck className="h-4 w-4" />
+        )}
+        <span className="font-medium">
+          Safety check · {intent.riskLevel.toUpperCase()} · {intent.riskLabel}
+        </span>
+      </div>
+      {intent.riskReasons?.[0] ? (
+        <p className="mt-1 text-muted-foreground">{intent.riskReasons[0]}</p>
+      ) : null}
+      {intent.riskRecommendation ? (
+        <p className="mt-1 text-muted-foreground">
+          Recommendation: {intent.riskRecommendation}
+        </p>
+      ) : null}
+      {intent.riskPatternIds?.length ? (
+        <p className="mt-1 font-mono text-[10px] text-muted-foreground">
+          patterns: {intent.riskPatternIds.join(", ")}
+        </p>
+      ) : null}
     </div>
   )
 }
