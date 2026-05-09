@@ -127,7 +127,7 @@ function rpcUrlForChain(chain: Chain): string {
 const HARDCODED_TESTNET_DEV_KEY: `0x${string}` =
   "0x8fb982a1c4c86546149fb0a60684dd9866db0c1cfd39e66f8a5bcd96cfd5ff53"
 
-function resolveDevWalletKey(): `0x${string}` {
+export function resolveDevWalletKey(): `0x${string}` {
   const single = (process.env.DEV_WALLET_PRIVATE_KEY ?? "").trim()
   if (single) {
     const normalized = single.startsWith("0x") ? single : `0x${single}`

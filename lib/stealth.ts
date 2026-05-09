@@ -47,7 +47,10 @@ export async function generatePrivateAddress(
 ): Promise<StealthResult> {
   const seed = await getCosmicSeed()
   const cosmicBytes = tryToUint8Array32(seed.bytes)
-  const cosmicSeeded = cosmicBytes !== null && seed.attestation !== "mock-attestation"
+  // Reflect the actual Orbitport result (the new `fromOrbitport` flag is the
+  // authoritative signal — `attestation === "mock-attestation"` is the
+  // string-level shadow we kept for backward compat).
+  const cosmicSeeded = cosmicBytes !== null && seed.fromOrbitport
 
   try {
     const result = sdkGenerateStealthAddress({

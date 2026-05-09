@@ -229,7 +229,7 @@ export const twinTools = {
 
   sendStealthUsdc: tool({
     description:
-      "Send USDC on Base Sepolia to an ENS recipient via a one-time stealth address (EIP-5564). The recipient must have a stealth-meta-address text record. Returns the stealth address, on-chain tx hash, and a block-explorer link.",
+      "Send USDC on Base Sepolia to an ENS recipient via a one-time stealth address (EIP-5564). The recipient must have a stealth-meta-address text record. Seeded by Orbitport cTRNG when configured (cosmicSeeded=true) — falls back to local randomness with cosmicSeeded=false. Returns the stealth address, ephemeral key, view tag, on-chain tx hash, block-explorer link, and the cosmic attestation hash so callers can label the receipt with verifiable provenance.",
     inputSchema: z.object({
       recipientEnsName: z.string().describe("e.g. 'alice.ethtwin.eth'"),
       amountUsdc: z
@@ -246,6 +246,9 @@ export const twinTools = {
           ephemeralPublicKey: result.stealth.ephemeralPublicKey,
           viewTag: result.stealth.viewTag,
           cosmicSeeded: result.stealth.cosmicSeeded,
+          // Surface the cTRNG attestation up to the chat receipt so anyone
+          // looking at the conversation can cross-check provenance.
+          cosmicAttestation: result.stealth.attestation,
           amount: result.amountHuman + " USDC",
           txHash: result.txHash,
           blockNumber: result.blockNumber.toString(),
@@ -612,7 +615,7 @@ export function buildTwinTools(ctx: TwinToolContext = {}) {
 
     sendMessage: tool({
       description:
-        "Send an on-chain ENS message to another twin. Each message becomes a child subname (msg-<ts>-<seq>.<recipient>) carrying from/body/at text records on Sepolia ENS. Use when the user asks the Twin to message, ping, or write to another agent. The recipient's twin will auto-respond shortly — pair this with `waitForReply` if the user expects an answer.",
+        "Send an on-chain ENS message to another twin. The body is stealth-encrypted with AES-256-GCM and a Orbitport-cTRNG-seeded nonce before being written to the message subname's `body` text record, so plaintext never lands on chain. The cosmic attestation hash is also written on-chain (`stealth.cosmic-attestation` text record) so anyone can verify the seed's provenance. Use when the user asks the Twin to message, ping, or write to another agent. The recipient's twin will auto-respond shortly — pair this with `waitForReply` if the user expects an answer.",
       inputSchema: z.object({
         toEns: z
           .string()
@@ -663,6 +666,9 @@ export function buildTwinTools(ctx: TwinToolContext = {}) {
             txHash: result.recordsMulticallTx,
             blockExplorerUrl: result.blockExplorerUrl,
             autoReplyExpected,
+            stealth: true,
+            cosmicSeeded: result.cosmicSeeded,
+            cosmicAttestation: result.cosmicAttestation,
           }
         } catch (err) {
           return {

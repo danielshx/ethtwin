@@ -85,7 +85,7 @@ export async function encryptMessage(args: {
   body: string
 }): Promise<EncryptedMessage> {
   const sample = await getCosmicSeed()
-  const cosmicSeeded = sample.attestation !== "mock-attestation"
+  const cosmicSeeded = sample.fromOrbitport
   // Nonce = first 12 bytes of cosmic sample. Cosmic bytes are 32 bytes hex
   // (33 chars including 0x), so we have 20 spare bytes if we ever want to
   // make the nonce wider.

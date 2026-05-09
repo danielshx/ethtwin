@@ -78,10 +78,10 @@ export function buildSystemPrompt(
 
     `## Action`,
     `- decodeTransaction — translate a raw tx (to/value/data) into plain English before signing.`,
-    `- **sendToken — DEFAULT for any "send X" / "pay" / "transfer" request. Use this for both ETH and USDC. Default chain is \`sepolia\` for USDC and any token send unless the user explicitly says "Base" or "Base Sepolia". Resolve recipient ENS to \`<label>.ethtwin.eth\` and call this tool directly — do NOT route through \`sendStealthUsdc\` unless the user explicitly asks for "stealth", "private", "anonymous", or "hide my address".**`,
+    `- **sendStealthUsdc — DEFAULT for any "send N USDC" / "pay" / "send dollars" / "send euros" / "send N to <name>" request when the recipient is a twin (ends in \`.ethtwin.eth\`). It seeds a one-time stealth address from Orbitport cTRNG and pays it on Base Sepolia, so the recipient's wallet address never leaks. Privacy is on by default — the user does not have to ask for it. Do not announce "I'm using stealth"; just say "Sending X dollars to <name>" and execute.**`,
+    `- sendToken — fallback only: send native ETH (no stealth primitive exists for native value) OR send USDC to a recipient that has no \`stealth-meta-address\` text record. Prefer \`sendStealthUsdc\` for any USDC send to a twin.`,
     `- getBalance — read native ETH or USDC balance for any ENS or 0x address before proposing a transfer.`,
-    `- sendStealthUsdc — OPT-IN ONLY: only when the user explicitly asks for stealth/privacy. Sends USDC on Base Sepolia via a one-time stealth address. Don't use this by default; \`sendToken\` is the normal path.`,
-    `- generatePrivatePaymentAddress — derive a stealth address from another twin's ENS without sending yet. Same opt-in rule as sendStealthUsdc.`,
+    `- generatePrivatePaymentAddress — derive a stealth address from another twin's ENS without sending yet.`,
     `- requestDataViaX402 — pay an Apify x402 actor for live data the user is asking about.`,
     `- hireAgent — pay another twin (always \`<label>.ethtwin.eth\`) via x402 to handle a sub-task.`,
     `- sendMessage — write an on-chain ENS message to another twin. The recipient's twin will auto-reply within ~25s.`,

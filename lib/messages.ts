@@ -29,6 +29,7 @@ import { ENS_REGISTRY, readTextRecordFast } from "./ens"
 import { ensResolverAbi, ensRegistryAbi } from "./abis"
 import { getDevWalletClient, sepoliaClient } from "./viem"
 import { sepolia as sepoliaChain } from "viem/chains"
+import { encryptMessage, decryptMessage, isStealthBlob } from "./message-crypto"
 
 const MESSAGES_LIST_KEY = "messages.list"
 const MAX_LIST_ENTRIES = 200 // text record size cap
@@ -39,6 +40,14 @@ export type Message = {
   from: string // sender ENS
   body: string
   at: number // unix seconds
+  /** True when the on-chain `body` text record is a stealth ciphertext that
+   *  we successfully decrypted (or attempted to). False / undefined for
+   *  legacy plaintext messages sent before stealth encryption shipped. */
+  stealth?: boolean
+  /** Orbitport cTRNG attestation hash (or "mock-attestation") associated
+   *  with this message's encryption nonce. Set when the recipient subname
+   *  carries a `stealth.cosmic-attestation` text record. */
+  cosmicAttestation?: string
 }
 
 // ── Read side ────────────────────────────────────────────────────────────────
@@ -59,15 +68,48 @@ export async function readMessageList(recipientEns: string): Promise<string[]> {
 // (single-message read via individual fast calls — kept for completeness;
 // readInbox below uses a single multicall3 batch instead, which is the path
 // that actually fits Vercel's function timeout.)
-async function readSingleMessage(messageEns: string, label: string): Promise<Message | null> {
+async function readSingleMessage(
+  messageEns: string,
+  label: string,
+  recipientEns: string,
+): Promise<Message | null> {
   try {
-    const [from, body, at] = await Promise.all([
+    const [from, rawBody, at, attestation] = await Promise.all([
       readTextRecordFast(messageEns, "from"),
       readTextRecordFast(messageEns, "body"),
       readTextRecordFast(messageEns, "at"),
+      readTextRecordFast(messageEns, "stealth.cosmic-attestation").catch(() => ""),
     ])
-    if (!from || !body || !at) return null
-    return { label, ens: messageEns, from, body, at: Number(at) }
+    if (!from || !rawBody || !at) return null
+    // If the body is a stealth blob, decrypt with the per-pair key. Falls
+    // through to plaintext if it's a legacy unencrypted message — backwards
+    // compatible with any messages sent before this change landed.
+    let body = rawBody
+    let stealth = false
+    if (isStealthBlob(rawBody)) {
+      stealth = true
+      const plain = decryptMessage({
+        senderEns: from,
+        recipientEns,
+        ciphertext: rawBody,
+      })
+      if (plain != null) {
+        body = plain
+      } else {
+        // We can't read it (probably a key derivation mismatch — e.g. the
+        // dev wallet rotated). Surface the situation rather than hiding it.
+        body = "[encrypted — could not decrypt]"
+      }
+    }
+    return {
+      label,
+      ens: messageEns,
+      from,
+      body,
+      at: Number(at),
+      stealth,
+      ...(attestation ? { cosmicAttestation: attestation } : {}),
+    }
   } catch {
     return null
   }
@@ -104,7 +146,9 @@ export async function readInbox(
   const recent = labels.slice(-Math.max(1, Math.min(limit, DEFAULT_INBOX_LIMIT)))
   if (recent.length === 0) return []
   const messages = await Promise.all(
-    recent.map((label) => readSingleMessage(`${label}.${recipientEns}`, label)),
+    recent.map((label) =>
+      readSingleMessage(`${label}.${recipientEns}`, label, recipientEns),
+    ),
   )
   return messages.filter((m): m is Message => m !== null).sort((a, b) => b.at - a.at)
 }
@@ -116,6 +160,11 @@ export type SendMessageResult = {
   createSubnameTx: Hash
   recordsMulticallTx: Hash
   blockExplorerUrl: string
+  /** Orbitport cTRNG attestation that seeded the AES nonce — also written
+   *  on chain so anyone reading the message subname can verify provenance. */
+  cosmicAttestation: string
+  /** True when cosmicAttestation came from a real Orbitport call. */
+  cosmicSeeded: boolean
 }
 
 /**
@@ -140,6 +189,18 @@ export async function sendMessage(args: {
   if (body.length > 1000) throw new Error("Message body exceeds 1000 chars.")
 
   const { account } = getDevWalletClient()
+
+  // Stealth-encrypt the body using a per-twin-pair key derived from the dev
+  // wallet master key, with the AES-GCM nonce seeded from Orbitport cTRNG.
+  // Anyone reading the on-chain `body` text record sees a cipher blob; only
+  // the sender or the recipient (when reading via the dev wallet) can derive
+  // the same key and decrypt. The cTRNG attestation is also written to the
+  // message subname so observers can cross-check cosmic provenance.
+  const encrypted = await encryptMessage({
+    senderEns: fromEns,
+    recipientEns: toEns,
+    body,
+  })
 
   const [existingList, startingNonce] = await Promise.all([
     readMessageList(toEns),
@@ -195,15 +256,34 @@ export async function sendMessage(args: {
       functionName: "setText",
       args: [messageNode, "from", fromEns],
     }),
+    // The `body` record carries the stealth ciphertext (`stl1:<base64url>`),
+    // not the plaintext. Readers detect the prefix and decrypt locally.
     encodeFunctionData({
       abi: ensResolverAbi,
       functionName: "setText",
-      args: [messageNode, "body", body],
+      args: [messageNode, "body", encrypted.ciphertext],
     }),
     encodeFunctionData({
       abi: ensResolverAbi,
       functionName: "setText",
       args: [messageNode, "at", String(at)],
+    }),
+    // Cosmic provenance: anyone resolving this message can pull the
+    // attestation hash and verify the AES-GCM nonce was seeded by Orbitport
+    // cTRNG (or see "mock-attestation" if we fell back).
+    encodeFunctionData({
+      abi: ensResolverAbi,
+      functionName: "setText",
+      args: [
+        messageNode,
+        "stealth.cosmic-attestation",
+        encrypted.cosmic.attestation,
+      ],
+    }),
+    encodeFunctionData({
+      abi: ensResolverAbi,
+      functionName: "setText",
+      args: [messageNode, "stealth.nonce", encrypted.nonceHex],
     }),
     encodeFunctionData({
       abi: ensResolverAbi,
@@ -233,9 +313,19 @@ export async function sendMessage(args: {
   })
 
   return {
-    message: { label, ens: messageEns, from: fromEns, body, at },
+    message: {
+      label,
+      ens: messageEns,
+      from: fromEns,
+      body, // the plaintext, not the on-chain ciphertext, for UI/history
+      at,
+      stealth: true,
+      cosmicAttestation: encrypted.cosmic.attestation,
+    },
     createSubnameTx,
     recordsMulticallTx,
     blockExplorerUrl: `https://sepolia.etherscan.io/tx/${recordsMulticallTx}`,
+    cosmicAttestation: encrypted.cosmic.attestation,
+    cosmicSeeded: encrypted.cosmicSeeded,
   }
 }
