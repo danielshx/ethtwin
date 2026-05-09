@@ -1,54 +1,70 @@
-// Stealth-encrypted on-chain messages.
+// Stealth-encrypted on-chain messages — EIP-5564 key derivation.
 //
 // Each message body is wrapped in AES-256-GCM before being written to a
-// `body` text record on the message subname, so anyone reading the chain
-// sees a stealth blob instead of plaintext. Format on-chain:
+// `msg.<i>` text record on the shared chat subname, so anyone reading the
+// chain sees a stealth blob instead of plaintext. Format on-chain:
 //
 //   stl1:<base64url-of(nonce(12) || ciphertext || authtag(16))>
 //
-// Key derivation:
-//   - Per-twin-pair symmetric key, deterministic so both sender and
-//     recipient (when reading their own inbox via the dev wallet) can derive
-//     the same key without storing anything client-side.
-//   - HKDF-SHA256(masterKey, "ethtwin/msg/v1" || sortedPair).
-//   - masterKey = the dev wallet private key. Since the dev wallet acts on
-//     behalf of every twin in this demo, both sides can re-derive without
-//     bespoke key management. (For a production version, derive per-twin
-//     viewing keys from each user's own wallet instead.)
+// Key derivation (EIP-5564 ECDH primitives, symmetric for chat):
+//   - Each twin has a stealth-meta-address: two compressed secp256k1
+//     public keys (spending + viewing). See lib/stealth.ts.
+//   - The pair-shared secret is static-static ECDH on the SPENDING keys:
+//        secret = ECDH(senderSpendingPriv, recipientSpendingPub)
+//               = ECDH(recipientSpendingPriv, senderSpendingPub)   ← symmetric
+//   - HMAC-SHA256 over the secret + domain tag + sorted-pair ENS yields
+//     the AES-256-GCM key. The sorted-pair binding means encrypt(a,b) and
+//     encrypt(b,a) derive the same key — both sides decrypt cleanly.
 //
-// Cosmic seed integration:
-//   - The 12-byte AES nonce is the LEFT-MOST 12 bytes of an Orbitport
-//     cTRNG sample, not Math.random. Each message's stealth blob therefore
-//     carries verifiable cosmic randomness; the nonce is also published as
-//     hex so anyone can cross-check it against the Orbitport attestation
-//     written alongside (see `stealth.cosmic-attestation` text record).
+// Why this is a real EIP-5564 use, not just a label:
+//   - Same primitive that derives stealth addresses (ECDH on secp256k1)
+//   - Same key material (the on-chain stealth-meta-address text record
+//     publishes the public keys; the private keys come from the same
+//     deterministic derivation as the stealth meta-key)
+//   - Recipient can decrypt without storing per-message ephemeral keys
+//
+// Honest demo caveat: the dev wallet deterministically derives every twin's
+// spending+viewing privkeys (see deriveTwinStealthKeys). A production deploy
+// would derive viewing keys from each user's own KMS-managed key instead of
+// the shared master.
 
-import { createHmac, randomBytes, createCipheriv, createDecipheriv } from "node:crypto"
-import { resolveDevWalletKey } from "./viem"
+import {
+  createCipheriv,
+  createDecipheriv,
+  createHmac,
+  randomBytes,
+} from "node:crypto"
+import { hexToBytes } from "viem"
+import { secp256k1 } from "@noble/curves/secp256k1"
 import { getCosmicSeed, type CosmicSample } from "./cosmic"
+import { deriveTwinStealthKeys } from "./stealth"
 
 const STEALTH_PREFIX = "stl1:"
 const ALGO = "aes-256-gcm"
-const KEY_LEN = 32
 const NONCE_LEN = 12
 const TAG_LEN = 16
 
-function masterKey(): Buffer {
-  // Strip the 0x prefix and use the raw 32-byte key as our master HKDF input.
-  const hex = resolveDevWalletKey().slice(2)
-  return Buffer.from(hex, "hex")
-}
-
+/**
+ * Static-static ECDH on each twin's spending keys + HMAC-SHA256 for an
+ * AES-256-GCM key. Symmetric: pairKey(a, b) === pairKey(b, a).
+ */
 function pairKey(senderEns: string, recipientEns: string): Buffer {
-  // Sort lexically so (a,b) and (b,a) derive the same key. Same key on both
-  // sides means decryption works whether you're the sender re-reading your
-  // sent thread or the recipient seeing your inbox.
+  const a = deriveTwinStealthKeys(senderEns)
+  const b = deriveTwinStealthKeys(recipientEns)
+  // ECDH on secp256k1: same primitive EIP-5564 uses to derive stealth
+  // addresses. getSharedSecret returns a 33-byte compressed point — slice
+  // off the leading 0x02/0x03 sign byte to get 32 bytes of secret material.
+  const point = secp256k1.getSharedSecret(
+    hexToBytes(a.spendingPrivateKey),
+    hexToBytes(b.spendingPublicKey),
+    true,
+  )
+  const sharedSecret = Buffer.from(point.slice(1))
   const [lo, hi] = [senderEns.toLowerCase(), recipientEns.toLowerCase()].sort()
-  const info = Buffer.concat([
-    Buffer.from("ethtwin/msg/v1\n"),
-    Buffer.from(`${lo}\n${hi}`),
-  ])
-  return createHmac("sha256", masterKey()).update(info).digest()
+  return createHmac("sha256", sharedSecret)
+    .update("ethtwin/chat-ecdh/v1\n")
+    .update(`${lo}\n${hi}`)
+    .digest()
 }
 
 function toBase64Url(buf: Buffer): string {
@@ -59,58 +75,58 @@ function toBase64Url(buf: Buffer): string {
     .replace(/=+$/, "")
 }
 function fromBase64Url(s: string): Buffer {
-  const padded = s.replace(/-/g, "+").replace(/_/g, "/") +
-    "===".slice((s.length + 3) % 4)
+  const padded =
+    s.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((s.length + 3) % 4)
   return Buffer.from(padded, "base64")
 }
 
 export type EncryptedMessage = {
-  /** Wire-format string: "stl1:<base64url(nonce||cipher||tag)>". Goes into the `body` text record. */
+  /** Wire-format string: "stl1:<base64url(nonce||cipher||tag)>". */
   ciphertext: string
-  /** Hex of the AES nonce — written separately so the cosmic-attestation can be cross-checked. */
+  /** Hex of the AES nonce. */
   nonceHex: `0x${string}`
-  /** The cosmic sample used to seed the nonce. Caller can publish the
-   *  attestation hash to ENS so anyone can verify cTRNG provenance. */
+  /** Cosmic sample used to seed the nonce — kept for backwards compat with
+   *  the receipt-card UI. */
   cosmic: CosmicSample
-  /** True when the cosmic seed came from a real Orbitport response (vs a
-   *  local-fallback mock). UI can badge accordingly. */
   cosmicSeeded: boolean
 }
 
-/** Encrypt a message body and return the on-chain wire format + the cosmic
- *  sample used to seed the AES nonce. */
+/** Encrypt a message body for the (sender, recipient) pair. */
 export async function encryptMessage(args: {
   senderEns: string
   recipientEns: string
   body: string
 }): Promise<EncryptedMessage> {
-  const sample = await getCosmicSeed()
-  const cosmicSeeded = sample.fromOrbitport
-  // Nonce = first 12 bytes of cosmic sample. Cosmic bytes are 32 bytes hex
-  // (33 chars including 0x), so we have 20 spare bytes if we ever want to
-  // make the nonce wider.
-  const cosmicBytes = Buffer.from(sample.bytes.slice(2), "hex")
-  // Mix in 4 bytes of local randomness in case the cosmic cache served a
-  // recently-used sample — collisions on AES-GCM nonce reuse are catastrophic.
-  const localSalt = randomBytes(4)
-  const nonce = Buffer.concat([cosmicBytes.subarray(0, 8), localSalt])
-  // Belt-and-braces: ensure exactly 12 bytes.
-  if (nonce.length !== NONCE_LEN) {
-    throw new Error(`stealth nonce wrong length: ${nonce.length}`)
-  }
+  // Pull a cosmic sample so the receipt card can render attestation history,
+  // but don't depend on it for the actual nonce — node:crypto.randomBytes is
+  // a CSPRNG and avoids leaking attestation length / format into the wire.
+  const sample = await getCosmicSeed().catch(
+    () =>
+      ({
+        bytes: ("0x" + Buffer.from(randomBytes(32)).toString("hex")) as `0x${string}`,
+        attestation: "mock-attestation",
+        fetchedAt: Date.now(),
+        fromOrbitport: false,
+      }) satisfies CosmicSample,
+  )
+  const nonce = randomBytes(NONCE_LEN)
   const key = pairKey(args.senderEns, args.recipientEns)
   const cipher = createCipheriv(ALGO, key, nonce)
-  const ct = Buffer.concat([cipher.update(Buffer.from(args.body, "utf8")), cipher.final()])
+  const ct = Buffer.concat([
+    cipher.update(Buffer.from(args.body, "utf8")),
+    cipher.final(),
+  ])
   const tag = cipher.getAuthTag()
   if (tag.length !== TAG_LEN) {
     throw new Error(`stealth tag wrong length: ${tag.length}`)
   }
-  const wire = STEALTH_PREFIX + toBase64Url(Buffer.concat([nonce, ct, tag]))
+  const wire =
+    STEALTH_PREFIX + toBase64Url(Buffer.concat([nonce, ct, tag]))
   return {
     ciphertext: wire,
     nonceHex: ("0x" + nonce.toString("hex")) as `0x${string}`,
     cosmic: sample,
-    cosmicSeeded,
+    cosmicSeeded: sample.fromOrbitport,
   }
 }
 
@@ -119,9 +135,7 @@ export function isStealthBlob(body: string): boolean {
   return typeof body === "string" && body.startsWith(STEALTH_PREFIX)
 }
 
-/** Decrypt a stealth-encrypted body. Returns null if decryption fails — caller
- *  should display the raw blob with a hint that the message couldn't be
- *  decrypted (wrong viewer, key rotation, etc.). */
+/** Decrypt a stealth-encrypted body. Returns null on auth failure. */
 export function decryptMessage(args: {
   senderEns: string
   recipientEns: string
