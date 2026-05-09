@@ -57,16 +57,25 @@ export function TxApprovalModal({
   const [submitting, setSubmitting] = useState(false)
   const [hash, setHash] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [riskAcknowledged, setRiskAcknowledged] = useState(false)
 
   useEffect(() => {
     if (!open) {
       setSubmitting(false)
       setHash(null)
       setError(null)
+      setRiskAcknowledged(false)
     }
   }, [open])
 
+  useEffect(() => {
+    setRiskAcknowledged(false)
+  }, [intent])
+
   if (!intent) return null
+
+  const requiresRiskAcknowledgement = intent.riskLevel === "high"
+  const approveDisabled = submitting || !!hash || (requiresRiskAcknowledgement && !riskAcknowledged)
 
   const explorerBase =
     intent.chain === "mainnet"
@@ -101,17 +110,33 @@ export function TxApprovalModal({
             Approve transaction
           </DialogTitle>
           <DialogDescription>
-            Your twin will only sign after you confirm.
+            Your twin checks verified source, decodes the action, and flags wallet-risk patterns before you sign.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 text-sm">
+          <SourcifySafetyFlow intent={intent} />
+
           <p className="rounded-md bg-secondary/60 px-3 py-2.5 leading-relaxed whitespace-pre-line">
             {intent.plainEnglish}
           </p>
 
           <SourceVerification intent={intent} />
           <RiskAssessment intent={intent} />
+
+          {requiresRiskAcknowledgement ? (
+            <label className="flex gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-xs text-muted-foreground">
+              <input
+                type="checkbox"
+                className="mt-0.5 h-4 w-4 accent-current"
+                checked={riskAcknowledged}
+                onChange={(e) => setRiskAcknowledged(e.target.checked)}
+              />
+              <span>
+                I understand this is flagged as high risk. I still want to sign this transaction.
+              </span>
+            </label>
+          ) : null}
 
           <div className="space-y-2">
             <Row label="From" value={intent.fromEnsName ?? "Your twin"} mono={!intent.fromEnsName} />
@@ -178,13 +203,15 @@ export function TxApprovalModal({
           >
             Reject
           </Button>
-          <Button onClick={handleApprove} disabled={submitting || !!hash}>
+          <Button onClick={handleApprove} disabled={approveDisabled}>
             {submitting ? (
               <>
                 <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> Signing
               </>
             ) : hash ? (
               "Done"
+            ) : requiresRiskAcknowledgement && !riskAcknowledged ? (
+              "Acknowledge risk first"
             ) : (
               "Sign & send"
             )}
@@ -192,6 +219,49 @@ export function TxApprovalModal({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  )
+}
+
+function SourcifySafetyFlow({ intent }: { intent: TxIntent }) {
+  const hasCalldata = !!intent.data && intent.data !== "0x"
+  const sourceLabel = !hasCalldata
+    ? "No contract call"
+    : intent.sourceProvider === "sourcify"
+      ? intent.sourceMatch === "partial"
+        ? "Partial Sourcify match"
+        : "Sourcify verified"
+      : intent.sourceVerified
+        ? "Known ABI"
+        : "Unverified source"
+  const riskLabel = intent.riskLevel ? `${intent.riskLevel.toUpperCase()} risk` : "Risk pending"
+
+  return (
+    <div className="rounded-md border border-border/70 bg-card/60 px-3 py-2.5 text-xs">
+      <div className="mb-2 flex items-center gap-2 text-foreground">
+        <ShieldCheck className="h-4 w-4 text-primary" />
+        <span className="font-medium">Sourcify Contract Intelligence</span>
+      </div>
+      <div className="grid grid-cols-3 gap-2 text-center">
+        <FlowStep step="1" label="Inspect" value={sourceLabel} />
+        <FlowStep step="2" label="Decode" value={hasCalldata ? "Plain English" : "Native send"} />
+        <FlowStep step="3" label="Decide" value={riskLabel} />
+      </div>
+      <p className="mt-2 text-muted-foreground">
+        Verification means inspectable source, not automatic safety. EthTwin adds wallet-risk rules before signing.
+      </p>
+    </div>
+  )
+}
+
+function FlowStep({ step, label, value }: { step: string; label: string; value: string }) {
+  return (
+    <div className="rounded-md bg-secondary/60 px-2 py-2">
+      <div className="mx-auto mb-1 flex h-5 w-5 items-center justify-center rounded-full bg-background font-mono text-[10px] text-muted-foreground">
+        {step}
+      </div>
+      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</div>
+      <div className="mt-0.5 line-clamp-2 text-[11px] font-medium text-foreground">{value}</div>
+    </div>
   )
 }
 
