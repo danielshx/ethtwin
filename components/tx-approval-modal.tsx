@@ -97,9 +97,11 @@ export function TxApprovalModal({
       const result = await onApprove(intent!)
       if (result && "hash" in result && result.hash) {
         setHash(result.hash)
-      } else {
-        onOpenChange(false)
       }
+      // Close the Sourcify review once execution succeeds. The calling flow
+      // shows the receipt/result card, so keeping this modal open only blocks
+      // the user from seeing the send completion state.
+      onOpenChange(false)
     } catch (e) {
       setError(e instanceof Error ? e.message : "transaction failed")
     } finally {
