@@ -1,7 +1,12 @@
 import { z } from "zod"
 import { anthropic } from "@ai-sdk/anthropic"
 import { openai } from "@ai-sdk/openai"
-import { convertToModelMessages, streamText, type UIMessage } from "ai"
+import {
+  convertToModelMessages,
+  stepCountIs,
+  streamText,
+  type UIMessage,
+} from "ai"
 import type { Address } from "viem"
 import { buildTwinTools } from "@/lib/twin-tools"
 import { buildSystemPrompt } from "@/lib/prompts"
@@ -72,6 +77,10 @@ export async function POST(req: Request) {
         fromEns: ensName,
         ...(fromAddress ? { fromAddress: fromAddress as Address } : {}),
       }),
+      // Allow the agent to chain tool calls in a single turn — e.g.
+      // sendMessage → waitForReply → final summary — so it can carry out
+      // multi-step coordination on the user's behalf without losing the thread.
+      stopWhen: stepCountIs(8),
     })
 
     return result.toUIMessageStreamResponse()

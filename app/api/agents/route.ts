@@ -4,6 +4,11 @@ import { jsonError } from "@/lib/api-guard"
 
 export const runtime = "nodejs"
 export const maxDuration = 15
+// Run on every request — without this Next.js caches the build-time response,
+// which froze each agent's `avatar` field to whatever was on-chain at deploy
+// time (often empty for freshly-minted twins).
+export const dynamic = "force-dynamic"
+export const revalidate = 0
 
 // Returns the directory with each agent's on-chain `avatar` text record.
 // Reads run in parallel via the fast direct-resolver path (single eth_call

@@ -285,6 +285,15 @@ type ToolOutput = {
   // sendStealthUsdc / sendToken
   stealthAddress?: string
   amount?: string
+  // sendToken-specific
+  chain?: string
+  token?: string
+  recipientInput?: string
+  to?: string
+  // sendStealthUsdc-specific
+  recipientEnsName?: string
+  // requestDataViaX402
+  payer?: string
 }
 
 function AgentBadges({
@@ -329,6 +338,20 @@ function AgentBadges({
     return (
       <span className="font-mono text-[10px] text-primary/80">
         → {output.toEns}
+      </span>
+    )
+  }
+  if (toolName === "sendToken" && output.amount && (output.recipientInput || output.to)) {
+    return (
+      <span className="font-mono text-[10px] text-primary/80">
+        {output.amount} → {output.recipientInput ?? output.to}
+      </span>
+    )
+  }
+  if (toolName === "sendStealthUsdc" && output.amount) {
+    return (
+      <span className="font-mono text-[10px] text-primary/80">
+        {output.amount} → {output.recipientEnsName ?? "stealth"}
       </span>
     )
   }
@@ -381,6 +404,44 @@ function AgentDetail({
       </div>
     )
   }
+  if (toolName === "sendToken" && output.ok && output.blockExplorerUrl) {
+    const recipient = output.recipientInput ?? output.to ?? "recipient"
+    return (
+      <ExplorerReceipt
+        title={`Sent ${output.amount ?? "tokens"} → ${recipient}`}
+        subtitle={output.chain ? `on ${output.chain}` : undefined}
+        explorerUrl={output.blockExplorerUrl}
+        txHash={output.txHash}
+      />
+    )
+  }
+  if (toolName === "sendStealthUsdc" && output.ok && output.blockExplorerUrl) {
+    return (
+      <ExplorerReceipt
+        title={`Sent ${output.amount ?? "USDC"} privately → ${output.recipientEnsName ?? "recipient"}`}
+        subtitle={output.stealthAddress ? `via stealth ${shortAddrInline(output.stealthAddress)}` : undefined}
+        explorerUrl={output.blockExplorerUrl}
+        txHash={output.txHash}
+      />
+    )
+  }
+  if (toolName === "requestDataViaX402" && output.ok && output.blockExplorerUrl) {
+    return (
+      <ExplorerReceipt
+        title="x402 micropayment settled"
+        subtitle={output.chain ? `on ${output.chain}` : undefined}
+        explorerUrl={output.blockExplorerUrl}
+        txHash={output.txHash}
+      />
+    )
+  }
+  if (toolName === "hireAgent" && output.ok === false && output.error) {
+    return (
+      <div className="ml-5 rounded-md border border-amber-500/20 bg-amber-500/5 px-2.5 py-1.5 text-[11px] text-amber-200/90">
+        {output.error}
+      </div>
+    )
+  }
   if (output.ok === false && output.error) {
     return (
       <div className="ml-5 rounded-md border border-amber-500/20 bg-amber-500/5 px-2.5 py-1.5 text-[11px] text-amber-200/90">
@@ -388,7 +449,59 @@ function AgentDetail({
       </div>
     )
   }
+  // Generic catch-all: any tool result that exposes a tx hash + explorer URL
+  // gets a minimal receipt — protects against forgetting a future tool.
+  if (output.ok && output.blockExplorerUrl) {
+    return (
+      <ExplorerReceipt
+        title={`${toolName} confirmed`}
+        explorerUrl={output.blockExplorerUrl}
+        txHash={output.txHash}
+      />
+    )
+  }
   return null
+}
+
+function shortAddrInline(a: string): string {
+  if (!a || a.length < 12) return a
+  return `${a.slice(0, 6)}…${a.slice(-4)}`
+}
+
+function ExplorerReceipt({
+  title,
+  subtitle,
+  explorerUrl,
+  txHash,
+}: {
+  title: string
+  subtitle?: string
+  explorerUrl: string
+  txHash?: string
+}) {
+  return (
+    <div className="ml-5 rounded-md border border-emerald-500/20 bg-emerald-500/5 px-2.5 py-1.5 text-[11px]">
+      <div className="flex items-center justify-between gap-2">
+        <span className="font-medium text-emerald-200/90">{title}</span>
+        <a
+          href={explorerUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex shrink-0 items-center gap-0.5 font-mono text-[10px] text-primary hover:underline"
+        >
+          on-chain ↗
+        </a>
+      </div>
+      {subtitle ? (
+        <div className="mt-0.5 text-[10px] text-muted-foreground">{subtitle}</div>
+      ) : null}
+      {txHash ? (
+        <div className="mt-0.5 font-mono text-[10px] text-muted-foreground">
+          tx · {shortAddrInline(txHash)}
+        </div>
+      ) : null}
+    </div>
+  )
 }
 
 function labelForState(state: string) {

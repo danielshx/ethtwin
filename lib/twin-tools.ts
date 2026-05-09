@@ -560,7 +560,7 @@ export function buildTwinTools(ctx: TwinToolContext = {}) {
 
     sendMessage: tool({
       description:
-        "Send an on-chain ENS message to another twin. Each message becomes a child subname (msg-<ts>-<seq>.<recipient>) carrying from/body/at text records on Sepolia ENS. Use when the user asks the Twin to message, ping, or write to another agent.",
+        "Send an on-chain ENS message to another twin. Each message becomes a child subname (msg-<ts>-<seq>.<recipient>) carrying from/body/at text records on Sepolia ENS. Use when the user asks the Twin to message, ping, or write to another agent. The recipient's twin will auto-respond shortly — pair this with `waitForReply` if the user expects an answer.",
       inputSchema: z.object({
         toEns: z
           .string()
@@ -585,6 +585,16 @@ export function buildTwinTools(ctx: TwinToolContext = {}) {
             toEns,
             body,
           })
+          // Fire-and-forget: kick the recipient twin to auto-reply in their
+          // persona. We don't await this — the user's agent will see the
+          // reply via waitForReply / readMyMessages once it lands on-chain.
+          if (toEns.toLowerCase().endsWith(".ethtwin.eth")) {
+            triggerAutoReply({
+              fromEns: toEns, // recipient becomes the auto-replier
+              toEns: ctx.fromEns,
+              incomingBody: body,
+            })
+          }
           return {
             ok: true,
             fromEns: ctx.fromEns,
@@ -594,6 +604,7 @@ export function buildTwinTools(ctx: TwinToolContext = {}) {
             at: result.message.at,
             txHash: result.recordsMulticallTx,
             blockExplorerUrl: result.blockExplorerUrl,
+            autoReplyExpected: toEns.toLowerCase().endsWith(".ethtwin.eth"),
           }
         } catch (err) {
           return {
@@ -605,5 +616,91 @@ export function buildTwinTools(ctx: TwinToolContext = {}) {
         }
       },
     }),
+
+    waitForReply: tool({
+      description:
+        "Poll the user's on-chain inbox for a NEW message from a specific peer twin and return it when it arrives. Use IMMEDIATELY after `sendMessage` whenever the user expects an answer (scheduling, asking a question, coordinating). Returns the reply, a `timedOut` flag, or 'no new message' if nothing new arrived in the window.",
+      inputSchema: z.object({
+        fromEns: z
+          .string()
+          .describe(
+            "ENS name of the peer you're waiting on, e.g. 'daniel.ethtwin.eth'.",
+          ),
+        sinceUnixSec: z
+          .number()
+          .int()
+          .optional()
+          .describe(
+            "Only consider messages strictly newer than this unix timestamp. Defaults to ~30s before the call so we ignore historical messages.",
+          ),
+        timeoutMs: z
+          .number()
+          .int()
+          .min(2_000)
+          .max(45_000)
+          .optional()
+          .describe("How long to poll (ms). Defaults to 25 000."),
+      }),
+      execute: async ({ fromEns, sinceUnixSec, timeoutMs }) => {
+        if (!ctx.fromEns) {
+          return { ok: false, error: "No twin ENS in this session." }
+        }
+        const since =
+          typeof sinceUnixSec === "number"
+            ? sinceUnixSec
+            : Math.floor(Date.now() / 1000) - 30
+        const deadline = Date.now() + (timeoutMs ?? 25_000)
+        const peerLower = fromEns.toLowerCase()
+        // Poll inbox every ~3s. The auto-reply tx usually lands in ~12-24s
+        // on Sepolia, so the default 25s window covers it.
+        while (Date.now() < deadline) {
+          try {
+            const inbox = await readInbox(ctx.fromEns, 5)
+            const match = inbox.find(
+              (m) =>
+                m.from.toLowerCase() === peerLower && m.at > since,
+            )
+            if (match) {
+              return {
+                ok: true,
+                from: match.from,
+                body: match.body,
+                at: match.at,
+              }
+            }
+          } catch {
+            // keep polling — transient RPC blips shouldn't kill the loop
+          }
+          await new Promise((res) => setTimeout(res, 3_000))
+        }
+        return {
+          ok: true,
+          timedOut: true,
+          message:
+            "No reply landed in the polling window. The recipient may still be drafting — try again in a moment or check the inbox manually.",
+        }
+      },
+    }),
   } as const
+}
+
+// Fire-and-forget call to the auto-reply route. Building the URL from
+// VERCEL_URL / NEXT_PUBLIC_APP_URL keeps it correct in every deploy environment.
+function triggerAutoReply(payload: {
+  fromEns: string
+  toEns: string
+  incomingBody: string
+}) {
+  const base =
+    process.env.NEXT_PUBLIC_APP_URL ??
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null) ??
+    "http://localhost:3000"
+  void fetch(`${base}/api/twin/auto-reply`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  }).catch(() => {
+    // Best-effort — if the auto-reply fails, the user's agent will simply
+    // see no reply via waitForReply and report that back.
+  })
 }

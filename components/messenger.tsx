@@ -330,7 +330,7 @@ export function Messenger({ myEnsName, getAuthToken, className }: MessengerProps
           </div>
         </div>
 
-        <ScrollArea className="flex-1">
+        <ScrollArea className="min-h-0 flex-1">
           <div className="space-y-1 p-2">
             {agentsLoading ? (
               <div className="flex items-center gap-2 px-2 py-3 text-xs text-muted-foreground">
@@ -449,7 +449,7 @@ export function Messenger({ myEnsName, getAuthToken, className }: MessengerProps
           )}
         </header>
 
-        <ScrollArea className="flex-1">
+        <ScrollArea className="min-h-0 flex-1">
           <div className="space-y-2 p-5">
             {!selected ? (
               <EmptyState />
