@@ -442,6 +442,12 @@ export function AgentProfileDialog({
               </Field>
             ) : null}
 
+            {/* Recovery code — visible ONLY in the browser that minted the
+             *  twin (where it's persisted in localStorage). Other viewers
+             *  see nothing. Editable=true is also a guard so this never
+             *  appears when looking at someone else's profile. */}
+            {editable ? <OwnRecoveryCodePanel ens={profile.ens} /> : null}
+
             <BountyTrail
               tags={
                 [
@@ -601,4 +607,84 @@ function parseList(raw: string): string[] {
 function shortAddr(a: string): string {
   if (a.length < 12) return a
   return `${a.slice(0, 6)}…${a.slice(-4)}`
+}
+
+/**
+ * Reveals the SpaceComputer KMS recovery code for the user's own twin
+ * iff it's persisted in this browser's localStorage. Other browsers /
+ * other users see nothing — the code is only ever stored client-side.
+ */
+function OwnRecoveryCodePanel({ ens }: { ens: string }) {
+  const [code, setCode] = useState<string | null>(null)
+  const [revealed, setRevealed] = useState(false)
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    try {
+      const raw = window.localStorage.getItem(
+        `ethtwin.recovery.${ens.toLowerCase()}`,
+      )
+      setCode(raw ?? null)
+    } catch {
+      setCode(null)
+    }
+  }, [ens])
+
+  return (
+    <div className="rounded-md border border-purple-500/30 bg-purple-500/5 p-3 text-left">
+      <div className="mb-1 text-[10px] uppercase tracking-wider text-purple-300">
+        Your KMS recovery code
+      </div>
+      {code ? (
+        <>
+          <p className="text-[11px] leading-relaxed text-muted-foreground">
+            Required to log into <span className="font-mono">{ens}</span> from
+            another browser. Treat it like a password — anyone with it can sign
+            in as you.
+          </p>
+          <div className="mt-2 flex items-stretch gap-2">
+            <code
+              className={cn(
+                "flex-1 break-all rounded-md border border-border/60 bg-background/60 px-3 py-2 font-mono text-sm",
+                revealed ? "" : "select-none text-transparent",
+              )}
+              style={
+                revealed
+                  ? undefined
+                  : { textShadow: "0 0 12px rgba(255,255,255,0.5)" }
+              }
+            >
+              {revealed ? code : "•".repeat(Math.min(code.length, 22))}
+            </code>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => setRevealed((v) => !v)}
+              className="px-3"
+            >
+              {revealed ? "Hide" : "Reveal"}
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                navigator.clipboard.writeText(code).catch(() => {})
+                toast.success("Recovery code copied")
+              }}
+              className="px-3"
+            >
+              Copy
+            </Button>
+          </div>
+        </>
+      ) : (
+        <p className="text-[11px] leading-relaxed text-muted-foreground">
+          Not in this browser. The recovery code was shown once at mint and
+          stored in localStorage; if you cleared site data or you minted from a
+          different browser, it&apos;s no longer recoverable here.
+        </p>
+      )}
+    </div>
+  )
 }

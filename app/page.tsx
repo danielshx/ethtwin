@@ -16,6 +16,7 @@ import { NotificationPanel } from "@/components/notification-panel"
 import { MariaShell } from "@/components/maria-shell"
 import { ContrastCard } from "@/components/contrast-card"
 import { addHistoryEntry } from "@/lib/history"
+import { AgentProfileDialog } from "@/components/agent-profile"
 import { useDemoMode } from "@/lib/use-demo-mode"
 import { useSession, type Session } from "@/lib/use-session"
 import { Toaster } from "@/components/ui/sonner"
@@ -66,6 +67,9 @@ export default function HomePage() {
 function App() {
   const { session, hydrated, login, logout, adoptServerSession } = useSession()
   const [demoMode, setDemoMode] = useDemoMode()
+  // Lets the user click their own ENS in the header to open their own
+  // profile dialog — that's where the recovery code + KMS keyId live.
+  const [ownProfileOpen, setOwnProfileOpen] = useState(false)
 
   async function handleMint(input: {
     username: string
@@ -159,9 +163,14 @@ function App() {
           {session ? (
             <>
               {!demoMode ? (
-                <span className="hidden font-mono text-xs text-muted-foreground sm:inline">
+                <button
+                  type="button"
+                  onClick={() => setOwnProfileOpen(true)}
+                  className="hidden font-mono text-xs text-muted-foreground hover:text-foreground sm:inline"
+                  title="Open your profile (recovery code, KMS key, …)"
+                >
                   {session.ens}
-                </span>
+                </button>
               ) : null}
               <Button variant="ghost" size="sm" onClick={handleSignOut}>
                 <LogOut className="h-4 w-4" />
@@ -206,6 +215,18 @@ function App() {
       {session && !demoMode ? (
         <NotificationPanel ensName={session.ens} walletAddress={""} />
       ) : null}
+
+      {/* Own-profile dialog. `editable` enables the in-dialog Recovery Code
+       *  panel, which only shows the code if it's persisted in this
+       *  browser's localStorage. */}
+      <AgentProfileDialog
+        ens={session?.ens ?? null}
+        open={ownProfileOpen}
+        onOpenChange={setOwnProfileOpen}
+        editable
+        getAuthToken={NO_AUTH_TOKEN}
+        onDeleted={handleSignOut}
+      />
     </>
   )
 }
