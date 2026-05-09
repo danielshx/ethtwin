@@ -14,7 +14,6 @@ import { Messenger } from "@/components/messenger"
 import { TokenTransfer } from "@/components/token-transfer"
 import { StealthSend } from "@/components/stealth-send"
 import { History } from "@/components/history"
-import { Explorer } from "@/components/explorer"
 import { VoiceTwin } from "@/components/voice-twin"
 import { addHistoryEntry } from "@/lib/history"
 import { Toaster } from "@/components/ui/sonner"
@@ -217,7 +216,7 @@ function SignedInTabs({
   walletAddress: string | null
 }) {
   const [tab, setTab] = useState<
-    "chat" | "voice" | "messenger" | "transfer" | "stealth" | "history" | "explorer"
+    "chat" | "voice" | "messenger" | "transfer" | "stealth" | "history"
   >("chat")
   const getAuthToken = () => privy.getAccessToken().catch(() => null)
   return (
@@ -271,14 +270,6 @@ function SignedInTabs({
         >
           History
         </Button>
-        <Button
-          variant={tab === "explorer" ? "default" : "ghost"}
-          size="sm"
-          className="rounded-full"
-          onClick={() => setTab("explorer")}
-        >
-          Explorer
-        </Button>
       </div>
       {tab === "chat" ? (
         <TwinChat
@@ -310,15 +301,10 @@ function SignedInTabs({
           getAuthToken={getAuthToken}
           className="w-full border-white/10 bg-card/80 backdrop-blur"
         />
-      ) : tab === "history" ? (
+      ) : (
         <History
           ensName={session.ensName}
-          className="w-full border-white/10 bg-card/80 backdrop-blur"
-        />
-      ) : (
-        <Explorer
-          ensName={session.ensName}
-          address={walletAddress ?? session.smartWalletAddress}
+          walletAddress={walletAddress ?? session.smartWalletAddress}
           className="w-full border-white/10 bg-card/80 backdrop-blur"
         />
       )}

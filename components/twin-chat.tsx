@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge"
 import { AgentProfileDialog, AvatarImage } from "@/components/agent-profile"
 import { X402Flow } from "@/components/x402-flow"
 import { buildAvatarUrl } from "@/lib/twin-profile"
+import { displayNameFromEns } from "@/lib/ens"
 import { cn } from "@/lib/utils"
 
 type TwinChatProps = {
@@ -90,13 +91,17 @@ export function TwinChat({ ensName, className }: TwinChatProps) {
       <header className="flex items-center justify-between border-b border-white/10 px-4 py-3">
         <button
           onClick={() => setProfileOpen(true)}
-          className="flex items-center gap-2 rounded-md px-1 -mx-1 py-1 text-left hover:bg-white/5"
+          className="flex items-center gap-2.5 rounded-md px-1 -mx-1 py-1 text-left hover:bg-white/5"
           title="View profile"
         >
-          <AvatarImage src={avatarUrl} ens={ensName} size={32} />
+          <AvatarImage src={avatarUrl} ens={ensName} size={36} />
           <div className="leading-tight">
-            <div className="text-sm font-medium">{ensName}</div>
-            <div className="text-xs text-muted-foreground">your AI twin</div>
+            <div className="text-sm font-medium">
+              {displayNameFromEns(ensName).displayName}
+            </div>
+            <div className="font-mono text-[10px] text-muted-foreground">
+              {ensName}
+            </div>
           </div>
         </button>
         <Badge variant="secondary" className="font-mono text-[10px]">

@@ -10,6 +10,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
+import { displayNameFromEns } from "@/lib/ens"
 import { cn } from "@/lib/utils"
 
 type AgentProfile = {
@@ -63,9 +64,14 @@ export function AgentProfileDialog({ ens, open, onOpenChange }: AgentProfileDial
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle className="font-mono text-base">{ens}</DialogTitle>
+          <DialogTitle className="text-lg">
+            {ens ? displayNameFromEns(ens).displayName : "Agent"}
+          </DialogTitle>
+          <DialogDescription className="font-mono text-xs text-muted-foreground">
+            {ens}
+          </DialogDescription>
           {profile?.description ? (
-            <DialogDescription className="text-sm">{profile.description}</DialogDescription>
+            <p className="pt-2 text-sm">{profile.description}</p>
           ) : null}
         </DialogHeader>
 

@@ -348,3 +348,20 @@ export function shortenAddress(address: string, head = 6, tail = 4): string {
   if (address.length <= head + tail + 2) return address
   return `${address.slice(0, head)}…${address.slice(-tail)}`
 }
+
+/**
+ * Splits an ENS name into a display first-name + the parent suffix.
+ *
+ *   "daniel.ethtwin.eth"  → { displayName: "Daniel", suffix: "ethtwin.eth" }
+ *   "rami123.ethtwin.eth" → { displayName: "Rami123", suffix: "ethtwin.eth" }
+ *   "vitalik.eth"         → { displayName: "Vitalik", suffix: "eth" }
+ *
+ * Used everywhere we want WhatsApp-style "First Name" + small ENS underneath.
+ */
+export function displayNameFromEns(ens: string): { displayName: string; suffix: string } {
+  const parts = ens.split(".")
+  const label = parts[0] ?? ens
+  const suffix = parts.slice(1).join(".") || ""
+  const displayName = label.length > 0 ? label.charAt(0).toUpperCase() + label.slice(1) : ens
+  return { displayName, suffix }
+}

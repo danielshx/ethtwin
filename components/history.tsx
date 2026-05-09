@@ -1,7 +1,7 @@
 "use client"
 
-import { useMemo, useState } from "react"
-import { ArrowUpRight, Coins, History as HistoryIcon, MessageSquare, Sparkles, Trash2 } from "lucide-react"
+import { useCallback, useEffect, useMemo, useState } from "react"
+import { ArrowUpRight, Coins, History as HistoryIcon, Loader2, MessageSquare, RefreshCw, Sparkles, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -10,6 +10,21 @@ import { clearHistory, useHistory, type HistoryEntry, type HistoryKind } from "@
 import { cn } from "@/lib/utils"
 
 type FilterKind = HistoryKind | "all"
+
+type WalletTx = {
+  txHash: `0x${string}`
+  chain: "sepolia" | "base-sepolia"
+  from: string
+  to: string | null
+  value: string
+  at: number
+  blockNumber: string
+  status: "success" | "failed"
+  summary: string
+  contractName: string
+  functionName: string
+  explorerUrl: string
+}
 
 const FILTERS: { id: FilterKind; label: string }[] = [
   { id: "all", label: "All" },
@@ -38,11 +53,82 @@ const KIND_COLOR: Record<HistoryKind, string> = {
 type HistoryProps = {
   className?: string
   ensName?: string | null
+  /** When set, the History tab also pulls the wallet's on-chain txs from
+   *  Etherscan (Sepolia + Base Sepolia) and merges them into the list. */
+  walletAddress?: string | null
 }
 
-export function History({ className, ensName }: HistoryProps) {
-  const entries = useHistory({ ens: ensName })
+function walletTxToHistoryEntry(tx: WalletTx, myAddress: string | null): HistoryEntry {
+  const isOutgoing =
+    myAddress != null && tx.from.toLowerCase() === myAddress.toLowerCase()
+  // Best-effort kind classification — the decoder gives us function names.
+  const fn = tx.functionName.toLowerCase()
+  const kind: HistoryKind =
+    fn === "transfer" || fn === "transferfrom"
+      ? "transfer"
+      : fn.startsWith("setsubnoderecord") || fn.startsWith("setname")
+      ? "mint"
+      : fn.startsWith("settext")
+      ? "message"
+      : "other"
+  return {
+    id: `chain:${tx.chain}:${tx.txHash}`,
+    at: tx.at,
+    kind,
+    status: tx.status,
+    summary: isOutgoing
+      ? tx.summary
+      : tx.summary.replace(/^Send|^Transfer|^Call/, "Received"),
+    description: isOutgoing
+      ? `from your wallet · ${tx.contractName}`
+      : `to your wallet · ${tx.contractName}`,
+    txHash: tx.txHash,
+    explorerUrl: tx.explorerUrl,
+    chain: tx.chain,
+  }
+}
+
+export function History({ className, ensName, walletAddress }: HistoryProps) {
+  const localEntries = useHistory({ ens: ensName })
+  const [walletTxs, setWalletTxs] = useState<WalletTx[]>([])
+  const [walletLoading, setWalletLoading] = useState(false)
   const [filter, setFilter] = useState<FilterKind>("all")
+
+  const loadWalletHistory = useCallback(async () => {
+    if (!walletAddress) {
+      setWalletTxs([])
+      return
+    }
+    setWalletLoading(true)
+    try {
+      const res = await fetch(
+        `/api/wallet-history?address=${encodeURIComponent(walletAddress)}&chains=sepolia,base-sepolia&limit=20`,
+      )
+      const data = (await res.json()) as { ok: boolean; entries?: WalletTx[] }
+      if (data.ok && data.entries) setWalletTxs(data.entries)
+    } catch {
+      // best-effort — if Etherscan is rate-limited we just show local + server entries
+    } finally {
+      setWalletLoading(false)
+    }
+  }, [walletAddress])
+
+  useEffect(() => {
+    loadWalletHistory()
+  }, [loadWalletHistory])
+
+  const entries = useMemo<HistoryEntry[]>(() => {
+    // Merge: app-internal entries (server + local) + wallet on-chain entries.
+    // Dedupe by txHash so we don't show the same tx twice when our app
+    // recorded a send that's also visible on-chain.
+    const seenTxHashes = new Set(
+      localEntries.map((e) => e.txHash?.toLowerCase()).filter(Boolean) as string[],
+    )
+    const walletEntries = walletTxs
+      .filter((tx) => !seenTxHashes.has(tx.txHash.toLowerCase()))
+      .map((tx) => walletTxToHistoryEntry(tx, walletAddress ?? null))
+    return [...localEntries, ...walletEntries].sort((a, b) => b.at - a.at)
+  }, [localEntries, walletTxs, walletAddress])
 
   const filtered = useMemo(() => {
     if (filter === "all") return entries
@@ -63,6 +149,22 @@ export function History({ className, ensName }: HistoryProps) {
         <Badge variant="secondary" className="ml-auto font-mono text-[10px]">
           {entries.length} entries
         </Badge>
+        {walletAddress && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={loadWalletHistory}
+            disabled={walletLoading}
+            title="Refresh on-chain wallet history"
+            className="h-7 px-2 text-muted-foreground hover:text-primary"
+          >
+            {walletLoading ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <RefreshCw className="h-3 w-3" />
+            )}
+          </Button>
+        )}
         {entries.length > 0 && (
           <Button
             variant="ghost"
