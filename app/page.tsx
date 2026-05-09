@@ -26,10 +26,6 @@ import { toast } from "sonner"
 const PARENT_DOMAIN = process.env.NEXT_PUBLIC_PARENT_DOMAIN ?? "ethtwin.eth"
 const PRIVY_CONFIGURED = !!process.env.NEXT_PUBLIC_PRIVY_APP_ID
 const STORAGE_KEY = "ethtwin.session.v1"
-// Fallback addr record when an email-only user signs in but no embedded smart
-// wallet has surfaced yet. The twin is mintable; the addr record points at the
-// shared dev wallet. Sourced from env so a key rotation also rotates this.
-// Caveat: multiple email-only users would share an addr.
 const DEV_WALLET_FALLBACK = (process.env.NEXT_PUBLIC_DEV_WALLET_ADDRESS ??
   "0x4E09c220BD556396Bc255A4DD24F858Bafeba6f5") as `0x${string}`
 
@@ -72,10 +68,7 @@ function App() {
     if (smartAccount) return smartAccount
     const embedded = wallets.find((w) => w.walletClientType === "privy")
     if (embedded?.address) return embedded.address
-    // External wallet login (MetaMask/Rabby/etc.) — use whatever's connected.
     if (wallets[0]?.address) return wallets[0].address
-    // Email-only user with no embedded wallet yet — fall back to the shared
-    // dev wallet so the twin can still be minted.
     if (privy.authenticated) return DEV_WALLET_FALLBACK
     return null
   }, [smart.client?.account?.address, wallets, privy.authenticated])
@@ -83,12 +76,10 @@ function App() {
   async function handleAuthenticate(method: AuthMethod = "any") {
     if (!privy.authenticated) {
       if (method === "wallet") {
-        // Direct wallet picker — skips the email/passkey choices.
         connectWallet()
       } else if (method === "passkey") {
         privy.login({ loginMethods: ["passkey"] })
       } else {
-        // Generic — Privy modal lets user pick any method.
         privy.login()
       }
     }
@@ -304,6 +295,7 @@ function SignedInTabs({
         <History
           ensName={session.ensName}
           walletAddress={walletAddress ?? session.smartWalletAddress}
+          getAuthToken={getAuthToken}
           className="w-full border-border/60 bg-card shadow-sm"
         />
       )}
@@ -469,8 +461,6 @@ function Hero({ demoMode = false }: { demoMode?: boolean }) {
 }
 
 function BackgroundGlow() {
-  // In maria-mode the body gradient (see globals.css) carries the warm wash;
-  // these purple blobs would clash, so we hide them via the maria-mode class.
   return (
     <>
       <div
