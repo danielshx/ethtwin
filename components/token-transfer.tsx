@@ -281,6 +281,11 @@ export function TokenTransfer({ myEnsName, getAuthToken, className }: TokenTrans
           sourceMatch: decoded.verification.match,
           sourceUrl: decoded.verification.sourceUrl,
           sourceWarning: decoded.verification.warning,
+          riskLevel: decoded.risk.level,
+          riskLabel: decoded.risk.label,
+          riskReasons: decoded.risk.reasons,
+          riskRecommendation: decoded.risk.recommendation,
+          riskPatternIds: decoded.risk.patternIds,
         }
         setPendingMeta({
           chain: chain2send,
