@@ -327,6 +327,31 @@ export function OnboardingFlow({
                   tags={["ens", "ensip25", "kms", "ctrng", "stealth"]}
                   className="justify-center"
                 />
+
+                {/* SpaceComputer KMS provenance — surfaces the real keyId
+                 *  + derived address so the sponsor can see this twin is
+                 *  satellite-attested, not a local dev key. */}
+                {mintCtxRef.current?.kmsKeyId ? (
+                  <div className="w-full max-w-md rounded-lg border border-purple-500/30 bg-purple-500/5 p-3 text-left">
+                    <div className="mb-1 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wider text-purple-300">
+                      <Sparkles className="h-3 w-3" /> SpaceComputer KMS key
+                    </div>
+                    <div className="grid gap-0.5 font-mono text-[10px] leading-relaxed text-muted-foreground">
+                      <div>
+                        keyId ·{" "}
+                        <span className="text-foreground/85">
+                          {mintCtxRef.current.kmsKeyId}
+                        </span>
+                      </div>
+                      <div>
+                        addr ·{" "}
+                        <span className="text-foreground/85">
+                          {mintCtxRef.current.effectiveAddress}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
                 {recoveryCode ? (
                   <div className="mt-2 w-full max-w-md rounded-lg border border-primary/40 bg-primary/5 p-4 text-left">
                     <div className="mb-1.5 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-primary">

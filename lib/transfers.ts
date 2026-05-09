@@ -209,13 +209,19 @@ export async function sendToken(args: {
       ? "https://sepoliafaucet.com or https://www.alchemy.com/faucets/ethereum-sepolia"
       : "https://www.alchemy.com/faucets/base-sepolia"
   if (balance.raw < amount) {
+    // Surface the EXACT token contract we're reading so users who funded a
+    // different token / chain can see the mismatch. Sepolia has multiple
+    // ERC-20s called "USDC"; we're tied to one specific deployment.
+    const tokenContract =
+      args.token === "ETH" ? "(native ETH)" : spec.usdc
     throw new Error(
       `Sender ${account.address} has ${balance.human} ${args.token} on ${args.chain}, needs ${formatUnits(
         amount,
         decimals,
-      )}. ${
+      )}. We read the balance from contract ${tokenContract}. ${
         viaKms
-          ? `This twin's KMS-managed wallet has no balance yet — fund the address from a faucet (${faucetHint}) and retry.`
+          ? `This twin's KMS-managed wallet has no balance yet — fund the address from a faucet (${faucetHint}) and retry. ` +
+            `Make sure the funds are on ${args.chain} and at the contract address above.`
           : ""
       }`,
     )

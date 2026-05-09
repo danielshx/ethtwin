@@ -1,11 +1,15 @@
-// Orbitport cTRNG client with rolling cache.
+// Orbitport cTRNG client.
 //
 // Source: SpaceComputer Orbitport — true randomness from a satellite
-// constellation (cTRNG). Each `/randomness` call returns:
-//   - `bytes`: 32 bytes of cosmic-sourced entropy
-//   - `attestation`: a signed/hashed proof of provenance the recipient can
-//     publish on-chain so anyone can verify the seed came from cTRNG and
-//     not a local CSPRNG fallback.
+// constellation (cTRNG). We call `sdk.ctrng.random()` from the Orbitport
+// SDK using the SAME OAuth2 credentials (ORBITPORT_CLIENT_ID/SECRET) that
+// power KMS — no separate API key required.
+//
+// Each call returns:
+//   - data: 32-byte hex string (the cosmic-sourced entropy)
+//   - signature: { value, pk, algo } proof of provenance the recipient can
+//     publish on-chain so anyone can verify the seed came from a real
+//     satellite source and not a local CSPRNG fallback.
 //
 // We use it to:
 //   1. Seed AES-GCM nonces for stealth-encrypted messages (lib/message-crypto)
@@ -15,6 +19,8 @@
 //
 // The mock fallback is *visibly* labelled (attestation = "mock-attestation")
 // so a missed env var doesn't silently degrade security claims.
+
+import { OrbitportSDK } from "@spacecomputer-io/orbitport-sdk-ts"
 
 export type CosmicSample = {
   bytes: `0x${string}`
@@ -26,74 +32,59 @@ export type CosmicSample = {
   fromOrbitport: boolean
 }
 
-const CACHE_SIZE = 10
-const TTL_MS = 60_000
 const REQUEST_TIMEOUT_MS = 8_000
-const cache: CosmicSample[] = []
 
-function isFresh(sample: CosmicSample) {
-  return Date.now() - sample.fetchedAt < TTL_MS
+let _sdk: OrbitportSDK | null = null
+
+function sdk(): OrbitportSDK | null {
+  if (_sdk) return _sdk
+  const clientId = process.env.ORBITPORT_CLIENT_ID
+  const clientSecret = process.env.ORBITPORT_CLIENT_SECRET
+  if (!clientId || !clientSecret) return null
+  _sdk = new OrbitportSDK({ config: { clientId, clientSecret } })
+  return _sdk
 }
 
 export async function getCosmicSeed(): Promise<CosmicSample> {
-  while (cache.length > 0) {
-    const next = cache.shift()!
-    if (isFresh(next)) return next
-  }
   return fetchSampleDirect()
 }
 
-export async function warmCache(target = CACHE_SIZE) {
-  const need = Math.max(0, target - cache.length)
-  const fresh = await Promise.all(
-    Array.from({ length: need }, () => fetchSampleDirect()),
-  )
-  cache.push(...fresh)
+export async function warmCache(_target = 0) {
+  // Cache eliminated: the SDK already pools its OAuth token, and a fresh
+  // satellite sample per-send is the bounty-defining behaviour we want
+  // showing up in the demo. Kept as a no-op so existing call sites compile.
+  void _target
 }
 
 async function fetchSampleDirect(): Promise<CosmicSample> {
-  const url = process.env.ORBITPORT_API_URL
-  const key = process.env.ORBITPORT_API_KEY
-  if (!url || !key) {
+  const client = sdk()
+  if (!client) {
     if (process.env.NODE_ENV !== "production") {
       console.warn(
-        "[cosmic] ORBITPORT_API_URL / ORBITPORT_API_KEY not set — falling back to local randomBytes. Stealth artifacts will be labelled mock-attestation.",
+        "[cosmic] ORBITPORT_CLIENT_ID / ORBITPORT_CLIENT_SECRET not set — " +
+          "falling back to local randomBytes. Stealth artifacts will be labelled mock-attestation.",
       )
     }
     return mockSample()
   }
   try {
-    // Endpoint shape: GET <ORBITPORT_API_URL>/randomness with Bearer auth.
-    // Returns { bytes: hex(32), attestation: string }. Manual timeout so a
-    // hung satellite link doesn't lock up an /api/twin or /api/messages
-    // request behind it.
-    const res = await fetch(`${url}/randomness`, {
-      headers: {
-        Authorization: `Bearer ${key}`,
-        Accept: "application/json",
-      },
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-    })
-    if (!res.ok) {
-      const body = await res.text().catch(() => "")
-      throw new Error(`Orbitport ${res.status} ${body.slice(0, 200)}`)
+    const result = await client.ctrng.random(
+      { src: "trng" },
+      { timeout: REQUEST_TIMEOUT_MS },
+    )
+    // SDK returns ServiceResult<CTRNGResponse> = { data: CTRNGResponse, ... }
+    // CTRNGResponse = { service, src, data: hex, signature?: { value, pk, algo? } }
+    const inner = result.data
+    if (!inner || typeof inner.data !== "string") {
+      throw new Error("Orbitport cTRNG returned empty data")
     }
-    const data = (await res.json()) as {
-      bytes?: string
-      attestation?: string
-      // Some Orbitport variants nest the payload — be defensive.
-      randomness?: { bytes?: string; attestation?: string }
-    }
-    const bytes = data.bytes ?? data.randomness?.bytes
-    const attestation = data.attestation ?? data.randomness?.attestation
-    if (!bytes || !attestation) {
-      throw new Error("Orbitport response missing bytes/attestation")
-    }
-    const hex = ensureHex(bytes)
-    if (hex.length !== 66) {
-      // 0x + 64 hex chars = 32 bytes. Anything else means a different scheme.
-      console.warn(`[cosmic] unusual byte length from Orbitport: ${hex.length}`)
-    }
+    const hex = ensureHex(inner.data)
+    // Attestation = signature.value when present, else the data hash itself.
+    // The signature value IS the proof of provenance — it's signed by the
+    // satellite's public key (inner.signature.pk).
+    const attestation =
+      inner.signature?.value ??
+      `unsigned:${hex.slice(2, 18)}` // fall back to a short hash-tag
     return {
       bytes: hex,
       attestation,

@@ -17,6 +17,7 @@ import { addHistoryEntry } from "@/lib/history"
 import { displayNameFromEns } from "@/lib/ens"
 import { buildAvatarUrl } from "@/lib/twin-profile"
 import { cn } from "@/lib/utils"
+import { BountyTrail, type BountyTag } from "@/components/bounty-trail"
 
 type AgentProfile = {
   ens: string
@@ -29,6 +30,9 @@ type AgentProfile = {
   endpoint: string | null
   stealthMeta: string | null
   version: string | null
+  /** SpaceComputer KMS keyId — present when the twin's signing key is
+   *  satellite-attested. Read from the `twin.kms-key-id` text record. */
+  kmsKeyId?: string | null
 }
 
 type AgentProfileDialogProps = {
@@ -431,6 +435,24 @@ export function AgentProfileDialog({
                 {profile.stealthMeta.slice(0, 24)}…{profile.stealthMeta.slice(-8)}
               </Field>
             ) : null}
+
+            {profile.kmsKeyId ? (
+              <Field label="SpaceComputer KMS keyId" mono breakAll>
+                {profile.kmsKeyId}
+              </Field>
+            ) : null}
+
+            <BountyTrail
+              tags={
+                [
+                  "ens",
+                  "ensip25",
+                  ...(profile.kmsKeyId ? (["kms"] as const) : []),
+                  ...(profile.stealthMeta ? (["stealth", "ctrng"] as const) : []),
+                ] as BountyTag[]
+              }
+              className="pt-1"
+            />
 
             {profile.url ? (
               <a
