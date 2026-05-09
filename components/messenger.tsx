@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { motion } from "framer-motion"
-import { Loader2, Mail, Send, Users } from "lucide-react"
+import { Loader2, Mail, Search, Send, Users } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
@@ -120,12 +120,9 @@ export function Messenger({ myEnsName, getAuthToken, className }: MessengerProps
   }
 
   function handleManualOpen() {
-    const cleaned = manualInput.trim().toLowerCase()
-    if (!cleaned) return
-    if (!cleaned.endsWith(".ethtwin.eth")) {
-      toast.error("Recipient must end with .ethtwin.eth")
-      return
-    }
+    const raw = manualInput.trim().toLowerCase()
+    if (!raw) return
+    const cleaned = raw.endsWith(".ethtwin.eth") ? raw : `${raw}.ethtwin.eth`
     if (cleaned === myEnsName.toLowerCase()) {
       toast.error("You can't message yourself.")
       return
@@ -133,6 +130,12 @@ export function Messenger({ myEnsName, getAuthToken, className }: MessengerProps
     selectAgent(cleaned)
     setManualInput("")
   }
+
+  const filteredAgents = useMemo(() => {
+    const q = manualInput.trim().toLowerCase()
+    if (!q) return agents
+    return agents.filter((a) => a.ens.toLowerCase().includes(q))
+  }, [agents, manualInput])
 
   async function handleSend() {
     const body = composing.trim()
@@ -223,39 +226,33 @@ export function Messenger({ myEnsName, getAuthToken, className }: MessengerProps
   }
 
   return (
-    <Card className={cn("grid h-[70dvh] grid-cols-[260px_1fr] overflow-hidden", className)}>
-      {/* Sidebar — on-chain directory */}
-      <aside className="flex flex-col border-r border-white/10 bg-card/50">
-        <div className="flex items-center gap-2 border-b border-white/10 px-4 py-3">
-          <Users className="h-4 w-4 text-muted-foreground" />
-          <span className="text-sm font-medium">Agents</span>
+    <Card className={cn("grid h-[78dvh] grid-cols-[300px_1fr] overflow-hidden p-0", className)}>
+      {/* Sidebar — on-chain directory, WhatsApp-style chat list */}
+      <aside className="flex flex-col border-r border-white/10 bg-card/40">
+        <div className="flex items-center gap-2 border-b border-white/10 px-4 py-4">
+          <Users className="h-4 w-4 text-primary" />
+          <span className="text-base font-semibold">Chats</span>
           <Badge variant="secondary" className="ml-auto font-mono text-[10px]">
             {agents.length}
           </Badge>
         </div>
 
-        <div className="space-y-1 border-b border-white/10 px-3 py-3">
-          <Input
-            placeholder="alice.ethtwin.eth"
-            value={manualInput}
-            onChange={(e) => setManualInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault()
-                handleManualOpen()
-              }
-            }}
-            className="h-8 font-mono text-xs"
-          />
-          <Button
-            variant="secondary"
-            size="sm"
-            className="w-full"
-            onClick={handleManualOpen}
-            disabled={!manualInput.trim()}
-          >
-            Open chat
-          </Button>
+        <div className="border-b border-white/10 px-3 py-3">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Search or new chat"
+              value={manualInput}
+              onChange={(e) => setManualInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault()
+                  handleManualOpen()
+                }
+              }}
+              className="h-9 rounded-full border-white/10 bg-background/60 pl-8 pr-3 font-mono text-xs"
+            />
+          </div>
         </div>
 
         <ScrollArea className="flex-1">
@@ -269,34 +266,46 @@ export function Messenger({ myEnsName, getAuthToken, className }: MessengerProps
               <div className="px-2 py-3 text-xs text-muted-foreground">
                 No agents yet. Once others onboard, they appear here.
               </div>
+            ) : filteredAgents.length === 0 ? (
+              <div className="px-2 py-3 text-xs text-muted-foreground">
+                No matches. Press Enter to open{" "}
+                <span className="font-mono text-foreground/80">
+                  {manualInput.trim().toLowerCase().endsWith(".ethtwin.eth")
+                    ? manualInput.trim().toLowerCase()
+                    : `${manualInput.trim().toLowerCase()}.ethtwin.eth`}
+                </span>
+                .
+              </div>
             ) : (
-              agents.map((a) => {
-                const { displayName, suffix } = displayNameFromEns(a.ens)
+              filteredAgents.map((a) => {
+                const { displayName } = displayNameFromEns(a.ens)
                 const isSelected = selected === a.ens
                 return (
                   <div
                     key={a.ens}
                     className={cn(
-                      "group flex items-center gap-2.5 rounded-md transition",
-                      isSelected ? "bg-primary/15" : "hover:bg-white/5",
+                      "group relative flex items-center gap-3 border-l-2 transition cursor-pointer",
+                      isSelected
+                        ? "border-l-primary bg-primary/10"
+                        : "border-l-transparent hover:bg-white/5",
                     )}
                   >
                     <button
                       onClick={() => selectAgent(a.ens)}
-                      className="flex flex-1 items-center gap-2.5 px-2 py-2 text-left min-w-0"
+                      className="flex flex-1 items-center gap-3 px-3 py-3 text-left min-w-0"
                     >
-                      <AvatarImage src={a.avatar ?? null} ens={a.ens} size={36} />
-                      <div className="flex min-w-0 flex-1 flex-col leading-tight">
+                      <AvatarImage src={a.avatar ?? null} ens={a.ens} size={44} />
+                      <div className="flex min-w-0 flex-1 flex-col gap-0.5 leading-tight">
                         <span
                           className={cn(
-                            "truncate text-sm font-medium",
+                            "truncate text-base font-semibold",
                             isSelected ? "text-primary" : "text-foreground",
                           )}
                         >
                           {displayName}
                         </span>
                         <span className="truncate font-mono text-[10px] text-muted-foreground">
-                          {suffix ? `${a.ens.split(".")[0]}.${suffix}` : a.ens}
+                          {a.ens}
                         </span>
                       </div>
                     </button>
@@ -306,7 +315,7 @@ export function Messenger({ myEnsName, getAuthToken, className }: MessengerProps
                         setProfileEns(a.ens)
                       }}
                       title="View profile"
-                      className="px-2 py-2 text-[10px] text-muted-foreground opacity-0 transition group-hover:opacity-100 hover:text-primary"
+                      className="mr-2 px-1.5 py-1 text-[10px] text-muted-foreground opacity-0 transition group-hover:opacity-100 hover:text-primary"
                     >
                       info
                     </button>
@@ -319,19 +328,18 @@ export function Messenger({ myEnsName, getAuthToken, className }: MessengerProps
       </aside>
 
       {/* Main — chat view */}
-      <section className="flex flex-col">
-        <header className="flex items-center gap-2 border-b border-white/10 px-5 py-3">
-          {!selected && <Mail className="h-4 w-4 text-muted-foreground" />}
+      <section className="flex flex-col bg-card/20">
+        <header className="flex items-center gap-3 border-b border-white/10 bg-card/60 px-5 py-3.5">
           {selected ? (
             <>
               <button
                 onClick={() => setProfileEns(selected)}
-                className="flex items-center gap-2.5 rounded-md px-1 -mx-1 py-1 hover:bg-white/5"
+                className="flex items-center gap-3 rounded-md px-1 -mx-1 py-1 hover:bg-white/5"
                 title="View profile"
               >
-                <AvatarImage src={selectedAgent?.avatar ?? null} ens={selected} size={32} />
+                <AvatarImage src={selectedAgent?.avatar ?? null} ens={selected} size={40} />
                 <div className="flex flex-col leading-tight">
-                  <span className="text-sm font-medium">
+                  <span className="text-base font-semibold">
                     {displayNameFromEns(selected).displayName}
                   </span>
                   <span className="font-mono text-[10px] text-muted-foreground">
@@ -340,18 +348,21 @@ export function Messenger({ myEnsName, getAuthToken, className }: MessengerProps
                 </div>
               </button>
               <Badge variant="secondary" className="ml-auto font-mono text-[10px]">
-                ENS-native messages
+                ENS-native
               </Badge>
             </>
           ) : (
-            <span className="text-sm text-muted-foreground">
-              Pick an agent on the left to start chatting.
-            </span>
+            <div className="flex items-center gap-2">
+              <Mail className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm text-muted-foreground">
+                Pick a chat on the left to start.
+              </span>
+            </div>
           )}
         </header>
 
         <ScrollArea className="flex-1">
-          <div className="space-y-3 p-5">
+          <div className="space-y-2 p-5">
             {!selected ? (
               <EmptyState />
             ) : threadLoading && thread.length === 0 ? (
@@ -360,9 +371,9 @@ export function Messenger({ myEnsName, getAuthToken, className }: MessengerProps
                 Reading on-chain inbox…
               </div>
             ) : thread.length === 0 ? (
-              <div className="text-sm text-muted-foreground">
-                No messages yet. Send the first one — it lands as a sub-subname under
-                <code className="ml-1 font-mono text-xs">{selected}</code>.
+              <div className="mx-auto max-w-xs rounded-lg bg-card/60 px-4 py-6 text-center text-sm text-muted-foreground">
+                No messages yet. Say hi — every message you send becomes a sub-subname under{" "}
+                <code className="font-mono text-xs text-foreground/80">{selected}</code> on Sepolia ENS.
               </div>
             ) : (
               thread.map((m) => (
@@ -374,34 +385,34 @@ export function Messenger({ myEnsName, getAuthToken, className }: MessengerProps
 
         {selected ? (
           <form
-            className="border-t border-white/10 px-5 py-4"
+            className="border-t border-white/10 bg-card/40 px-4 py-3"
             onSubmit={(e) => {
               e.preventDefault()
               handleSend()
             }}
           >
-            <div className="flex gap-2">
+            <div className="flex items-center gap-2">
               <Input
                 value={composing}
                 onChange={(e) => setComposing(e.target.value)}
-                placeholder={`Message ${selected}…`}
+                placeholder={`Type a message to ${displayNameFromEns(selected).displayName}…`}
                 disabled={sending}
-                className="font-mono text-sm"
+                className="rounded-full border-white/15 bg-background/60 px-4 text-sm"
               />
-              <Button type="submit" disabled={sending || !composing.trim()}>
+              <Button
+                type="submit"
+                disabled={sending || !composing.trim()}
+                className="rounded-full px-4"
+              >
                 {sending ? (
-                  <>
-                    <Loader2 className="mr-2 h-3 w-3 animate-spin" /> Mining…
-                  </>
+                  <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
-                  <>
-                    <Send className="mr-2 h-3 w-3" /> Send
-                  </>
+                  <Send className="h-4 w-4" />
                 )}
               </Button>
             </div>
-            <p className="mt-2 font-mono text-[10px] text-muted-foreground">
-              Each message creates msg-&lt;ts&gt;.{selected} on-chain (~24s on Sepolia).
+            <p className="mt-1.5 px-1 font-mono text-[10px] text-muted-foreground">
+              Stored on-chain · creates <span className="text-foreground/70">msg-…{".".concat(selected)}</span> · ~24s
             </p>
           </form>
         ) : null}
@@ -421,29 +432,44 @@ function EmptyState() {
     <motion.div
       initial={{ opacity: 0, y: 5 }}
       animate={{ opacity: 1, y: 0 }}
-      className="flex h-full flex-col items-center justify-center gap-2 text-center text-sm text-muted-foreground"
+      className="flex h-full min-h-[50dvh] flex-col items-center justify-center gap-3 text-center"
     >
-      <Mail className="h-6 w-6 opacity-40" />
-      <p>Select an agent on the left, or type an ENS name to start a chat.</p>
-      <p className="text-[10px]">
-        Every message lives in ENS as a sub-subname of the recipient.
+      <span className="grid h-14 w-14 place-items-center rounded-full bg-primary/10">
+        <Mail className="h-6 w-6 text-primary/70" />
+      </span>
+      <p className="text-base font-medium text-foreground/90">Pick a chat to begin</p>
+      <p className="max-w-xs text-xs text-muted-foreground">
+        Tap an agent on the left, or paste any{" "}
+        <code className="font-mono text-[11px]">name.ethtwin.eth</code> to start a new conversation.
+        Every message lives in ENS.
       </p>
     </motion.div>
   )
 }
 
 function MessageBubble({ message, mine }: { message: Message; mine: boolean }) {
+  const time = new Date(message.at * 1000).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+  })
   return (
-    <div className={cn("flex", mine ? "justify-end" : "justify-start")}>
+    <div className={cn("flex w-full", mine ? "justify-end" : "justify-start")}>
       <div
         className={cn(
-          "max-w-[75%] rounded-lg px-3 py-2 text-sm",
-          mine ? "bg-primary/20 text-primary-foreground/90" : "bg-white/5 text-foreground/90",
+          "group max-w-[78%] rounded-2xl px-3.5 py-2 text-sm shadow-sm",
+          mine
+            ? "rounded-br-sm bg-primary/85 text-primary-foreground"
+            : "rounded-bl-sm bg-card/80 text-foreground/95 ring-1 ring-white/5",
         )}
       >
-        <p className="whitespace-pre-wrap break-words">{message.body}</p>
-        <p className="mt-1 font-mono text-[10px] text-muted-foreground">
-          {mine ? "you" : message.from} · {new Date(message.at * 1000).toLocaleTimeString()}
+        <p className="whitespace-pre-wrap break-words leading-relaxed">{message.body}</p>
+        <p
+          className={cn(
+            "mt-0.5 text-right font-mono text-[9px]",
+            mine ? "text-primary-foreground/70" : "text-muted-foreground",
+          )}
+        >
+          {time}
         </p>
       </div>
     </div>
