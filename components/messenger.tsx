@@ -12,7 +12,8 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { addHistoryEntry } from "@/lib/history"
 import { displayNameFromEns } from "@/lib/ens"
 import { cn } from "@/lib/utils"
-import { AgentProfileDialog, AvatarImage } from "@/components/agent-profile"
+import { AgentProfileDialog } from "@/components/agent-profile"
+import { EnsAvatar } from "@/components/ens-avatar"
 
 type AgentEntry = {
   ens: string
@@ -369,7 +370,7 @@ export function Messenger({ myEnsName, getAuthToken, className }: MessengerProps
                       onClick={() => selectAgent(a.ens)}
                       className="flex flex-1 items-center gap-3 px-3 py-3 text-left min-w-0"
                     >
-                      <AvatarImage src={a.avatar ?? null} ens={a.ens} size={44} />
+                      <EnsAvatar ens={a.ens} size={44} />
                       <div className="flex min-w-0 flex-1 flex-col gap-0.5 leading-tight">
                         <span
                           className={cn(
@@ -425,7 +426,7 @@ export function Messenger({ myEnsName, getAuthToken, className }: MessengerProps
                 className="flex items-center gap-3 rounded-md px-1 -mx-1 py-1 hover:bg-secondary/40"
                 title="View profile"
               >
-                <AvatarImage src={selectedAgent?.avatar ?? null} ens={selected} size={40} />
+                <EnsAvatar ens={selected} size={40} />
                 <div className="flex flex-col leading-tight">
                   <span className="text-base font-semibold">
                     {displayNameFromEns(selected).displayName}

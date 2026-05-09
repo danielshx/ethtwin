@@ -24,7 +24,8 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { CosmicOrb } from "@/components/cosmic-orb"
-import { AvatarImage, AgentProfileDialog } from "@/components/agent-profile"
+import { AgentProfileDialog } from "@/components/agent-profile"
+import { EnsAvatar } from "@/components/ens-avatar"
 import { addHistoryEntry } from "@/lib/history"
 import { cn } from "@/lib/utils"
 
@@ -251,11 +252,7 @@ export function StealthSend({ myEnsName, getAuthToken, className }: StealthSendP
                         recipient === a.ens && "border-primary/40 bg-primary/10",
                       )}
                     >
-                      <AvatarImage
-                        src={a.avatar ?? null}
-                        ens={a.ens}
-                        size={18}
-                      />
+                      <EnsAvatar ens={a.ens} size={18} />
                       <span className="font-mono">{a.ens}</span>
                     </button>
                   ))}

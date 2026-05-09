@@ -26,8 +26,7 @@ import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { useNotifications, type Notification } from "@/lib/use-notifications"
 import { displayNameFromEns } from "@/lib/ens"
-import { AvatarImage } from "@/components/agent-profile"
-import { useEnsAvatar } from "@/lib/use-ens-avatar"
+import { EnsAvatar } from "@/components/ens-avatar"
 import { cn } from "@/lib/utils"
 
 type Props = {
@@ -177,19 +176,13 @@ function NotificationRow({ n }: { n: Notification }) {
   const colorClass = COLOR_BY_KIND[n.kind]
   const counterpartyEns =
     n.from && n.from.includes(".") ? n.from : null
-  const avatar = useEnsAvatar(counterpartyEns)
   const ts = new Date(n.at * 1000)
   const time = ts.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
 
   return (
     <div className="flex items-start gap-2.5 px-3 py-2.5">
       {counterpartyEns ? (
-        <AvatarImage
-          src={avatar}
-          ens={counterpartyEns}
-          size={28}
-          className="mt-0.5"
-        />
+        <EnsAvatar ens={counterpartyEns} size={28} className="mt-0.5" />
       ) : (
         <span
           className={cn(

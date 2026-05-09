@@ -21,10 +21,10 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { AgentProfileDialog, AvatarImage } from "@/components/agent-profile"
+import { AgentProfileDialog } from "@/components/agent-profile"
+import { EnsAvatar } from "@/components/ens-avatar"
 import { X402Flow } from "@/components/x402-flow"
 import { ReceiptPostcard } from "@/components/receipt-postcard"
-import { useEnsAvatar } from "@/lib/use-ens-avatar"
 import { useDemoMode } from "@/lib/use-demo-mode"
 import { displayNameFromEns } from "@/lib/ens"
 import { cn } from "@/lib/utils"
@@ -84,7 +84,6 @@ export function TwinChat({ ensName, className, getAuthToken }: TwinChatProps) {
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const isStreaming = status === "submitted" || status === "streaming"
   const [profileOpen, setProfileOpen] = useState(false)
-  const avatarUrl = useEnsAvatar(ensName)
 
   useEffect(() => {
     const node = scrollRef.current
@@ -108,7 +107,7 @@ export function TwinChat({ ensName, className, getAuthToken }: TwinChatProps) {
           className="flex items-center gap-2.5 rounded-md px-1 -mx-1 py-1 text-left hover:bg-secondary/40"
           title="View profile"
         >
-          <AvatarImage src={avatarUrl} ens={ensName} size={36} />
+          <EnsAvatar ens={ensName} size={36} />
           <div className="leading-tight">
             <div className="text-sm font-medium">
               {displayNameFromEns(ensName).displayName}
@@ -664,11 +663,6 @@ function labelForState(state: string) {
     default:
       return state
   }
-}
-
-function EnsAvatar({ ens, size = 20 }: { ens: string; size?: number }) {
-  const avatar = useEnsAvatar(ens)
-  return <AvatarImage src={avatar} ens={ens} size={size} />
 }
 
 function AgentRow({
