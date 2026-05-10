@@ -138,12 +138,15 @@ export function ReceiptPostcard({
                 sent to <span className="font-medium text-foreground">{friendly}</span> ·
                 just now
               </div>
-              {privateBadge ? (
-                <div className="mt-1 inline-flex w-fit items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-300">
-                  <Sparkles className="h-3 w-3" />
-                  Private
-                </div>
-              ) : null}
+              <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                {privateBadge ? (
+                  <div className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-300">
+                    <Sparkles className="h-3 w-3" />
+                    Private
+                  </div>
+                ) : null}
+                <SpaceSecuredBadge />
+              </div>
             </div>
           </div>
         </motion.div>
@@ -311,5 +314,62 @@ function XrayRow({
         {badge}
       </span>
     </motion.li>
+  )
+}
+
+/**
+ * Space-themed trust badge — surfaces the SpaceComputer KMS provenance on
+ * the postcard front. Cosmetic only, but ties the visual back to the
+ * sponsor's stars-and-satellite aesthetic. Twinkling stars are CSS-only
+ * (framer-motion animates opacity on a few absolutely-positioned dots).
+ */
+function SpaceSecuredBadge() {
+  // Deterministic positions for the twinkling stars so they don't reflow on
+  // every render. Eight tiny dots scattered across the badge.
+  const stars = [
+    { top: "20%", left: "12%", delay: 0 },
+    { top: "65%", left: "8%", delay: 0.6 },
+    { top: "30%", left: "32%", delay: 1.2 },
+    { top: "75%", left: "45%", delay: 0.3 },
+    { top: "18%", left: "62%", delay: 1.6 },
+    { top: "55%", left: "70%", delay: 0.9 },
+    { top: "35%", left: "88%", delay: 1.4 },
+    { top: "82%", left: "92%", delay: 0.5 },
+  ]
+  return (
+    <motion.span
+      title="Signed by SpaceComputer Orbitport KMS — your twin's signing key lives in a satellite-attested HSM."
+      initial={{ opacity: 0, y: 4 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4, delay: 0.15 }}
+      className={[
+        "relative inline-flex items-center gap-1.5 overflow-hidden rounded-full",
+        "border border-violet-400/40 px-2.5 py-0.5 text-[11px] font-medium",
+        "bg-gradient-to-br from-indigo-600/25 via-violet-500/20 to-blue-500/25",
+        "text-violet-700 dark:text-violet-100",
+        "shadow-[0_0_12px_-2px_rgba(139,92,246,0.35)]",
+      ].join(" ")}
+    >
+      {/* Twinkling starfield — eight tiny dots fading in/out at staggered
+       *  intervals so the badge feels alive without being noisy. */}
+      {stars.map((s, i) => (
+        <motion.span
+          key={i}
+          aria-hidden
+          className="pointer-events-none absolute h-px w-px rounded-full bg-white shadow-[0_0_4px_1px_rgba(255,255,255,0.85)]"
+          style={{ top: s.top, left: s.left }}
+          initial={{ opacity: 0.2, scale: 0.6 }}
+          animate={{ opacity: [0.2, 1, 0.2], scale: [0.6, 1.4, 0.6] }}
+          transition={{
+            duration: 2.4,
+            delay: s.delay,
+            repeat: Infinity,
+            ease: "easeInOut",
+          }}
+        />
+      ))}
+      <Satellite className="relative h-3 w-3" />
+      <span className="relative">Space-secured</span>
+    </motion.span>
   )
 }
