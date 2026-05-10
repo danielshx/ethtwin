@@ -908,6 +908,15 @@ function ResultCard({
         >
           recipient · {result.recipientEnsName}
         </button>
+        <a
+          href={`https://sepolia.app.ens.domains/${result.recipientEnsName}`}
+          target="_blank"
+          rel="noreferrer"
+          className="text-primary/80 hover:text-primary"
+          title="Recipient's stealth-meta-address text record lives here"
+        >
+          {result.recipientEnsName} on ENS app ↗
+        </a>
         <span>stealth addr · {short(result.stealthAddress)}</span>
         <span>view tag · {result.viewTag}</span>
         {result.announceTxHash ? (

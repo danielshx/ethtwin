@@ -527,6 +527,16 @@ export function Messenger({ myEnsName, getAuthToken, className }: MessengerProps
                       >
                         info
                       </button>
+                      <a
+                        href={`https://sepolia.app.ens.domains/${a.ens}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        title="View ENS records on sepolia.app.ens.domains"
+                        className="px-1.5 py-1 text-[10px] text-muted-foreground hover:text-primary"
+                      >
+                        ENS↗
+                      </a>
                       <button
                         onClick={(e) => {
                           e.stopPropagation()
@@ -590,6 +600,10 @@ export function Messenger({ myEnsName, getAuthToken, className }: MessengerProps
             </div>
           )}
         </header>
+
+        {selected ? (
+          <ChatEnsBanner myEnsName={myEnsName} peerEns={selected} />
+        ) : null}
 
         <ScrollArea className="min-h-0 flex-1">
           <div className="space-y-2 p-5">
@@ -686,6 +700,50 @@ function EmptyState() {
         Every message lives in ENS.
       </p>
     </motion.div>
+  )
+}
+
+/**
+ * Sub-header banner that surfaces where this chat actually lives on chain.
+ * Each twin keeps the conversation as `chat.<peer>.msg.<i>` text records
+ * on its OWN ENS subname — not a shared chat-subdomain — so this banner is
+ * the only place a casual viewer would see the path. Click → ENS app for
+ * the user's twin (where the records show up directly in the records list).
+ */
+function ChatEnsBanner({
+  myEnsName,
+  peerEns,
+}: {
+  myEnsName: string
+  peerEns: string
+}) {
+  const peerLabel = peerEns.toLowerCase().split(".")[0] ?? "peer"
+  const ensAppMine = `https://sepolia.app.ens.domains/${myEnsName}`
+  const ensAppPeer = `https://sepolia.app.ens.domains/${peerEns}`
+  return (
+    <div className="flex flex-wrap items-center gap-2 border-b border-border/60 bg-card/30 px-4 py-2 text-[10px] text-muted-foreground">
+      <span className="font-mono uppercase tracking-wider">on-chain</span>
+      <code className="rounded-md bg-card/70 px-1.5 py-0.5 font-mono text-[10px] text-foreground/85">
+        chat.{peerLabel}.msg.&lt;i&gt; on {myEnsName}
+      </code>
+      <span>•</span>
+      <a
+        href={ensAppMine}
+        target="_blank"
+        rel="noreferrer"
+        className="font-mono text-primary/80 hover:text-primary"
+      >
+        my ENS records ↗
+      </a>
+      <a
+        href={ensAppPeer}
+        target="_blank"
+        rel="noreferrer"
+        className="font-mono text-primary/80 hover:text-primary"
+      >
+        their ENS records ↗
+      </a>
+    </div>
   )
 }
 
