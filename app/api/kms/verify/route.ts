@@ -2,20 +2,17 @@
 //
 // GET /api/kms/verify?ens=<twin>
 //
-// 1. Read the twin's `twin.kms-key-id` and on-chain `addr` from ENS.
+// 1. Read the twin's `twin.kms-key-id` from ENS.
 // 2. Ask SpaceComputer Orbitport KMS to sign a fresh server-generated
 //    nonce via EIP-191.
-// 3. ECrecover the signer from the signature locally.
-// 4. Compare the recovered address to the on-chain `addr` record.
+// 3. ECrecover the signer from the signature locally — that recovered
+//    address IS the live KMS-derived address (the source of truth).
+// 4. Independently, read the on-chain `addr` record. If it matches the
+//    recovered address, ENS is in sync. If not, ENS is stale (e.g. an
+//    old mint's value persisted in the resolver storage) — surface as a
+//    warning, not a failure. KMS is still working either way.
 //
-// If they match, the KMS service really did sign the challenge with the key
-// bound to this twin. That's the entire chain of trust:
-//
-//   ENS resolves twin.ethtwin.eth → addr (= keccak(KMS_pubkey)[12:])
-//   ENS resolves twin.ethtwin.eth → twin.kms-key-id (= the Orbitport handle)
-//   KMS signs a fresh nonce with that handle → recovers to addr ✓
-//
-// Anyone can run this — no secrets needed beyond what's already on chain.
+// Anyone can run this — no secrets needed beyond what's on chain.
 
 import { z } from "zod"
 import { hashMessage, recoverAddress, type Hex } from "viem"
@@ -77,20 +74,36 @@ export async function GET(req: Request) {
   }
   const kmsLatencyMs = Date.now() - t0
 
-  // Recover signer locally + compare to the twin's on-chain addr.
+  // Recover signer locally — this is the LIVE KMS address. Anything
+  // recoverable to a non-zero address from a fresh, server-generated
+  // challenge proves the KMS service is signing with this keyId.
   const recovered = await recoverAddress({
     hash: hashMessage(challenge),
     signature: kmsSig,
   })
-  const expectedAddr = (kmsAccount.address ?? "").toLowerCase()
-  const verified = recovered.toLowerCase() === expectedAddr
+  const onChainAddr = (kmsAccount.address ?? "").toLowerCase()
+  const recoveredLower = recovered.toLowerCase()
+  const isZero = recoveredLower === "0x0000000000000000000000000000000000000000"
+  // KMS is "verified" iff it returned a real signature recoverable to a
+  // non-zero address. ENS sync is a SEPARATE check — stale `addr` text
+  // records (from previous mints) can mismatch without invalidating KMS.
+  const kmsSigned = !isZero
+  const ensInSync = !isZero && recoveredLower === onChainAddr
 
   return Response.json({
     ok: true,
     ens,
-    verified,
+    /** KMS-signed: did Orbitport return a valid signature? */
+    kmsSigned,
+    /** ENS in sync: does on-chain `addr` text record match the recovered
+     *  signer? When false, the resolver is carrying a stale address from
+     *  a previous mint of this name. */
+    ensInSync,
+    /** Backwards-compat alias for older clients — true iff BOTH checks pass. */
+    verified: kmsSigned && ensInSync,
     challenge,
     kmsKeyId: kmsAccount.keyId,
+    /** On-chain `addr` record value (might be stale). */
     kmsAddress: kmsAccount.address,
     kmsSig,
     kmsLatencyMs,

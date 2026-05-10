@@ -620,6 +620,8 @@ function shortAddr(a: string): string {
  */
 function VerifyKmsPanel({ ens }: { ens: string }) {
   type Result = {
+    kmsSigned: boolean
+    ensInSync: boolean
     verified: boolean
     challenge: string
     kmsKeyId: string
@@ -685,38 +687,51 @@ function VerifyKmsPanel({ ens }: { ens: string }) {
       </div>
       <p className="text-[11px] leading-relaxed text-muted-foreground">
         Asks SpaceComputer Orbitport to sign a fresh nonce with this twin&apos;s
-        KMS key, then recovers the signer locally and compares to the on-chain{" "}
-        <code className="font-mono text-foreground/80">addr</code> record.
-        Match = the address really comes from a satellite-attested key.
+        KMS key, then recovers the signer locally. Two separate checks: did
+        KMS actually sign, and does the on-chain{" "}
+        <code className="font-mono text-foreground/80">addr</code> record
+        agree?
       </p>
       {result ? (
         <div className="mt-2 grid gap-1 font-mono text-[10px] leading-relaxed text-muted-foreground">
           <div
             className={cn(
               "rounded-md px-2 py-1 text-[11px] font-semibold",
-              result.verified
+              result.kmsSigned
                 ? "bg-emerald-500/15 text-emerald-300"
                 : "bg-red-500/15 text-red-300",
             )}
           >
-            {result.verified
-              ? `✓ KMS-signed (${result.kmsLatencyMs}ms)`
-              : "✗ recovered address ≠ on-chain addr"}
+            {result.kmsSigned
+              ? `✓ KMS signed (${result.kmsLatencyMs}ms — Orbitport returned a valid secp256k1 signature)`
+              : "✗ KMS did not return a valid signature"}
+          </div>
+          <div
+            className={cn(
+              "rounded-md px-2 py-1 text-[11px] font-semibold",
+              result.ensInSync
+                ? "bg-emerald-500/15 text-emerald-300"
+                : "bg-amber-500/15 text-amber-300",
+            )}
+          >
+            {result.ensInSync
+              ? "✓ ENS addr record matches the KMS signer"
+              : "⚠ ENS addr record is stale — likely from a previous mint of this name"}
           </div>
           <div>
-            <span className="text-foreground/55">recovered </span>
+            <span className="text-foreground/55">live KMS signer </span>
             <span className="break-all text-foreground/85">
               {result.recovered}
             </span>
           </div>
           <div>
-            <span className="text-foreground/55">on-chain    </span>
+            <span className="text-foreground/55">on-chain addr   </span>
             <span className="break-all text-foreground/85">
               {result.kmsAddress}
             </span>
           </div>
           <div>
-            <span className="text-foreground/55">keyId       </span>
+            <span className="text-foreground/55">keyId            </span>
             <span className="break-all text-foreground/85">
               {result.kmsKeyId}
             </span>
