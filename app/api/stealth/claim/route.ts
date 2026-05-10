@@ -44,7 +44,8 @@ import {
   USDC_SEPOLIA,
   USDC_DECIMALS,
 } from "@/lib/payments"
-import { kmsAccountForEns } from "@/lib/kms"
+import { keccak256, hexToBytes } from "viem"
+import { readAddrFast, readTextRecordFast } from "@/lib/ens"
 import { deriveStealthPrivateKey, deriveTwinStealthKeys } from "@/lib/stealth"
 import { jsonError, parseJsonBody } from "@/lib/api-guard"
 
@@ -76,6 +77,11 @@ const claimSchema = z.object({
   stealthAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
   ephemeralPubKey: z.string().regex(/^0x[a-fA-F0-9]+$/),
   chain: z.enum(["sepolia", "base-sepolia"]).optional(),
+  /** Optional: sender's ENS, resolved client-side from the announcement
+   *  caller. Echoed back in the receipt so callers have a human-readable
+   *  audit trail. The claim itself doesn't trust this value — the actual
+   *  funds movement is purely cryptographic. */
+  senderEns: z.string().min(3).optional(),
 })
 
 const SPECS = {
@@ -98,7 +104,7 @@ const GAS_TOPUP_AMOUNT = parseEther("0.0005") // ~0.0005 ETH for one transfer at
 export async function POST(req: Request) {
   const parsed = await parseJsonBody(req, claimSchema)
   if (!parsed.ok) return parsed.response
-  const { ens, stealthAddress, ephemeralPubKey } = parsed.data
+  const { ens, stealthAddress, ephemeralPubKey, senderEns } = parsed.data
   const chainKey = parsed.data.chain ?? "base-sepolia"
   const spec = SPECS[chainKey]
 
@@ -139,16 +145,36 @@ export async function POST(req: Request) {
     )
   }
 
-  // 2. Resolve the recipient's twin wallet (the KMS-derived address — that's
-  //    where the swept funds will land).
-  const kms = await kmsAccountForEns(ens).catch(() => null)
-  if (!kms) {
+  // 2. Resolve the recipient's twin wallet — that's where the swept funds
+  //    will land. Source priority:
+  //      a. on-chain `addr` text record (the canonical sweep destination)
+  //      b. derived from `twin.kms-public-key` text record if `addr` is missing
+  //         (keccak256(pubKey || pubKey-y).slice(-20) — standard EVM derivation)
+  //
+  //    The claim itself doesn't need `twin.kms-key-id` — the stealth sweep is
+  //    signed by the locally-derived stealth private key, NOT by KMS. We only
+  //    need a destination address.
+  let twinAddr: Address | null = await readAddrFast(ens).catch(() => null)
+  if (!twinAddr) {
+    // Fallback: derive address from the published KMS public key.
+    const pubKey = await readTextRecordFast(ens, "twin.kms-public-key").catch(
+      () => "",
+    )
+    if (pubKey && /^0x04[0-9a-fA-F]{128}$/.test(pubKey)) {
+      // Drop the 0x04 SEC1 prefix → 64 bytes of (x,y), then keccak256, last 20.
+      const xy = hexToBytes(("0x" + pubKey.slice(4)) as `0x${string}`)
+      const hash = keccak256(xy)
+      twinAddr = ("0x" + hash.slice(-40)) as Address
+    }
+  }
+  if (!twinAddr) {
     return jsonError(
-      `${ens} has no twin.kms-key-id text record — can't determine where to sweep.`,
+      `${ens} has no on-chain destination — neither an \`addr\` text record nor a ` +
+        `\`twin.kms-public-key\` is set. The twin may have been deleted; re-mint ` +
+        `it before claiming, or pass a recipient address explicitly.`,
       404,
     )
   }
-  const twinAddr = kms.address as Address
 
   // 3. Read live USDC + ETH balances at the stealth address.
   const [stealthUsdc, stealthEth] = await Promise.all([
@@ -234,6 +260,7 @@ export async function POST(req: Request) {
     chain: chainKey,
     twinAddress: twinAddr,
     stealthAddress,
+    senderEns: senderEns ?? null,
     sweptAmount: stealthUsdc.toString(),
     sweptAmountHuman: formatUnits(stealthUsdc, USDC_DECIMALS),
     topupTx,

@@ -55,6 +55,8 @@ type StealthInboxItem = {
   blockNumber: string
   txHash: `0x${string}`
   caller: `0x${string}`
+  /** Sender's ENS name when the caller maps to a known twin's addr; null otherwise. */
+  senderEns: string | null
   explorerUrl: string
 }
 
@@ -732,13 +734,17 @@ function StealthInboxCard({
           stealthAddress: item.stealthAddress,
           ephemeralPubKey: item.ephemeralPublicKey,
           chain: item.chain,
+          // Pass the resolved sender ENS so the claim receipt records who
+          // actually sent the funds (not just the caller address).
+          ...(item.senderEns ? { senderEns: item.senderEns } : {}),
         }),
       })
       const data = (await res.json()) as ClaimResult
       setClaimed((prev) => ({ ...prev, [item.stealthAddress]: data }))
       if (data.ok && data.sweptAmountHuman) {
+        const fromLabel = item.senderEns ? ` from ${item.senderEns}` : ""
         toast.success(
-          `Claimed ${data.sweptAmountHuman} USDC → your twin wallet`,
+          `Claimed ${data.sweptAmountHuman} USDC${fromLabel} → your twin wallet`,
           { description: data.explorerUrl },
         )
         onRefresh()
@@ -840,7 +846,22 @@ function StealthInboxCard({
                 <div className="mt-0.5 grid gap-0.5 font-mono text-[10px] text-muted-foreground">
                   <span>at · {short(it.stealthAddress)}</span>
                   <span>balance now · {it.balanceHuman} USDC</span>
-                  <span>from · {short(it.caller)}</span>
+                  <span>
+                    from ·{" "}
+                    {it.senderEns ? (
+                      <a
+                        href={`https://sepolia.app.ens.domains/${it.senderEns}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-primary/85 hover:underline"
+                        title={it.caller}
+                      >
+                        {it.senderEns} ↗
+                      </a>
+                    ) : (
+                      short(it.caller)
+                    )}
+                  </span>
                   {claimRes?.ok && claimRes.sweepTx ? (
                     <a
                       href={claimRes.explorerUrl}

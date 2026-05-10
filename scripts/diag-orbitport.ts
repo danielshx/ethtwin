@@ -66,7 +66,74 @@ async function main() {
     console.log("    Address:", k.data.KeyMetadata.Address)
     console.log("    PublicKey:", k.data.KeyMetadata.PublicKey?.slice(0, 18) + "…")
   } catch (err) {
-    console.error("✗ KMS failed:", err instanceof Error ? err.message : err)
+    console.error("✗ KMS sign-key creation failed:", err instanceof Error ? err.message : err)
+  }
+
+  console.log("\n=== KMS encrypt/decrypt probe ===")
+  // Try several keySpec/keyUsage combos; we don't yet know which the
+  // gateway accepts for asymmetric encrypt. Whichever succeeds is the one
+  // we'll use for messaging.
+  const ENC_VARIANTS: Array<{
+    keySpec: string
+    scheme?: string
+    keyUsage: string
+    encryptionAlgorithm?: string
+  }> = [
+    { keySpec: "RSA_2048", keyUsage: "ENCRYPT_DECRYPT", encryptionAlgorithm: "RSAES_OAEP_SHA_256" },
+    { keySpec: "RSA_4096", keyUsage: "ENCRYPT_DECRYPT", encryptionAlgorithm: "RSAES_OAEP_SHA_256" },
+    { keySpec: "ECC_NIST_P256", keyUsage: "ENCRYPT_DECRYPT" },
+    { keySpec: "SYMMETRIC_DEFAULT", keyUsage: "ENCRYPT_DECRYPT" },
+  ]
+  for (const v of ENC_VARIANTS) {
+    const alias = `diag-enc-${v.keySpec}-${Date.now()}`
+    try {
+      console.log(`→ createKey(${v.keySpec}, ${v.keyUsage})…`)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const k = await sdk.kms.createKey({
+        alias,
+        keySpec: v.keySpec,
+        keyUsage: v.keyUsage,
+        ...(v.scheme ? { scheme: v.scheme } : {}),
+        description: "diagnostic encrypt key",
+        tags: [],
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any)
+      const keyId = k.data.KeyMetadata.KeyId
+      console.log(`  ✓ keyId=${keyId}`)
+      const plaintext = `hello-from-twinpilot-${Date.now()}`
+      const enc = await sdk.kms.encrypt({
+        keyId,
+        plaintext,
+        encoding: "utf8",
+        ...(v.encryptionAlgorithm
+          ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            ({ encryptionAlgorithm: v.encryptionAlgorithm } as any)
+          : {}),
+      })
+      console.log(
+        `  ✓ encrypt ok — ciphertext length=${enc.data.CiphertextBlob.length} chars, algo=${enc.data.EncryptionAlgorithm}`,
+      )
+      const dec = await sdk.kms.decrypt({
+        ciphertextBlob: enc.data.CiphertextBlob,
+        keyId,
+        encoding: "utf8",
+        ...(v.encryptionAlgorithm
+          ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            ({ encryptionAlgorithm: v.encryptionAlgorithm } as any)
+          : {}),
+      })
+      const ok = dec.data.Plaintext === plaintext
+      console.log(`  ${ok ? "✓" : "✗"} decrypt round-trip ${ok ? "matched" : "MISMATCH"}`)
+      if (ok) {
+        console.log(
+          `\n>>> WORKING VARIANT: keySpec=${v.keySpec} keyUsage=${v.keyUsage}` +
+            (v.encryptionAlgorithm ? ` algo=${v.encryptionAlgorithm}` : ""),
+        )
+        break
+      }
+    } catch (err) {
+      console.log(`  ✗ ${v.keySpec}/${v.keyUsage}:`, err instanceof Error ? err.message : err)
+    }
   }
 }
 

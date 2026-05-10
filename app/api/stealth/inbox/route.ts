@@ -36,6 +36,8 @@ import {
   USDC_SEPOLIA,
   USDC_DECIMALS,
 } from "@/lib/payments"
+import { readAddrFast } from "@/lib/ens"
+import { readAgentDirectory } from "@/lib/agents"
 import { jsonError } from "@/lib/api-guard"
 
 export const runtime = "nodejs"
@@ -88,7 +90,12 @@ type StealthInboxItem = {
   balanceHuman: string
   blockNumber: string
   txHash: Hex
+  /** Raw `caller` address from the Announcement (sender's KMS-derived
+   *  address OR the dev wallet relay). */
   caller: Address
+  /** Sender's ENS subname when we can resolve `caller` to a known twin's
+   *  `addr` record. Null when no match (e.g. dev-wallet relay or external). */
+  senderEns: string | null
   explorerUrl: string
 }
 
@@ -187,6 +194,32 @@ export async function GET(req: Request) {
     await new Promise((r) => setTimeout(r, 100))
   }
 
+  // Build a one-shot caller→ENS resolver from agents.directory. We look up
+  // each agent's `addr` record and index by address. The directory is
+  // small (≤100 entries cap) and lookups are cached by readAddrFast, so
+  // this is a few cheap reads. Matches are populated lazily inside the
+  // announcement loop.
+  const directory = await readAgentDirectory().catch(() => [])
+  const callerToEns = new Map<string, string>()
+  await Promise.all(
+    directory.map(async (entry) => {
+      try {
+        const a = await readAddrFast(entry.ens)
+        if (a) callerToEns.set(a.toLowerCase(), entry.ens)
+      } catch {
+        // ignore
+      }
+    }),
+  )
+  // Always include "ourselves" — useful when the caller is your own KMS
+  // address (e.g. self-stealth send for testing).
+  try {
+    const myAddr = await readAddrFast(ens)
+    if (myAddr) callerToEns.set(myAddr.toLowerCase(), ens)
+  } catch {
+    // ignore
+  }
+
   // Filter to the recipient's stealth payments by re-deriving each
   // announcement's stealth address with the recipient's viewing key.
   const matches: StealthInboxItem[] = []
@@ -235,6 +268,9 @@ export async function GET(req: Request) {
         .catch(() => 0n)
     }
 
+    const caller = ev.args.caller as Address
+    const senderEns = callerToEns.get(caller.toLowerCase()) ?? null
+
     matches.push({
       chain,
       stealthAddress,
@@ -248,7 +284,8 @@ export async function GET(req: Request) {
       balanceHuman: formatUsdcUnits(balance),
       blockNumber: ev.blockNumber.toString(),
       txHash: ev.transactionHash as Hex,
-      caller: ev.args.caller as Address,
+      caller,
+      senderEns,
       explorerUrl: `${explorerBase}/tx/${ev.transactionHash}`,
     })
   }
