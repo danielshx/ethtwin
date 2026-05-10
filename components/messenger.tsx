@@ -127,11 +127,6 @@ export function Messenger({ myEnsName, getAuthToken, className }: MessengerProps
     [myEnsName],
   )
 
-  const selectedAgent = useMemo(
-    () => agents.find((a) => a.ens.toLowerCase() === selected?.toLowerCase()),
-    [agents, selected],
-  )
-
   // Combined thread = on-chain messages + any optimistic pending messages
   // not yet confirmed on-chain. Oldest → newest.
   const thread = useMemo<Message[]>(() => {
@@ -424,9 +419,21 @@ export function Messenger({ myEnsName, getAuthToken, className }: MessengerProps
   }
 
   return (
-    <Card className={cn("grid h-[78dvh] grid-cols-[300px_1fr] overflow-hidden p-0", className)}>
+    <Card
+      className={cn(
+        // The Card's base class is `flex flex-col gap-4 py-4` — we need to
+        // explicitly override flex-col with flex-row (otherwise tailwind-
+        // merge keeps flex-col and the sidebar + main stack vertically),
+        // gap-4 with gap-0 so the columns butt up cleanly, and py-4 with
+        // p-0 so the bordered sections reach the Card's edges. min-w-0 on
+        // each column is what lets the inner overflow-y-auto actually
+        // scroll instead of children pushing past the container.
+        "flex h-[78dvh] flex-row gap-0 overflow-hidden p-0",
+        className,
+      )}
+    >
       {/* Sidebar — on-chain directory, WhatsApp-style chat list */}
-      <aside className="flex flex-col border-r border-border/60 bg-card/40">
+      <aside className="flex w-[300px] shrink-0 flex-col border-r border-border/60 bg-card/40">
         <div className="flex items-center gap-2 border-b border-border/60 px-4 py-4">
           <Users className="h-4 w-4 text-primary" />
           <span className="text-base font-semibold">Chats</span>
@@ -549,7 +556,7 @@ export function Messenger({ myEnsName, getAuthToken, className }: MessengerProps
       </aside>
 
       {/* Main — chat view */}
-      <section className="flex flex-col bg-card/20">
+      <section className="flex min-w-0 flex-1 flex-col bg-card/20">
         <header className="flex items-center gap-3 border-b border-border/60 bg-card/80 px-5 py-3.5">
           {selected ? (
             <>
