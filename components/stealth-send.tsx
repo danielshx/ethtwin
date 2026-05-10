@@ -58,6 +58,24 @@ type StealthInboxItem = {
   explorerUrl: string
 }
 
+type ClaimResult = {
+  ok: boolean
+  error?: string
+  twinAddress?: `0x${string}`
+  sweptAmountHuman?: string
+  sweepTx?: `0x${string}`
+  topupTx?: `0x${string}` | null
+  explorerUrl?: string
+  topupExplorerUrl?: string | null
+}
+
+type TwinWalletState = {
+  address: `0x${string}` | null
+  ethHuman: string
+  usdcHuman: string
+  loading: boolean
+}
+
 type SendResult = {
   recipientEnsName: string
   stealthAddress: `0x${string}`
@@ -122,6 +140,12 @@ export function StealthSend({ myEnsName, getAuthToken, className }: StealthSendP
   const [inbox, setInbox] = useState<StealthInboxItem[]>([])
   // Twin's KMS-derived address (the funding target for FundTwin).
   const [twinAddress, setTwinAddress] = useState<`0x${string}` | null>(null)
+  const [twinWallet, setTwinWallet] = useState<TwinWalletState>({
+    address: null,
+    ethHuman: "—",
+    usdcHuman: "—",
+    loading: false,
+  })
 
   // Load agent directory once.
   const loadAgents = useCallback(async () => {
@@ -164,6 +188,38 @@ export function StealthSend({ myEnsName, getAuthToken, className }: StealthSendP
       cancelled = true
     }
   }, [myEnsName])
+
+  // Live balance read at the twin's KMS-derived address — that's the
+  // user's actual on-chain wallet. Without surfacing this, swept stealth
+  // funds appear nowhere visible to the recipient.
+  const loadTwinWallet = useCallback(async () => {
+    if (!twinAddress) return
+    setTwinWallet((prev) => ({ ...prev, loading: true }))
+    try {
+      const res = await fetch(
+        `/api/transfer?chain=${encodeURIComponent(chain)}&token=USDC&address=${encodeURIComponent(twinAddress)}`,
+      )
+      const data = (await res.json()) as { ok?: boolean; balance?: string }
+      const usdc = data.ok && data.balance ? data.balance : "—"
+      const ethRes = await fetch(
+        `/api/transfer?chain=${encodeURIComponent(chain)}&token=ETH&address=${encodeURIComponent(twinAddress)}`,
+      )
+      const ethData = (await ethRes.json()) as { ok?: boolean; balance?: string }
+      const eth = ethData.ok && ethData.balance ? ethData.balance : "—"
+      setTwinWallet({
+        address: twinAddress,
+        ethHuman: eth,
+        usdcHuman: usdc,
+        loading: false,
+      })
+    } catch {
+      setTwinWallet((prev) => ({ ...prev, loading: false }))
+    }
+  }, [twinAddress, chain])
+
+  useEffect(() => {
+    loadTwinWallet()
+  }, [loadTwinWallet])
 
   // Stealth inbox: scan the ERC-5564 Announcer for inbound payments
   // addressed to this twin and surface them so the receiver actually has
@@ -453,6 +509,13 @@ export function StealthSend({ myEnsName, getAuthToken, className }: StealthSendP
             />
           ) : null}
 
+          <TwinWalletCard
+            myEnsName={myEnsName}
+            chain={chain}
+            wallet={twinWallet}
+            onRefresh={loadTwinWallet}
+          />
+
           <FundTwin twinAddress={twinAddress} defaultChain={chain} />
 
           <StealthInboxCard
@@ -460,7 +523,10 @@ export function StealthSend({ myEnsName, getAuthToken, className }: StealthSendP
             chain={chain}
             items={inbox}
             loading={inboxLoading}
-            onRefresh={loadInbox}
+            onRefresh={() => {
+              loadInbox()
+              loadTwinWallet()
+            }}
           />
 
           <div className="flex items-center gap-2 pt-1">
@@ -560,6 +626,84 @@ function PhaseLabel({
   )
 }
 
+function TwinWalletCard({
+  myEnsName,
+  chain,
+  wallet,
+  onRefresh,
+}: {
+  myEnsName: string
+  chain: StealthChain
+  wallet: TwinWalletState
+  onRefresh: () => void
+}) {
+  const ensAppUrl = `https://sepolia.app.ens.domains/${myEnsName}`
+  return (
+    <div className="rounded-md border border-purple-500/30 bg-purple-500/5 p-3 text-xs">
+      <div className="flex items-center justify-between">
+        <span className="font-medium text-foreground/90">
+          Twin wallet · {myEnsName}
+        </span>
+        <button
+          type="button"
+          onClick={onRefresh}
+          disabled={wallet.loading}
+          className="font-mono text-[10px] text-primary/80 hover:text-primary disabled:opacity-50"
+        >
+          {wallet.loading ? "reading…" : "refresh"}
+        </button>
+      </div>
+      <p className="mt-1 text-[10px] leading-relaxed text-muted-foreground">
+        The KMS-derived address bound to your twin&apos;s ENS{" "}
+        <code className="font-mono text-foreground/80">addr</code> record.
+        Claimed stealth funds land here.
+      </p>
+      <div className="mt-2 grid gap-1 font-mono text-[11px]">
+        <div className="flex items-center justify-between">
+          <span className="text-muted-foreground">USDC</span>
+          <span className="text-foreground/90">
+            {wallet.usdcHuman === "—" ? "—" : `${wallet.usdcHuman}`}
+          </span>
+        </div>
+        <div className="flex items-center justify-between">
+          <span className="text-muted-foreground">ETH</span>
+          <span className="text-foreground/90">
+            {wallet.ethHuman === "—" ? "—" : `${wallet.ethHuman}`}
+          </span>
+        </div>
+        {wallet.address ? (
+          <div className="flex items-center justify-between gap-2 pt-1">
+            <span className="text-muted-foreground">addr</span>
+            <button
+              type="button"
+              title="Copy address"
+              onClick={() => {
+                navigator.clipboard.writeText(wallet.address ?? "").catch(() => {})
+                toast.success("Address copied")
+              }}
+              className="truncate text-foreground/80 hover:underline"
+            >
+              {short(wallet.address)}
+            </button>
+          </div>
+        ) : null}
+        <a
+          href={ensAppUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="mt-1 text-[10px] text-primary/80 hover:text-primary"
+        >
+          view ENS records on sepolia.app.ens.domains ↗
+        </a>
+      </div>
+      <p className="mt-2 text-[10px] leading-relaxed text-muted-foreground">
+        Chain: {chain === "sepolia" ? "Sepolia" : "Base Sepolia"}. To switch
+        which chain&apos;s balance you see, change it in the form above.
+      </p>
+    </div>
+  )
+}
+
 function StealthInboxCard({
   myEnsName,
   chain,
@@ -573,6 +717,51 @@ function StealthInboxCard({
   loading: boolean
   onRefresh: () => void
 }) {
+  const [claiming, setClaiming] = useState<string | null>(null)
+  const [claimed, setClaimed] = useState<Record<string, ClaimResult>>({})
+
+  async function claim(item: StealthInboxItem) {
+    setClaiming(item.stealthAddress)
+    try {
+      const res = await fetch("/api/stealth/claim", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ens: myEnsName,
+          stealthAddress: item.stealthAddress,
+          ephemeralPubKey: item.ephemeralPublicKey,
+          chain: item.chain,
+        }),
+      })
+      const data = (await res.json()) as ClaimResult
+      setClaimed((prev) => ({ ...prev, [item.stealthAddress]: data }))
+      if (data.ok && data.sweptAmountHuman) {
+        toast.success(
+          `Claimed ${data.sweptAmountHuman} USDC → your twin wallet`,
+          { description: data.explorerUrl },
+        )
+        onRefresh()
+      } else if (data.error) {
+        toast.error(data.error)
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Claim failed"
+      toast.error(msg)
+      setClaimed((prev) => ({
+        ...prev,
+        [item.stealthAddress]: { ok: false, error: msg },
+      }))
+    } finally {
+      setClaiming(null)
+    }
+  }
+
+  const totalUnclaimedRaw = items
+    .filter((it) => !claimed[it.stealthAddress]?.ok)
+    .reduce((acc, it) => acc + BigInt(it.balanceRaw), 0n)
+  const totalUnclaimed = formatUsdc(totalUnclaimedRaw)
+
   return (
     <div className="space-y-2 rounded-md border border-border/60 bg-card/40 px-3 py-2.5 text-xs">
       <div className="flex items-center justify-between">
@@ -591,45 +780,96 @@ function StealthInboxCard({
       <p className="text-[10px] leading-relaxed text-muted-foreground">
         Server scans the ERC-5564 Announcer on{" "}
         {chain === "sepolia" ? "Sepolia" : "Base Sepolia"} and re-derives each
-        stealth address with your viewing key. Hits below are payments
-        addressed to you that landed at one-time addresses unrelated to your
-        twin.
+        stealth address with your viewing key. Click <strong>Claim</strong> to
+        sweep funds from a one-time address into your twin&apos;s main wallet.
       </p>
+      {items.length > 0 ? (
+        <div className="rounded-md border border-emerald-500/30 bg-emerald-500/5 px-2 py-1 font-mono text-[11px] text-emerald-300">
+          unclaimed total: {totalUnclaimed} USDC
+        </div>
+      ) : null}
       {items.length === 0 ? (
         <p className="font-mono text-[10px] text-muted-foreground">
           {loading ? "scanning announcer logs…" : "no inbound stealth payments yet."}
         </p>
       ) : (
         <ul className="grid gap-1.5">
-          {items.map((it) => (
-            <li
-              key={it.txHash}
-              className="rounded-md border border-border/60 bg-background/40 px-2.5 py-1.5"
-            >
-              <div className="flex items-center justify-between">
-                <span className="font-mono text-[11px] text-emerald-300">
-                  {it.amountHuman ?? "?"} USDC
-                </span>
-                <a
-                  href={it.explorerUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="font-mono text-[10px] text-primary/80 hover:text-primary"
-                >
-                  view ↗
-                </a>
-              </div>
-              <div className="mt-0.5 grid gap-0.5 font-mono text-[10px] text-muted-foreground">
-                <span>at · {short(it.stealthAddress)}</span>
-                <span>balance now · {it.balanceHuman} USDC</span>
-                <span>from · {short(it.caller)}</span>
-              </div>
-            </li>
-          ))}
+          {items.map((it) => {
+            const claimRes = claimed[it.stealthAddress]
+            const isClaiming = claiming === it.stealthAddress
+            const isClaimed = claimRes?.ok === true
+            return (
+              <li
+                key={it.txHash}
+                className="rounded-md border border-border/60 bg-background/40 px-2.5 py-1.5"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-mono text-[11px] text-emerald-300">
+                    {it.amountHuman ?? "?"} USDC
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <a
+                      href={it.explorerUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="font-mono text-[10px] text-primary/80 hover:text-primary"
+                    >
+                      view ↗
+                    </a>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={isClaimed ? "outline" : "default"}
+                      disabled={isClaiming || isClaimed || BigInt(it.balanceRaw) === 0n}
+                      onClick={() => claim(it)}
+                      className="h-6 text-[10px]"
+                    >
+                      {isClaiming ? (
+                        <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                      ) : null}
+                      {isClaimed
+                        ? "✓ claimed"
+                        : isClaiming
+                          ? "claiming…"
+                          : BigInt(it.balanceRaw) === 0n
+                            ? "spent"
+                            : "Claim"}
+                    </Button>
+                  </div>
+                </div>
+                <div className="mt-0.5 grid gap-0.5 font-mono text-[10px] text-muted-foreground">
+                  <span>at · {short(it.stealthAddress)}</span>
+                  <span>balance now · {it.balanceHuman} USDC</span>
+                  <span>from · {short(it.caller)}</span>
+                  {claimRes?.ok && claimRes.sweepTx ? (
+                    <a
+                      href={claimRes.explorerUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-emerald-400 hover:underline"
+                    >
+                      sweep tx · {short(claimRes.sweepTx)} ↗
+                    </a>
+                  ) : claimRes?.error ? (
+                    <span className="text-red-300">claim error · {claimRes.error}</span>
+                  ) : null}
+                </div>
+              </li>
+            )
+          })}
         </ul>
       )}
     </div>
   )
+}
+
+function formatUsdc(raw: bigint): string {
+  const div = 1_000_000n
+  const whole = raw / div
+  const frac = raw % div
+  if (frac === 0n) return whole.toString()
+  const fracStr = frac.toString().padStart(6, "0").replace(/0+$/, "")
+  return fracStr.length ? `${whole}.${fracStr}` : whole.toString()
 }
 
 function ResultCard({

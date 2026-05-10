@@ -567,9 +567,17 @@ export function Messenger({ myEnsName, getAuthToken, className }: MessengerProps
                   </span>
                 </div>
               </button>
+              <a
+                href={`https://sepolia.app.ens.domains/${myEnsName}`}
+                target="_blank"
+                rel="noreferrer"
+                className="ml-auto font-mono text-[10px] text-primary/80 hover:text-primary"
+                title="Your chat lives as text records on your twin's ENS subname. Click to view all records on the ENS app."
+              >
+                view ENS records ↗
+              </a>
               <BountyTrail
                 tags={["ens", "kms"]}
-                className="ml-auto"
                 showLabel={false}
               />
             </>
