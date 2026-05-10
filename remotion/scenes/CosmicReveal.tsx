@@ -70,7 +70,7 @@ export function CosmicReveal() {
               marginBottom: 14,
             }}
           >
-            cTRNG · Orbitport
+            SpaceComputer · KMS
           </div>
           <div
             style={{
@@ -81,7 +81,7 @@ export function CosmicReveal() {
               opacity: bgT,
             }}
           >
-            Randomness from satellites.
+            Every twin signed in orbit.
           </div>
           <div
             style={{
@@ -98,7 +98,7 @@ export function CosmicReveal() {
               display: "inline-block",
             }}
           >
-            0x7a3f…b91c · attested
+            0x7a3f…b91c · KMS-signed
           </div>
         </div>
       </div>

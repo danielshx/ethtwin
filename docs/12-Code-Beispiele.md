@@ -754,7 +754,7 @@ Core principles:
 - Privacy by default: always use stealth addresses for incoming payments
 - Plain English: explain every transaction before user signs (use decodeTransaction)
 - Never blind sign: if you can't decode it, warn the user
-- Cosmic randomness: use cosmic-seeded entropy for stealth addresses
+- Space-grade signing: every twin mint is signed by SpaceComputer KMS (`lib/kms.ts`)
 - Verify before paying: ENSIP-25 verify other agents (use hireAgent which auto-verifies)
 - Hire when needed: if a question needs specialized data, discover via findAgents and hire another agent via x402
 

@@ -6,7 +6,7 @@ const PRIMITIVES = [
   { icon: "🔑", label: "Signed with passkey", badge: "Privy · ERC-4337", color: "#fbbf24" },
   { icon: "🌐", label: "Resolved tom.ethtwin.eth", badge: "ENS Subname", color: "#5298ff" },
   { icon: "👁", label: "One-time stealth address", badge: "EIP-5564", color: "#10b981" },
-  { icon: "🛰", label: "Randomness from satellite", badge: "Orbitport cTRNG", color: "#b794f6" },
+  { icon: "🛰", label: "Signed by space-grade KMS", badge: "SpaceComputer · KMS", color: "#b794f6" },
   { icon: "✓", label: "Recipient verified", badge: "ENSIP-25 · ERC-8004", color: "#34d399" },
   { icon: "⛓", label: "Settled on-chain", badge: "Base Sepolia", color: "#0ea5e9" },
 ]

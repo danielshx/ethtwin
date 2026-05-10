@@ -6,12 +6,11 @@
 
 ## Core Q&A (T2-14 Liste)
 
-### Warum cTRNG statt VRF?
+### Wie sichert ihr die Stealth-Address-Generierung ab?
 
-- VRF (z.B. Chainlink) ist pseudorandom mit einem Operator als Trust-Anchor — der Operator könnte theoretisch deine Stealth-Adressen vorhersagen oder zensieren.
-- cTRNG ist physikalische Entropie aus Satelliten im Orbit (OrbitPort). Niemand — auch wir nicht — kann die nächsten Bytes vorhersagen.
-- Für Privacy ist das ein fundamental anderes Trust-Modell: VRF hat einen Single Point of Trust, cTRNG hat einen Single Point of Physics.
-- Plus: Attestations sind on-chain verifiable, jeder kann nachprüfen dass die Bytes echt von der Konstellation kamen.
+- Stealth-Address-Generierung läuft via `@scopelift/stealth-address-sdk` (offizielle EIP-5564 Implementation). Ephemeral Keys aus dem CSPRNG der SDK, Recipient leitet `stealth-meta-address` aus seinem ENS Text Record ab.
+- Für die Twin-zu-Twin Message-Encryption nutzen wir static-static ECDH auf den EIP-5564-Spending-Keys (gleiche Primitive wie Stealth) plus AES-256-GCM mit Domain-Tag-gebindetem Key.
+- Recipient-Side Spending+Viewing-Keys sind deterministisch aus einem Master-Secret + ENS abgeleitet (HMAC-SHA256 → secp256k1-Skalar) — Production würde User-eigene KMS-Keys nutzen statt Server-Master.
 
 ### Was ist ENSIP-25?
 
@@ -30,8 +29,7 @@
 ### Wie skalierbar ist das?
 
 - Stateless Backend auf Vercel — horizontal skalierbar by design. Kein Centralized DB-Bottleneck.
-- ENS skaliert nativ: Subname-Reads sind RPC-Calls, cacheable, gratis.
-- cTRNG-Cache pooled serverseitig (Rolling-Buffer), so dass ein langsamer Satellit-Call nicht die Stealth-Send UX blockt.
+- ENS skaliert nativ: Subname-Reads sind RPC-Calls, cacheable, gratis. Wir cachen Resolver-Reads serverseitig (`readTextRecordFast`).
 - x402-Fees finanzieren ihren eigenen Throughput — jede Tx zahlt für die Infrastruktur die sie braucht.
 
 ### Was ist das Geschäftsmodell?
@@ -68,12 +66,6 @@
 - ENSIP-25 verifiziert dass ein Agent wirklich in ERC-8004 IdentityRegistry registriert ist, nicht nur "behauptet" zu sein. Imposter-Subnames ohne Registry-Eintrag bekommen kein Verified Badge im Twin-Chat.
 - Stealth-Meta-Address ist on-chain immutable nach Onboarding — ein Angreifer kann nicht den Receiver-Key überschreiben ohne Sepolia-ETH und parent-wallet-Zugriff.
 - In Production würde der parent ownership zu einem multisig oder DAO migrieren — der dev wallet ist Hackathon-Scope.
-
-### Was passiert wenn der Satellit oder OrbitPort down ist?
-
-- Wir cachen recente cTRNG-Samples server-seitig in einem Rolling-Buffer (`lib/cosmic.ts`). Privacy-Properties bleiben stark — wir verwenden frische Samples und prüfen Attestations.
-- Mock-Fallback ist gewired für Dev (kein `ORBITPORT_API_KEY` → deterministischer Mock), aber in Demo-Mode mit echtem Key + Cache-Vorbefüllung.
-- Drop-Rule: bei 30h Hackathon-Stand falls cTRNG-API hängt, nutzen wir cached cTRNG-Samples mit echten Attestation-Hashes. Story bleibt ehrlich: "real cosmic, just cached."
 
 ### Was wenn die x402 Live-Tx auf der Bühne fehlschlägt?
 

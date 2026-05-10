@@ -1,6 +1,6 @@
 # 06 — Demo-Skript (3 Min, hart timed) — Maria/Tom-Story
 
-> **Pitch-Pivot 2026-05-09:** Story neu geschärft auf *"Crypto for everyone — even my grandma."* Hauptszene: Maria (67, Stuttgart) sendet ihrem Enkel Tom 100 USDC per Voice. Tech-Tiefen (Stealth, cTRNG, ENSIP-25, x402) kommen erst im Reveal-Beat.
+> **Pitch-Pivot 2026-05-09:** Story neu geschärft auf *"Crypto for everyone — even my grandma."* Hauptszene: Maria (67, Stuttgart) sendet ihrem Enkel Tom 100 USDC per Voice. Tech-Tiefen (Stealth, ENSIP-25 + ERC-8004, Sourcify-decode, x402) kommen erst im Reveal-Beat.
 >
 > **Verifiziert May 2026.** $1 USDC ist Apify x402 Minimum. ENSIP-25 ist offizieller Standard für AI Agent Identity in ENS.
 >
@@ -36,7 +36,6 @@ Sub: *"The first crypto interface built for humans, not engineers."*
 - `pnpm twins:seed-demo` einmalig gelaufen → `maria.ethtwin.eth` + `tom.ethtwin.eth` existieren on-chain mit Avataren
 - Marias Smart Wallet: ≥10 USDC + Sepolia ETH (Gas) auf Base Sepolia
 - ENSIP-25 + `stealth-meta-address` Records auf BEIDEN Twins gesetzt
-- cTRNG-Cache prefetched (mehrere Samples)
 - `analyst.ethtwin.eth` antwortet, ENSIP-25 verified
 - OpenAI Realtime API funktioniert, voice round-trip 1× durchgespielt
 - `NEXT_PUBLIC_DEMO_MODE=1` aktiv → 4 Tabs versteckt, nur Voice + Chat sichtbar
@@ -71,7 +70,7 @@ Sub: *"The first crypto interface built for humans, not engineers."*
 | 0:25 | ODER: Voice-Button, Maria sagt: *"Send Tom 100 dollars"* | Listening-Orb pulst |
 | 0:33 | Twin antwortet (voice + visual): *"Sending 100 dollars to tom.ethtwin.eth — that's Tom, your grandson. Confirm?"* | Plain-English-Card mit Tom-Avatar |
 | 0:42 | Maria Face-ID-Touch | Passkey-Approval |
-| 0:45 | **Cosmic-Pulse + Confetti** beim Postcard-Mount (T1-39) | Warm radial overlay (1.5s) + 80 Coral/Amber/Sage-Particle-Shower |
+| 0:45 | **Confetti-Pulse** beim Postcard-Mount (T1-39) | Warm radial overlay (1.5s) + 80 Coral/Amber/Sage-Particle-Shower |
 | 0:50 | **Receipt-Postcard** rendert | Großer Tom-Avatar, "100 dollars · sent to tom · just now", Show-what-really-happened-Toggle |
 
 **Sprecher währenddessen:**
@@ -122,11 +121,11 @@ Sub: *"The first crypto interface built for humans, not engineers."*
 >
 > ✓ **Keine Hex-Adressen.** Jeder Mensch hat einen ENS-Twin. `maria.ethtwin.eth`, `tom.ethtwin.eth` — auf Sepolia ENS, on-chain.
 >
-> ✓ **Privatsphäre verfügbar.** Wenn Maria *"send privately"* sagt, geht der Send durch eine **EIP-5564 Stealth Address** mit `stealth-meta-address` Text Record auf Toms ENS. Show-Tab "Private send" demonstriert das live.
+> ✓ **Privatsphäre verfügbar.** Wenn Maria *"send privately"* sagt, geht der Send durch eine **EIP-5564 Stealth Address** mit `stealth-meta-address` Text Record auf Toms ENS — implementiert via `@scopelift/stealth-address-sdk`. Show-Tab "Private send" demonstriert das live.
 >
-> ✓ **Randomness aus dem Weltall.** Die Stealth-Adresse wird mit echter cTRNG-Entropie aus einem Orbitport-Satelliten geseedet. Nicht VRF, nicht pseudo-random. Echtes cosmic noise.
+> ✓ **No blind signing.** Vor jedem Sign decoded EthTwin die Calldata gegen Sourcify-verified ABIs und einen Wallet-Risk-Classifier. Maria sieht eine plain-English Risk-Entscheidung, kein Hex.
 >
-> ✓ **Agent-zu-Agent Vertrauen.** Marias Twin hat den analyst-Agent über **ENSIP-25 + ERC-8004 IdentityRegistry** verifiziert und über **x402** bezahlt — alles auf Base, alles on-chain.
+> ✓ **Agent-zu-Agent Vertrauen.** Marias Twin hat den analyst-Agent über **ENSIP-25 + ERC-8004 IdentityRegistry** verifiziert und über **x402** (`@x402/fetch` v2 + Coinbase facilitator) bezahlt — alles on-chain, mit Tx-Hash + Basescan-Link in der Chat-Receipt.
 
 **Hinweis (intern):** Stealth ist seit 2026-05-09 OPT-IN nicht Default — Marias normaler "Send Tom 100" geht über `sendToken` (Sepolia USDC, EIP-5564 inactive). Für den Reveal entweder a) im Demo-Skript einen zweiten Send mit "send privately" zeigen, oder b) die Stealth-Capability beim Reveal als "available on demand" framen statt "happened automatically".
 
@@ -150,12 +149,6 @@ Sub: *"The first crypto interface built for humans, not engineers."*
 ### "Ist das nicht ein bisschen kitschig — Oma als Pitch?"
 > *Genau das ist der Punkt. Jeder andere Krypto-Pitch heute targetet Power-User. Wir haben gemerkt: das Problem in Krypto ist nicht Skalierung, es ist Zugang. Wenn Maria es benutzen kann, kann es jeder benutzen — und dann ist der Markt 1 Mrd. groß, nicht 100 Mio.*
 
-### "Warum cTRNG statt Chainlink VRF?"
-> *VRF ist pseudorandom mit einem Operator als Trust-Anchor — der Operator könnte theoretisch Maria's Stealth-Adressen vorhersagen. cTRNG ist physikalisches cosmic random aus Satelliten. Niemand — auch wir nicht — kann es vorhersagen. Für Privacy by Default ist das ein anderes Trust-Modell.*
-
-### "Was wenn der Satellit down ist?"
-> *Wir cachen recente cTRNG-Samples auf der Server-Seite. Die Privacy-Properties bleiben stark — wir verwenden nur frische Samples für jede Tx und prüfen Attestations. Backup wäre hardware RNG mit cTRNG-Seed.*
-
 ### "Was ist ENSIP-25?"
 > *Der offizielle ENS-Standard für verifizierbare AI Agent Identity. Er definiert ein Text-Record-Format, das einen Agent in einem on-chain Registry — wie ERC-8004 IdentityRegistry — mit einer ENS-Adresse verknüpft. Wir implementieren ihn nativ. Deshalb können andere Agents wie unser analyst.eth verifizieren dass sie mit einem echten Twin sprechen, nicht mit einem Imposter. Maria sieht das nie — aber Maria's Twin nutzt es bei jedem Verify.*
 
@@ -169,7 +162,7 @@ Sub: *"The first crypto interface built for humans, not engineers."*
 > *Krypto hat heute ~100M aktive Wallets — Power-User. Die nächste Welle sind 1 Mrd. Menschen die Krypto bisher abgelehnt haben weil's zu hart war. Maria ist der Beweis dass das Tooling jetzt da ist. Wir sind die UX-Schicht über dem ganzen on-chain stack.*
 
 ### "Wie skalierbar ist das?"
-> *Stateless Backend auf Vercel. ENS skaliert von Natur aus. cTRNG-Cache pooled. x402 fees pay for own throughput. Wir haben kein Centralized Bottleneck. Marias Twin könnte morgen Toms Twin und 999.998 weitere bedienen ohne Architektur-Änderung.*
+> *Stateless Backend auf Vercel. ENS skaliert von Natur aus. x402 fees pay for own throughput. Wir haben kein Centralized Bottleneck. Marias Twin könnte morgen Toms Twin und 999.998 weitere bedienen ohne Architektur-Änderung.*
 
 ### "Warum nicht einfach Smart Wallets + AA?"
 > *Wir nutzen Smart Wallets — Privy gibt uns ERC-4337 mit Passkey-Auth. Aber Smart Wallets allein lösen nicht Privacy + Agent-Identity + Voice-UX + Multi-Agent-Coordination. EthTwin ist die Schicht darüber, in einer Sprache die Maria spricht.*
@@ -181,7 +174,7 @@ Sub: *"The first crypto interface built for humans, not engineers."*
 > *Standard AGTC-Setup auf Umia: 30% community, 25% team (4y vesting), 20% public sale, 15% treasury, 10% advisors/ecosystem. $TWIN nutzt Service-Credit + Governance + Premium-Tier.*
 
 ### "Could this work on mainnet?"
-> *Ja — Base Mainnet ready. ENS bereits live auf Mainnet. Stealth Address EIPs sind mainnet-kompatibel. ENSIP-25 ist mainnet-spec. cTRNG via Orbitport ist mainnet-ready API. Maria-Demo könnte morgen auf Mainnet laufen mit echtem USDC.*
+> *Ja — Base Mainnet ready. ENS bereits live auf Mainnet. Stealth Address EIPs sind mainnet-kompatibel. ENSIP-25 ist mainnet-spec. x402 läuft Apify-Mainnet-ready. Maria-Demo könnte morgen auf Mainnet laufen mit echtem USDC.*
 
 ### "Stealth-Meta-Address in ENS — gibt's da einen Standard?"
 > *Aktuell nicht. Wir haben das Pattern für diese Demo entwickelt und proposen effectively einen neuen ENSIP. Es ist kompatibel mit EIP-5564 für Stealth Addresses und ERC-6538 für Stealth Meta-Address Registry — wir nutzen ENS Text Records statt onchain Registry für bessere UX. Genau das ist die "Most Creative Use of ENS".*
@@ -197,8 +190,7 @@ Sub: *"The first crypto interface built for humans, not engineers."*
 - [ ] `maria.ethtwin.eth` + `tom.ethtwin.eth` existieren on-chain
 - [ ] ENSIP-25 Text Record + `stealth-meta-address` Text Record auf beiden Twins
 - [ ] Test-Voice-Befehl 1× durchgespielt ("Send Tom 5 dollars" + ggf. zurückrouten)
-- [ ] cTRNG-Seed-Cache prefetched (für falls API langsam)
-- [ ] x402-Apify-Endpoint warm (1× Test-Call)
+- [ ] x402-Endpoint warm (1× Test-Call gegen `analyst.ethtwin.eth`)
 - [ ] `analyst.ethtwin.eth` antwortet + ist ENSIP-25 verified
 - [ ] Backup-Video bereit für Tab-Switch
 - [ ] Slide 1 (Maria-Hook) + Slide 5 (Reveal-Bullets) als Keynote ready
@@ -211,8 +203,8 @@ Sub: *"The first crypto interface built for humans, not engineers."*
 
 1. *"Maria, 67, never used crypto. In 60 seconds she sends 100 dollars to Tom — by voice."*
 2. *"She doesn't see hex addresses. She doesn't sign blind. She doesn't even know what stealth means."*
-3. *"Her Twin verified Tom via ENSIP-25 and paid an analyst agent over x402 — silently."*
-4. *"The randomness for her stealth address came from a satellite."*
+3. *"Her Twin verified Tom's identity via ENSIP-25 + ERC-8004 and paid the analyst agent over x402 — silently, on-chain."*
+4. *"Every transaction was decoded against Sourcify before she signed — no blind hex, ever."*
 5. *"Crypto isn't hard. It's just been built for engineers. Until now."*
 
 Wenn der Pitcher unter Stress ist: einfach diese 5 Sätze. Plus Demo. Reicht.
@@ -227,5 +219,4 @@ Wenn der Pitcher unter Stress ist: einfach diese 5 Sätze. Plus Demo. Reicht.
 | Tom's Browser-Profil verbindet nicht | Receive-Beat überspringen, direkt zum Verify-Beat — der ist wichtiger |
 | `X402_SENDER_KEY` Wallet leer / x402 fails | Verify-Beat zeigt pre-signed Tx-Hash + Basescan-Link, Sprecher sagt "demo wallet — same flow on Mainnet" |
 | Stealth-SDK crashed | try/catch fällt auf normalen USDC-Send zurück; Reveal sagt nur "EIP-5564 ready, fallback active" |
-| Cosmic-Pulse rendert nicht | Egal — nur Visual-Polish, Reveal kommt trotzdem mit dem Hash |
 | Komplettausfall | Tab 4 = Backup-Video |

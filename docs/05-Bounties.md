@@ -10,7 +10,7 @@
 
 Die Bounties werden nicht in einer Feature-Tour eingelöst, sondern in **einem Reveal-Beat nach der Maria/Tom-Demo**:
 - Maria (67) sendet Tom 100 USDC per Voice (60 s, ein Touch)
-- Cut. Schwarz. Bullets erscheinen: kein Seed, kein Hex, Stealth by Default, cosmic randomness, ENSIP-25-verified agent-to-agent x402
+- Cut. Schwarz. Bullets erscheinen: kein Seed, kein Hex, Stealth by Default (EIP-5564), Sourcify-decoded plain-English tx, ENSIP-25-verified agent-to-agent x402
 - Closing: *"Crypto isn't hard. It's just been built for engineers. Until now."*
 
 Das macht jeden Bounty zur natürlichen Konsequenz der Story. Volles Skript: `docs/06-Demo-Skript.md`. Slides: `docs/14-Pitch-Slides.md`.
@@ -23,13 +23,13 @@ Das macht jeden Bounty zur natürlichen Konsequenz der Story. Volles Skript: `do
 | 2 | **ENS for AI Agents** | 🟢 **Live** | nichts technisch — pitch sitzt |
 | 3 | **ENS Creative** | 🟢 **Live** | nichts — `stealth-meta-address` + ENS-Messenger sind on-chain demonstrable |
 | 4 | Apify x402 | 🟡 Mock grün | live Apify-Tx ($1+ USDC, mainnet wallet funded) |
-| 5 | SpaceComputer cTRNG | 🟡 Wrapper grün | `ORBITPORT_API_KEY` für live Attestation |
+| 5 | **SpaceComputer (KMS)** | 🟢 **Live** | KMS ist die Signing-Authority für jeden Twin: `lib/kms.ts` (viem `LocalAccount` adapter, EIP-191/EIP-712), `app/api/onboarding/route.ts:108` (createTwinKey pro Twin), `lib/transfers.ts` + `lib/payments.ts` signen via KMS. cTRNG-Wrapper existiert (mock fallback), nicht load-bearing. |
 | 6 | Best UX Flow | 🟢 **Live inkl. Voice** | OpenAI Realtime über WebRTC im Voice-Tab — Listening/Thinking/Speaking-States, Function-Calls via `/api/twin-tool`. Wenn `OPENAI_API_KEY` fehlt → graceful 503 + Switch-to-Chat-Card. |
 | 7 | **Best Privacy by Design** | 🟢 **Live** | nichts — Stealth-Send läuft end-to-end |
 | 8 | **Sourcify — Contract Intelligence** | 🟢 **Live** | Risky-Approval-Demo im Send-Tab zeigen; optional Sourcify-first Decoder für noch stärkeren Sponsor-Claim |
 
 **Solid-Cash-Floor:** ENS×2 + Privacy + UX = ~$3-4k einigermaßen sicher.
-**Stretch-Add:** Umia + Apify + SpaceComputer + Sourcify wenn Pitch + live Tx + Orbitport-Key + Risky-Demo landen.
+**Stretch-Add:** Umia + Apify + Sourcify wenn Pitch + live Tx + Risky-Demo landen.
 
 ---
 
@@ -52,7 +52,7 @@ Project must classify as Agentic Venture suitable to launch on Umia. Must incorp
 ### Pitch-Slide für Umia (Maria/Tom-Edition)
 - **Slide 1:** "Crypto for everyone — even my grandma" + Maria-Avatar
 - **Slide 2:** Live-Demo (Stub-Cover)
-- **Slide 3:** Reveal — "What Maria didn't see" (Bullets: kein Seed, kein Hex, Stealth, cTRNG, ENSIP-25 + x402)
+- **Slide 3:** Reveal — "What Maria didn't see" (Bullets: kein Seed, kein Hex, Stealth EIP-5564, Sourcify-decode, ENSIP-25 + x402)
 - **Slide 4:** ENS as identity layer (optional Q&A-Backup)
 - **Slide 5:** Umia — "the next 1 billion users", drei Revenue-Säulen + $TWIN Token-Distribution
 
@@ -163,7 +163,7 @@ await setEnsText({
 |---|---|
 | **Stealth addresses (EIP-5564) in ENS** | ✅✅ **Unser hero use case** |
 | Verifiable credentials via Text Records | ✅ ENSIP-25 doppelt |
-| Privacy primitives | ✅ Stealth + cosmic seed |
+| Privacy primitives | ✅ Stealth via ScopeLift SDK + ENS-Messenger als sub-subname pattern |
 
 ### Pitch-Angle (Maria-Frame)
 > *"Marias 100 USDC gingen an Toms `stealth-meta-address` Text Record — direkt aus ENS. Kein extra Registry, kein extra Onboarding für Tom. Genau das ist 'creative use of ENS': Privacy-Infrastruktur als Text-Record-Pattern. Wir proposen das als neuen ENSIP."*
@@ -200,23 +200,11 @@ await setEnsText({
 
 ---
 
-## 5. SpaceComputer — Best Use of Space-Powered Tech ($6k Pool)
+## 5. SpaceComputer — Best Use of Space-Powered Tech ($6k Pool) — DROPPED
 
-> **Status: 🟡 Wrapper grün, live API key ausstehend.** `lib/cosmic.ts` (`getCosmicSeed()`, `warmCache()`) hat rolling cache, attestation passthrough, mock fallback. Cosmic-Orb UI animiert + reveal'd Hash on stealth-send. **Fehlt:** `ORBITPORT_API_KEY` in `.env.local` + Vercel — sonst zeigt Mock-Attestation.
-
-### Anforderung (Track 3: Space-Powered Security APIs)
-"Use cTRNG and KMS in real applications. Verifiable randomness, secure signing."
-
-### Wie wir hitten
-
-- **Hero-Use:** cTRNG seedet jede Stealth Address. **Echte cosmic randomness, nicht VRF.**
-- **Live Attestation:** Satellit-Hash anklickbar, on-chain verifiable
-- **No Hardware Required:** Track 3 ist API-only
-
-### Pitch-Differentiator (Maria-Frame)
-> *"Marias Stealth-Adresse wurde mit echter cTRNG-Entropie aus einem Orbitport-Satelliten geseedet — verifizierbar via Attestation. VRF gibt dir pseudorandom mit einem Operator als Trust-Anchor. cTRNG gibt dir physikalische Entropie aus dem Weltall. Für Privacy by Default ist das relevant — niemand kann Marias Stealth-Adressen vorhersagen. Nicht mal wir."*
-
-### Mentor: Pedro Sousa (`@zkpedro`)
+> **Status: ⚪ NOT submitting.** Der Orbitport-Wrapper (`lib/cosmic.ts`) ist im Code, aber `lib/stealth.ts` und `lib/message-crypto.ts` haben das cosmic-seeding explizit entfernt (`cosmicSeeded: false`, "post-cosmic flow"). Damit ist cTRNG NICHT load-bearing für irgendeinen Demo-Beat. Wir submitten den Track nicht — sonst riskieren wir einen "claim != reality" Punktabzug.
+>
+> Falls vor Demo-Tag noch `ORBITPORT_CLIENT_ID` + `_SECRET` gesetzt UND cosmic seeding wieder in `lib/stealth.ts:generatePrivateAddress()` re-aktiviert wird, kann der Track wieder rein.
 
 ---
 
@@ -241,7 +229,7 @@ await setEnsText({
 
 - ✅ **Stealth Addresses by Default** — Sealth Send is a top-level tab, not a hidden setting
 - ✅ **No User Data Collected** — Privy custodied wallet (TEE + sharding); server only stores Privy user ID + ENS name
-- 🟡 **Cosmic Randomness als Trust-Anchor** — wired through `lib/cosmic.ts`, currently mock fallback in deploy until `ORBITPORT_API_KEY` is set
+- ✅ **EIP-5564 via ScopeLift SDK** — `@scopelift/stealth-address-sdk` for the on-chain stealth address derivation; ENS Text Record `stealth-meta-address` is the canonical recipient handle
 - ✅ **Zero Metadata Leak on receiver side** — every send goes to a fresh stealth address derived from the recipient's `stealth-meta-address` text record; no on-chain link between sender and recipient
 
 > *"Maria weiß nicht mal was 'stealth' heißt — und genau deshalb ist sie geschützt. Privacy ist nicht Feature in EthTwin. Privacy IST das Default."*
@@ -314,22 +302,21 @@ Sourcify feedback was that verification should not be equated with safety. We ch
 | ENS for Agents | **9** | live; Maria + Tom seed-script ready (T1-22 done) |
 | ENS Creative | **9** | doppelter Hit (stealth-meta-address + ENS-Messenger) — strongest claim |
 | Apify x402 | **5** | live tx auf Base Mainnet muss endlich laufen — sonst nur Mock-Story |
-| SpaceComputer | **5** | `ORBITPORT_API_KEY` setzen = sofort 8 |
+| SpaceComputer | **0 (dropped)** | cosmic seeding ist aus stealth.ts entfernt — Track wird nicht submittet |
 | Best UX | **9** | komplett rebuilt zu warmem Premium-Konsumer-Look + Maria-Mode + Quick-Send-Cards + Gamification-Pills |
-| Best Privacy | **8** | Stealth-Send läuft live; X-ray-Reveal-Card zeigt EIP-5564 + ENSIP-25 + cTRNG transparent |
+| Best Privacy | **8** | Stealth-Send läuft live; X-ray-Reveal-Card zeigt EIP-5564 + ENSIP-25 + Sourcify transparent |
 | Sourcify Contract Intelligence | **8** | Risky-Approval-Demo live zeigen; noch stärker mit Sourcify-first Decode für normale ERC20-Sends |
-| **Aesthetics** (general scoring axis) | **8.5** | warm Premium-Konsumer-Palette als Default, ContrastCard auf Landing, Receipt-Postcard mit X-ray-Reveal, Confetti+Cosmic-Pulse, Twin-Avatar-Breathing, Onboarding entjargonisiert |
-| **Wow Factor** (general scoring axis) | **8** | X-ray Reveal + Tom-Auto-Reply ("thanks oma! 💜") + Confetti+Cosmic-Pulse on send + Maria-Persona-Story landen 3 emotionale Beats |
+| **Aesthetics** (general scoring axis) | **8.5** | warm Premium-Konsumer-Palette als Default, ContrastCard auf Landing, Receipt-Postcard mit X-ray-Reveal, Confetti-Pulse, Twin-Avatar-Breathing, Onboarding entjargonisiert |
+| **Wow Factor** (general scoring axis) | **8** | X-ray Reveal + Tom-Auto-Reply ("thanks oma! 💜") + Confetti-Pulse on send + Maria-Persona-Story landen 3 emotionale Beats |
 
-**Erwarteter Cash-Output realistic:** $5-8k floor (ENS×2 + Privacy + UX + Best UX = solid mit aktuellem Polish-Stand). $9-13k stretch (wenn Umia-Pitch + Apify-Live-Tx + Orbitport-Key am Demo-Tag landen).
+**Erwarteter Cash-Output realistic:** $5-8k floor (ENS×2 + Privacy + UX + Best UX = solid mit aktuellem Polish-Stand). $9-12k stretch (wenn Umia-Pitch + Apify-Live-Tx + Sourcify-Polish am Demo-Tag landen).
 
 **Quick wins to close the gap (zu Demo-Tag):**
 1. `pnpm twins:seed-demo` laufen lassen (5 min, ~0.01 Sepolia-ETH) — sonst keine Live-Demo mit Maria/Tom
 2. 3 Sound-MP3s in `public/sounds/` droppen (15 min, freesound.org) — visceral polish
-3. `ORBITPORT_API_KEY` setzen (10 min) → SpaceComputer geht von 5 → 8
-4. Fund Base Mainnet wallet w/ $5 USDC + pick x402-actor (30 min) → Apify geht von 5 → 7
-5. Pitch 5× geprobt mit Timer (60 min) → Demo unter 3 min, sicher
-6. Backup-Video aufgenommen (45 min) — Insurance für Live-Crash
+3. Fund Base Mainnet wallet w/ $5 USDC + pick x402-actor (30 min) → Apify geht von 5 → 7
+4. Pitch 5× geprobt mit Timer (60 min) → Demo unter 3 min, sicher
+5. Backup-Video aufgenommen (45 min) — Insurance für Live-Crash
 
 ---
 

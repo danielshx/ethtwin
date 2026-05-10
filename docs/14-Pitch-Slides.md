@@ -30,7 +30,7 @@ Slide ist fast leer — nur ein dezenter "LIVE"-Indicator. Wir spielen die Demo 
 
 **Speaker Notes (0:20 – 1:50):**
 Hier läuft die ganze Live-Szene aus `docs/06-Demo-Skript.md`:
-- 0:20 – 0:55: Maria sagt "Send Tom 100 dollars" → Twin confirmt → Face-ID → Cosmic-Mikro-Pulse → "Sent ✓"
+- 0:20 – 0:55: Maria sagt "Send Tom 100 dollars" → Twin confirmt → Face-ID → Confetti-Pulse → "Sent ✓"
 - 0:55 – 1:25: Cut auf Toms Phone, Notification + Tx-Card
 - 1:25 – 1:50: Maria fragt "is this safe?" → Twin verifyt analyst.eth über x402 → Verified-Shield
 
@@ -45,17 +45,17 @@ Backup-Drop-Rule: bei Voice-Fail → Chat-Modus, gleiche Sätze, gleiche Beats. 
 **Bullets (einzeln einblenden):**
 - ✓ **No seed phrase** — Privy Passkey + ERC-4337 Smart Wallet
 - ✓ **No hex addresses** — every human gets an ENS Twin (`maria.ethtwin.eth`, `tom.ethtwin.eth`)
-- ✓ **Privacy by default** — every send routes through an EIP-5564 stealth address
-- ✓ **Randomness from space** — Orbitport satellite cTRNG seeds each stealth address (verifiable attestation)
+- ✓ **Privacy by default** — every send routes through an EIP-5564 stealth address (ScopeLift SDK + `stealth-meta-address` ENS Text Record)
+- ✓ **No blind signing** — Sourcify-verified ABI decode + risk classifier turn calldata into a plain-English decision
 - ✓ **Agent-to-agent trust** — ENSIP-25 + ERC-8004 IdentityRegistry verification, paid via x402 micropayments
 
 **Closing Line (groß, Bottom):**
 > *"Crypto isn't hard. It's just been built for engineers. Until now."*
 
 **Speaker Notes (1:50 – 2:40):**
-Schwarzer Cut nach der Demo. 2-Sekunden-Pause. Dann Bullets einer nach dem anderen, je 6-8 Sekunden. Bei Cosmic-Bullet langsamer werden — das ist der Moment den die SpaceComputer-Judges nicht vergessen. Bei Agent-zu-Agent: ENSIP-25 + ERC-8004 + x402 in einem Atemzug nennen — landet drei Bounties auf einer Folie.
+Schwarzer Cut nach der Demo. 2-Sekunden-Pause. Dann Bullets einer nach dem anderen, je 6-8 Sekunden. Bei Stealth-Bullet langsamer werden — das ist der "wait, das ist alles silent passiert?"-Moment. Bei Agent-zu-Agent: ENSIP-25 + ERC-8004 + x402 in einem Atemzug nennen — landet drei Bounties auf einer Folie.
 
-Das ist der Slide wo alle Bounty-Judges anspringen: ENS-Judge sieht ENSIP-25, Privacy-Judge sieht Stealth, SpaceComputer-Judge sieht cTRNG, Apify-Judge sieht x402, UX-Judge sieht das ganze obere Bild.
+Das ist der Slide wo alle Bounty-Judges anspringen: ENS-Judge sieht ENSIP-25, Privacy-Judge sieht Stealth, Sourcify-Judge sieht den Decode-Bullet, Apify-Judge sieht x402, UX-Judge sieht das ganze obere Bild.
 
 ---
 
@@ -67,6 +67,7 @@ Das ist der Slide wo alle Bounty-Judges anspringen: ENS-Judge sieht ENSIP-25, Pr
 - Persona, capabilities, endpoint, reputation — all in ENS Text Records of `{name}.ethtwin.eth`
 - **ENSIP-25 + ERC-8004 IdentityRegistry** (Mainnet `0x8004A169...`, Base Sepolia `0x8004A818...`) — the official AI Agent Identity standard, live integration
 - **Innovation:** `stealth-meta-address` Text Record (EIP-5564 format `st:eth:0x...`) — we propose a new ENSIP for privacy in ENS
+- **ENS-as-messaging-medium:** every twin-to-twin DM is a real on-chain sub-subname (`msg-<ts>-<seq>.<recipient>.ethtwin.eth`) with AES-256-GCM body encrypted under static-static ECDH on the EIP-5564 spending keys
 - Agent-zu-Agent Discovery: `findAgents` reads `agents.directory` Text Record, resolves each entry, verifies via ENSIP-25
 - ENS-Removal-Test: 6 of 6 demo moments break without ENS
 
