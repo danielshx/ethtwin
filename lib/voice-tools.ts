@@ -169,7 +169,7 @@ export const voiceTools: RealtimeToolDef[] = [
         },
         timeoutMs: {
           type: "number",
-          description: "How long to poll in ms (defaults to 25000)",
+          description: "How long to poll in ms (defaults to 45000)",
         },
       },
       required: ["fromEns"],

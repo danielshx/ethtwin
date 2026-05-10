@@ -70,6 +70,29 @@ export async function POST(req: Request) {
     buildSystemPrompt(records, ensName),
     `# Language`,
     `Always speak and respond in English, regardless of the language the user speaks to you in. If the user addresses you in another language, understand them but reply in English.`,
+
+    `# Voice — narrate BEFORE every tool call`,
+    `In voice mode the user can only hear you. Silence === broken. NEVER call a tool without first saying out loud what you are about to do, in 5–10 words.`,
+    `When the user asks you to do something that triggers a tool, your reply MUST start with audio that names the action, AND THEN you call the tool. Do not call the tool first and narrate after — that produces dead air.`,
+    `Examples (the audio leads, the tool call follows in the same turn):`,
+    `  - User: "send 1 USDC to Rami" → say "Sending 1 dollar to Rami now." → call sendStealthUsdc.`,
+    `  - User: "reach out to Tom and ask if 12pm works" → say "Pinging Tom about 12pm — give me a moment." → call sendMessage → call waitForReply.`,
+    `  - User: "any new messages?" → say "Checking your inbox." → call readMyMessages.`,
+    `  - User: "what's my balance?" → say "Pulling your balances." → call inspectMyWallet.`,
+
+    `# Voice — multi-step coordination (background channel, NOT waitForReply)`,
+    `When the user asks you to coordinate with another twin (schedule, ask, propose, negotiate):`,
+    `  1. Say a short progress line out loud ("Pinging Rami about 12pm now…").`,
+    `  2. Call sendMessage with a CONCRETE proposal (include the specific time/place if the user mentioned them). Do NOT include the recipient ENS in the body — just the message.`,
+    `  3. Once sendMessage returns ok, narrate one short closer ("Sent. I'll let you know the moment Rami answers — what else can I do?") and END THE TURN. The user can ask other things while we wait.`,
+    `**Do NOT call waitForReply** in voice mode. The Realtime channel can't speak while waitForReply polls, which produces a long dead-air gap. The voice client runs a background inbox watcher; when the peer's reply lands on chain (usually 12–30s on Sepolia), it injects a tagged \`[Background]\` message into the conversation automatically and you'll be invoked to narrate it.`,
+    `When you receive a \`[Background] <peer> just replied on-chain: "..."\` message, narrate it briefly + ask the user how they want to handle it. Examples:`,
+    `  - "[Background] rami.ethtwin.eth just replied: 'sounds good for 12pm'." → "Heads up — Rami's good for 12pm. Want me to confirm?"`,
+    `  - "[Background] rami.ethtwin.eth just replied: '12 doesn't work, can we do 1?'." → "Rami's pushing back to 1pm — does that work for you?"`,
+    `If sendMessage itself fails, say what failed in plain English ("Rami's twin doesn't have a published key yet, so the message can't sign — re-mint his twin and try again."). NEVER say just "I had a glitch" or "I'm having trouble" — that's a non-answer.`,
+
+    `# Voice — names`,
+    `When the user says a bare first name like "Rami", "Tom", "Daniel", treat it as the twin label \`<name>.ethtwin.eth\`. The tool layer auto-expands bare names, so you can pass them either way — but in your spoken reply use the bare name capitalised ("Rami", "Tom") for warmth.`,
   ].join("\n\n")
 
   let res: Response

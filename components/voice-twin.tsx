@@ -146,6 +146,17 @@ export function VoiceTwin({
   // assistant's reply renders ABOVE the user's question.
   const pendingUserSlotsRef = useRef<string[]>([])
 
+  // Background reply watchers keyed by peer ENS. After the agent calls
+  // sendMessage, we don't want it to block on waitForReply (silence === bad
+  // in voice). Instead we kick off a polling timer here that watches the
+  // user's on-chain inbox; when the peer's auto-reply lands we inject it
+  // back into the OpenAI Realtime session as a synthetic user message + a
+  // response.create so the agent narrates it on the user's behalf. This
+  // mirrors the chat tab's "background channel" pattern.
+  const replyWatchersRef = useRef<
+    Map<string, { interval: ReturnType<typeof setInterval>; deadline: number }>
+  >(new Map())
+
   // Auto-scroll transcript area when new content arrives.
   useEffect(() => {
     const node = scrollRef.current
@@ -180,7 +191,89 @@ export function VoiceTwin({
     }
     sessionRef.current = null
     pendingUserSlotsRef.current = []
+    // Kill any background inbox watchers so they don't keep polling after
+    // the user ends voice mode.
+    replyWatchersRef.current.forEach((w) => clearInterval(w.interval))
+    replyWatchersRef.current.clear()
   }, [])
+
+  /**
+   * Spin up a background poll that watches `peerEns` for a NEW reply
+   * (timestamp strictly newer than `sinceUnixSec`). When one lands, push
+   * it into the Realtime data channel as a synthetic user message +
+   * response.create so the voice agent narrates it without the user
+   * having to ask. Caps at 90s — Sepolia auto-replies usually land in
+   * 12-30s, so 90s is comfortable headroom.
+   */
+  const startBackgroundReplyWatcher = useCallback(
+    (peerEns: string, sinceUnixSec: number) => {
+      const key = peerEns.toLowerCase()
+      const existing = replyWatchersRef.current.get(key)
+      if (existing) clearInterval(existing.interval)
+
+      const deadline = Date.now() + 90_000
+      const interval = setInterval(async () => {
+        const dc = dcRef.current
+        if (!dc || dc.readyState !== "open" || Date.now() > deadline) {
+          clearInterval(interval)
+          replyWatchersRef.current.delete(key)
+          return
+        }
+        try {
+          const res = await fetch("/api/twin-tool", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              name: "readMyMessages",
+              input: { limit: 5 },
+              fromEns: ensName,
+            }),
+          })
+          if (!res.ok) return
+          const body = (await res.json().catch(() => ({}))) as {
+            ok?: boolean
+            result?: {
+              messages?: Array<{ from: string; body: string; at: number }>
+            }
+          }
+          const messages = body.result?.messages ?? []
+          const reply = messages.find(
+            (m) =>
+              typeof m?.from === "string" &&
+              m.from.toLowerCase() === key &&
+              typeof m.at === "number" &&
+              m.at > sinceUnixSec,
+          )
+          if (!reply) return
+
+          // Got it — stop polling, inject + trigger response.
+          clearInterval(interval)
+          replyWatchersRef.current.delete(key)
+          dc.send(
+            JSON.stringify({
+              type: "conversation.item.create",
+              item: {
+                type: "message",
+                role: "user",
+                content: [
+                  {
+                    type: "input_text",
+                    text: `[Background] ${peerEns} just replied on-chain: "${reply.body}". Narrate this to me briefly so I know.`,
+                  },
+                ],
+              },
+            }),
+          )
+          dc.send(JSON.stringify({ type: "response.create" }))
+        } catch {
+          // Polling errors are fine — try again on the next tick.
+        }
+      }, 5_000)
+
+      replyWatchersRef.current.set(key, { interval, deadline })
+    },
+    [ensName],
+  )
 
   useEffect(() => {
     return () => cleanup()
@@ -289,6 +382,27 @@ export function VoiceTwin({
         }
       }
 
+      // Background reply watcher — when the agent calls sendMessage, kick
+      // off a poll that surfaces the recipient's auto-reply as soon as it
+      // lands on chain (usually 12-30s on Sepolia). The agent doesn't have
+      // to call waitForReply (which would block the voice channel); the
+      // user can talk about other things in the meantime, and the reply is
+      // injected back into the session via conversation.item.create when
+      // it shows up.
+      if (
+        name === "sendMessage" &&
+        typeof resultPayload === "object" &&
+        resultPayload !== null &&
+        (resultPayload as { ok?: boolean }).ok === true
+      ) {
+        const r = resultPayload as { toEns?: string; at?: number }
+        if (typeof r.toEns === "string") {
+          const since =
+            typeof r.at === "number" ? r.at : Math.floor(Date.now() / 1000)
+          startBackgroundReplyWatcher(r.toEns, since - 1)
+        }
+      }
+
       // Demo-mode postcard injection — same animation the chat tab shows
       // when sendStealthUsdc / sendToken settles. Runs purely off the tool
       // result (no LLM in the loop), so the postcard lands the moment the
@@ -344,7 +458,7 @@ export function VoiceTwin({
       )
       dc.send(JSON.stringify({ type: "response.create" }))
     },
-    [demoMode, ensName],
+    [demoMode, ensName, startBackgroundReplyWatcher],
   )
 
   const handleServerEvent = useCallback(

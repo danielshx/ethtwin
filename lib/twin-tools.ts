@@ -750,9 +750,11 @@ export function buildTwinTools(ctx: TwinToolContext = {}) {
           .number()
           .int()
           .min(2_000)
-          .max(45_000)
+          .max(55_000)
           .optional()
-          .describe("How long to poll (ms). Defaults to 25 000."),
+          .describe(
+            "How long to poll (ms). Defaults to 45 000 — Sepolia auto-replies typically land 12-30s after sendMessage, so 45s gives comfortable headroom.",
+          ),
       }),
       execute: async ({ fromEns, sinceUnixSec, timeoutMs }) => {
         if (!ctx.fromEns) {
@@ -762,7 +764,7 @@ export function buildTwinTools(ctx: TwinToolContext = {}) {
           typeof sinceUnixSec === "number"
             ? sinceUnixSec
             : Math.floor(Date.now() / 1000) - 30
-        const deadline = Date.now() + (timeoutMs ?? 25_000)
+        const deadline = Date.now() + (timeoutMs ?? 45_000)
         const peerLower = normalizeTwinEns(fromEns)
         // Poll inbox every ~3s. The auto-reply tx usually lands in ~12-24s
         // on Sepolia, so the default 25s window covers it.
