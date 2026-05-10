@@ -417,7 +417,7 @@ export function VoiceTwin({
                   kind: "text",
                   id: e.item_id,
                   role: "assistant",
-                  text: e.delta,
+                  text: demoMode ? stripUrlsForDemo(e.delta) : e.delta,
                   partial: true,
                 },
               ]
@@ -428,7 +428,11 @@ export function VoiceTwin({
             // postcards use a different id, but type-safe is type-safe).
             if (existing.kind !== "text") return prev
             const next = [...prev]
-            next[idx] = { ...existing, text: existing.text + e.delta }
+            const merged = existing.text + e.delta
+            next[idx] = {
+              ...existing,
+              text: demoMode ? stripUrlsForDemo(merged) : merged,
+            }
             return next
           })
           break
@@ -439,6 +443,9 @@ export function VoiceTwin({
             { type: "response.audio_transcript.done" }
           >
           setTranscripts((prev) => {
+            const finalText = demoMode
+              ? stripUrlsForDemo(e.transcript)
+              : e.transcript
             const idx = prev.findIndex((t) => t.id === e.item_id)
             if (idx === -1) {
               return [
@@ -447,7 +454,7 @@ export function VoiceTwin({
                   kind: "text",
                   id: e.item_id,
                   role: "assistant",
-                  text: e.transcript,
+                  text: finalText,
                   partial: false,
                 },
               ]
@@ -455,7 +462,7 @@ export function VoiceTwin({
             const existing = prev[idx]
             if (existing.kind !== "text") return prev
             const next = [...prev]
-            next[idx] = { ...existing, text: e.transcript, partial: false }
+            next[idx] = { ...existing, text: finalText, partial: false }
             return next
           })
           break
@@ -482,7 +489,7 @@ export function VoiceTwin({
           break
       }
     },
-    [runTool],
+    [runTool, demoMode],
   )
 
   const start = useCallback(async () => {
@@ -767,6 +774,23 @@ function isPostcardableResult(v: unknown): v is PostcardableResult {
   if (typeof v !== "object" || v === null) return false
   const r = v as Record<string, unknown>
   return r.ok === true && typeof r.amount === "string" && r.amount.length > 0
+}
+
+/**
+ * Demo-mode scrub: the assistant often narrates its reply with the
+ * explorer URL embedded ("…view it at https://sepolia.basescan.org/tx/0x…").
+ * That gets transcribed into the voice text bubble and shows up underneath
+ * the postcard, which contradicts the design — the link is supposed to
+ * live ONLY inside the postcard's "Show what really happened" reveal. We
+ * strip URLs (and the trailing "at"/"on" preposition) from assistant text
+ * bubbles when demo mode is on; the model's audio narration is unchanged.
+ */
+function stripUrlsForDemo(text: string): string {
+  return text
+    .replace(/\s*\b(?:at|on)\s+https?:\/\/\S+/gi, "")
+    .replace(/\s*https?:\/\/\S+/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
 }
 
 function labelForState(state: VoiceState): string {
