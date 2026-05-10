@@ -1,4 +1,4 @@
-// Self-contained x402 client verification — no real money, no Apify dependency.
+// Self-contained x402 client verification — no real money, no chain RPC.
 // Spins up a local mock server that speaks the x402 wire protocol (HTTP 402 with
 // PaymentRequiredV1 schema, then accepts the client's X-PAYMENT header), and runs
 // our paidFetch() wrapper against it. Proves @x402/fetch + @x402/evm correctly
@@ -14,7 +14,8 @@
 // What this does NOT prove:
 //   - On-chain settlement (no facilitator, no chain RPC)
 //   - That the EIP-3009 signature is valid against real USDC balances
-//   - Apify-specific behavior (next step, with real funded wallet)
+//   - Real twin-to-twin settlement against the analyst endpoint (run that
+//     against /api/agents/analyst with X402_ANALYST_PAY_TO set + funded wallet)
 
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http"
 import { paidFetch } from "../lib/x402-client"

@@ -1,7 +1,7 @@
 import { tool } from "ai"
 import { z } from "zod"
 import { type Address, type Hex } from "viem"
-import { callApifyX402, paidFetchWithReceipt } from "./x402-client"
+import { paidFetchWithReceipt } from "./x402-client"
 import { appendServerHistory } from "./history-server"
 import { generatePrivateAddress } from "./stealth"
 import {
@@ -60,37 +60,6 @@ export const twinTools = {
       return {
         ok: true,
         ...summary,
-      }
-    },
-  }),
-
-  requestDataViaX402: tool({
-    description:
-      "Fetch live data from an Apify Pay-Per-Event actor via x402 micropayment ($1+ USDC on Base Mainnet). Returns the actor output AND the on-chain tx hash + basescan link. Use when you need fresh on-chain or web data the user is asking about.",
-    inputSchema: z.object({
-      actor: z
-        .string()
-        .describe("Apify actor path with `~` separator, e.g. 'apify~instagram-post-scraper'"),
-      input: z.record(z.string(), z.unknown()).describe("Input payload for the actor"),
-    }),
-    execute: async ({ actor, input }) => {
-      try {
-        const { data, receipt } = await callApifyX402(actor, input)
-        return {
-          ok: true,
-          actor,
-          data,
-          txHash: receipt.txHash,
-          chain: receipt.chain,
-          payer: receipt.payer,
-          blockExplorerUrl: receipt.explorerUrl,
-        }
-      } catch (err) {
-        return {
-          ok: false,
-          actor,
-          error: err instanceof Error ? err.message : String(err),
-        }
       }
     },
   }),

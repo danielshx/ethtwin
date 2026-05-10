@@ -13,6 +13,7 @@ import { motion, AnimatePresence } from "framer-motion"
 import { useTwinSound } from "@/lib/use-twin-sound"
 import { SendCelebration } from "@/components/send-celebration"
 import {
+  ArrowUpRight,
   Check,
   ChevronDown,
   ChevronUp,
@@ -227,9 +228,35 @@ export function ReceiptPostcard({
                   href={explorerUrl}
                   target="_blank"
                   rel="noreferrer"
-                  className="relative mt-3 inline-block font-mono text-[11px] text-emerald-300 hover:underline"
+                  className={[
+                    // Big designed CTA — emerald glassmorphic with hover glow.
+                    // Sits at the bottom of the reveal as the cta hand-off.
+                    "relative mt-4 flex w-full items-center justify-between gap-3",
+                    "rounded-2xl border border-emerald-400/40 px-4 py-3",
+                    "bg-gradient-to-br from-emerald-500/25 via-emerald-500/10 to-transparent",
+                    "shadow-lg shadow-emerald-500/10 ring-1 ring-emerald-400/20",
+                    "transition hover:border-emerald-300/70 hover:from-emerald-500/35 hover:shadow-emerald-500/20",
+                  ].join(" ")}
                 >
-                  view on-chain ↗
+                  <span className="flex items-center gap-3">
+                    <span className="grid h-9 w-9 place-items-center rounded-xl bg-emerald-400/20 ring-1 ring-emerald-300/40">
+                      <Globe className="h-4 w-4 text-emerald-100" />
+                    </span>
+                    <span className="flex flex-col leading-tight">
+                      <span className="text-[11px] font-mono uppercase tracking-[0.18em] text-emerald-200/80">
+                        verify on
+                      </span>
+                      <span className="text-sm font-semibold text-emerald-50">
+                        {explorerUrl.includes("basescan")
+                          ? "Basescan"
+                          : "Etherscan"}
+                      </span>
+                    </span>
+                  </span>
+                  <span className="flex items-center gap-1 font-mono text-[10px] text-emerald-100/80">
+                    {txHash ? shortHex(txHash) : "open tx"}
+                    <ArrowUpRight className="h-3.5 w-3.5 transition group-hover:translate-x-0.5" />
+                  </span>
                 </a>
               ) : null}
             </motion.div>

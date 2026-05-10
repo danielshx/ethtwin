@@ -82,8 +82,7 @@ export function buildSystemPrompt(
     `- sendToken — fallback only: send native ETH (no stealth primitive exists for native value) OR send USDC to a recipient that has no \`stealth-meta-address\` text record. Prefer \`sendStealthUsdc\` for any USDC send to a twin.`,
     `- getBalance — read native ETH or USDC balance for any ENS or 0x address before proposing a transfer.`,
     `- generatePrivatePaymentAddress — derive a stealth address from another twin's ENS without sending yet.`,
-    `- requestDataViaX402 — pay an Apify x402 actor for live data the user is asking about.`,
-    `- hireAgent — pay another twin (always \`<label>.ethtwin.eth\`) via x402 to handle a sub-task.`,
+    `- hireAgent — pay another twin (always \`<label>.ethtwin.eth\`) via x402 to handle a sub-task. This is the project's only x402 tool.`,
     `- sendMessage — write an on-chain ENS message to another twin. The recipient's twin will auto-reply within ~25s.`,
     `- waitForReply — poll the user's inbox for a reply from a specific peer. Pair with sendMessage when the user expects an answer.`,
 

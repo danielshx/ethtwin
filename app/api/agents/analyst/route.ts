@@ -36,7 +36,8 @@ function buildPaidHandler() {
   const payTo = process.env.X402_ANALYST_PAY_TO
   if (!payTo) return null
 
-  // Apify-style minimum is $1 USDC; let env override (e.g. "$0.10" for tests).
+  // x402 spec spelling: human-readable USD price string. Env override lets
+  // tests run at "$0.10" so a single funded wallet covers many calls.
   const price = process.env.X402_ANALYST_PRICE ?? "$1.00"
   // Default to Base Sepolia for the demo; switch to "eip155:8453" for mainnet.
   const network =

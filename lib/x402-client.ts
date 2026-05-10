@@ -5,16 +5,14 @@
 //   • v1 (deprecated): `x402-fetch`/`x402` clients with chain slugs
 //
 // We register schemes for BOTH Base Sepolia (eip155:84532) and Base Mainnet
-// (eip155:8453). Apify's production x402 endpoint settles on **Base Mainnet**
-// (verified May 2026 — $1 USDC minimum) so the live demo path requires a
-// funded mainnet wallet. The analyst self-call (`/api/agents/analyst`)
-// stays on Base Sepolia for risk-free dev.
+// (eip155:8453) so peer endpoints can negotiate either. The analyst self-call
+// (`/api/agents/analyst`) is the live demo path and stays on Base Sepolia for
+// risk-free dev.
 //
 // Public surface:
 //   paidFetch({ chain? })          → fetch-compatible function with auto-pay
 //   paidFetchWithReceipt(url, init)→ same call, but also returns parsed
 //                                    SettleResponse (tx hash, chain, payer)
-//   callApifyX402(actor, body)     → typed Apify wrapper (mainnet by default)
 
 import { wrapFetchWithPayment, x402Client } from "@x402/fetch"
 import { ExactEvmScheme } from "@x402/evm"
@@ -94,8 +92,7 @@ let cachedSigner: PrivateKeyAccount | null = null
  *
  * @param opts.chain - Restrict the client to a single chain. If omitted, both
  *   Base Sepolia and Base Mainnet schemes are registered (recommended — the
- *   wrapper will pick whichever the server requests). Pass `"base"` to make
- *   it explicit for the Apify mainnet demo, or `"base-sepolia"` for dev.
+ *   wrapper will pick whichever the server requests).
  */
 export function paidFetch(opts: { chain?: X402Chain } = {}): typeof fetch {
   const cacheKey: X402Chain | "all" = opts.chain ?? "all"
@@ -109,8 +106,7 @@ export function paidFetch(opts: { chain?: X402Chain } = {}): typeof fetch {
   for (const c of chains) {
     // v2 — CAIP-2 EIP-155 namespaces (modern wire format).
     client.register(V2_NAMESPACES[c], new ExactEvmScheme(signer as never))
-    // v1 — chain slugs. Some facilitators (incl. older Apify deployments)
-    // still negotiate v1, so we register both.
+    // v1 — chain slugs. Some facilitators still negotiate v1, so we register both.
     client.registerV1(V1_NAMESPACES[c], new ExactEvmSchemeV1(signer as never))
   }
   const wrapped = wrapFetchWithPayment(fetch, client) as typeof fetch
@@ -185,52 +181,3 @@ export async function paidFetchWithReceipt(
   return { response, receipt }
 }
 
-export type ApifyX402Result = {
-  data: unknown
-  receipt: X402Receipt
-}
-
-/**
- * Call an Apify Pay-Per-Event Actor via x402. Defaults to Base Mainnet because
- * Apify's production x402 endpoint settles on mainnet (verified May 2026).
- *
- * @param actorPath - e.g. `"apify~instagram-post-scraper"` (use `~` not `/`).
- * @param body - Actor input payload (JSON-serialisable).
- * @param opts.endpoint - Override URL template (use `{actor}` placeholder).
- *                        Defaults to `APIFY_X402_ENDPOINT` env or
- *                        `https://api.apify.com/v2/acts/{actor}/run-sync-get-dataset-items`.
- * @param opts.chain - Defaults to `"base"` (Apify mainnet). Pass `"base-sepolia"`
- *                     only if you've verified the actor accepts testnet USDC.
- */
-export async function callApifyX402(
-  actorPath: string,
-  body: unknown,
-  opts: { endpoint?: string; chain?: X402Chain } = {},
-): Promise<ApifyX402Result> {
-  const tpl =
-    opts.endpoint ??
-    process.env.APIFY_X402_ENDPOINT ??
-    `https://api.apify.com/v2/acts/{actor}/run-sync-get-dataset-items`
-  const endpoint = tpl.replace("{actor}", actorPath)
-  const chain: X402Chain = opts.chain ?? "base"
-
-  const { response, receipt } = await paidFetchWithReceipt(
-    endpoint,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-APIFY-PAYMENT-PROTOCOL": "X402",
-      },
-      body: JSON.stringify(body),
-    },
-    { chain },
-  )
-
-  if (!response.ok) {
-    const text = await response.text().catch(() => "")
-    throw new Error(`Apify x402 failed: ${response.status} ${text}`)
-  }
-  const data = (await response.json()) as unknown
-  return { data, receipt }
-}

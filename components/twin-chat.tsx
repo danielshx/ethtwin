@@ -577,6 +577,33 @@ function MessageBubble({
   fromEns: string
 }) {
   const isUser = message.role === "user"
+  const [demoMode] = useDemoMode()
+
+  // In demo mode, when a send-postcard renders for this message, the
+  // postcard is the entire reply — the LLM's text recap (often a broken
+  // "Sent 1 USDC to Rami. You can view the transaction details
+  // [here](https://...)") looks ugly stacked underneath. Suppress text
+  // parts when at least one tool call produces the postcard, so the user
+  // sees only the cool animation. The Etherscan CTA lives inside the
+  // postcard reveal.
+  const hasPostcardReply =
+    !isUser &&
+    demoMode &&
+    message.parts.some((part) => {
+      if (!part.type.startsWith("tool-")) return false
+      const toolName = part.type.replace(/^tool-/, "")
+      if (toolName !== "sendStealthUsdc" && toolName !== "sendToken") return false
+      const state = "state" in part ? (part.state as string) : ""
+      if (state !== "output-available") return false
+      const out =
+        "output" in part ? (part.output as { ok?: boolean; amount?: string }) : null
+      return !!(out && out.ok && out.amount)
+    })
+
+  const visibleParts = hasPostcardReply
+    ? message.parts.filter((part) => part.type !== "text")
+    : message.parts
+
   return (
     <div className={cn("flex w-full", isUser ? "justify-end" : "justify-start")}>
       <div
@@ -587,7 +614,7 @@ function MessageBubble({
             : "bg-secondary text-secondary-foreground",
         )}
       >
-        {message.parts.map((part, i) => (
+        {visibleParts.map((part, i) => (
           <MessagePart key={i} part={part} fromEns={fromEns} />
         ))}
       </div>
@@ -696,7 +723,7 @@ type ToolOutput = {
   to?: string
   // sendStealthUsdc-specific
   recipientEnsName?: string
-  // requestDataViaX402
+  // hireAgent / x402 settlements
   payer?: string
 }
 
@@ -865,18 +892,6 @@ function AgentDetail({
             ? `stealth ${shortAddrInline(output.stealthAddress)}`
             : undefined
         }
-      />
-    )
-  }
-  if (toolName === "requestDataViaX402" && output.ok && output.blockExplorerUrl) {
-    return (
-      <ExplorerReceipt
-        kind="x402"
-        title="x402 micropayment settled"
-        subtitle={output.chain ? `on ${output.chain}` : undefined}
-        chain={output.chain}
-        explorerUrl={output.blockExplorerUrl}
-        txHash={output.txHash}
       />
     )
   }

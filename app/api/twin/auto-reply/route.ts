@@ -94,7 +94,7 @@ export async function POST(req: Request) {
       `- waitForReply — pair with sendMessage when you need that third twin's answer before replying.`,
       `- inspectMyWallet / readMyEnsRecords — when their message asks about you specifically.`,
       `- hireAgent — only if their message clearly asks for analyst-grade verification or research.`,
-      `Avoid sendToken / sendStealthUsdc / requestDataViaX402 unless the incoming message explicitly authorises a payment.`,
+      `Avoid sendToken / sendStealthUsdc / hireAgent unless the incoming message explicitly authorises a payment.`,
 
       `# Constraints — strict`,
       `- Final reply: one short paragraph, max ~3 sentences. No greetings like "Sure!" / "Of course!".`,
