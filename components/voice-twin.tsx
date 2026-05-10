@@ -268,7 +268,11 @@ export function VoiceTwin({
         const res = await fetch("/api/twin-tool", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name, input: parsedInput }),
+          // Forward the caller's twin ENS so context-aware tools
+          // (sendMessage, hireAgent, inspectMyWallet, ...) can run. Without
+          // it the dispatcher would 400 on those calls and the model would
+          // say "I'm having trouble reaching out to <peer>".
+          body: JSON.stringify({ name, input: parsedInput, fromEns: ensName }),
         })
         const body = (await res.json().catch(() => ({}))) as {
           ok?: boolean
@@ -340,7 +344,7 @@ export function VoiceTwin({
       )
       dc.send(JSON.stringify({ type: "response.create" }))
     },
-    [demoMode],
+    [demoMode, ensName],
   )
 
   const handleServerEvent = useCallback(
