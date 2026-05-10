@@ -33,6 +33,8 @@ import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { voiceTools, type RealtimeToolDef } from "@/lib/voice-tools"
+import { ReceiptPostcard } from "@/components/receipt-postcard"
+import { useDemoMode } from "@/lib/use-demo-mode"
 
 type VoiceState =
   | "idle"
@@ -43,12 +45,29 @@ type VoiceState =
   | "error"
   | "unavailable"
 
-type Transcript = {
-  id: string
-  role: "user" | "assistant"
-  text: string
-  partial?: boolean
-}
+type Transcript =
+  | {
+      kind: "text"
+      id: string
+      role: "user" | "assistant"
+      text: string
+      partial?: boolean
+    }
+  | {
+      kind: "postcard"
+      id: string
+      role: "assistant"
+      postcard: {
+        amount: string
+        recipientEnsName?: string
+        fromEnsName?: string
+        txHash?: string
+        explorerUrl?: string
+        stealthAddress?: string
+        cosmicSeeded?: boolean
+        privateBadge?: boolean
+      }
+    }
 
 type VoiceTwinProps = {
   ensName: string
@@ -112,6 +131,7 @@ export function VoiceTwin({
   const [state, setState] = useState<VoiceState>("idle")
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [transcripts, setTranscripts] = useState<Transcript[]>([])
+  const [demoMode] = useDemoMode()
 
   const pcRef = useRef<RTCPeerConnection | null>(null)
   const dcRef = useRef<RTCDataChannel | null>(null)
@@ -264,6 +284,47 @@ export function VoiceTwin({
           error: err instanceof Error ? err.message : String(err),
         }
       }
+
+      // Demo-mode postcard injection — same animation the chat tab shows
+      // when sendStealthUsdc / sendToken settles. Runs purely off the tool
+      // result (no LLM in the loop), so the postcard lands the moment the
+      // tx is broadcast — usually before the assistant has finished
+      // narrating it. Fire-and-forget; the dc.send below still ships the
+      // raw result back to the model.
+      if (
+        demoMode &&
+        (name === "sendStealthUsdc" || name === "sendToken") &&
+        isPostcardableResult(resultPayload)
+      ) {
+        const r = resultPayload as PostcardableResult
+        setTranscripts((prev) => [
+          ...prev,
+          {
+            kind: "postcard",
+            id: `postcard-${callId}`,
+            role: "assistant",
+            postcard: {
+              amount: r.amount,
+              ...(r.recipientEnsName !== undefined && {
+                recipientEnsName: r.recipientEnsName,
+              }),
+              ...(r.fromEns !== undefined && { fromEnsName: r.fromEns }),
+              ...(r.txHash !== undefined && { txHash: r.txHash }),
+              ...(r.blockExplorerUrl !== undefined && {
+                explorerUrl: r.blockExplorerUrl,
+              }),
+              ...(r.stealthAddress !== undefined && {
+                stealthAddress: r.stealthAddress,
+              }),
+              ...(r.cosmicSeeded !== undefined && {
+                cosmicSeeded: r.cosmicSeeded,
+              }),
+              privateBadge: name === "sendStealthUsdc",
+            },
+          },
+        ])
+      }
+
       const dc = dcRef.current
       if (!dc || dc.readyState !== "open") return
       // Ship result + trigger a new model response.
@@ -279,7 +340,7 @@ export function VoiceTwin({
       )
       dc.send(JSON.stringify({ type: "response.create" }))
     },
-    [],
+    [demoMode],
   )
 
   const handleServerEvent = useCallback(
@@ -303,7 +364,13 @@ export function VoiceTwin({
           pendingUserSlotsRef.current.push(placeholderId)
           setTranscripts((prev) => [
             ...prev,
-            { id: placeholderId, role: "user", text: "…", partial: true },
+            {
+              kind: "text",
+              id: placeholderId,
+              role: "user",
+              text: "…",
+              partial: true,
+            },
           ])
           break
         }
@@ -319,6 +386,7 @@ export function VoiceTwin({
               if (idx !== -1) {
                 const next = [...prev]
                 next[idx] = {
+                  kind: "text",
                   id: e.item_id,
                   role: "user",
                   text: e.transcript,
@@ -327,7 +395,10 @@ export function VoiceTwin({
                 return next
               }
             }
-            return [...prev, { id: e.item_id, role: "user", text: e.transcript }]
+            return [
+              ...prev,
+              { kind: "text", id: e.item_id, role: "user", text: e.transcript },
+            ]
           })
           break
         }
@@ -343,6 +414,7 @@ export function VoiceTwin({
               return [
                 ...prev,
                 {
+                  kind: "text",
                   id: e.item_id,
                   role: "assistant",
                   text: e.delta,
@@ -350,8 +422,13 @@ export function VoiceTwin({
                 },
               ]
             }
+            const existing = prev[idx]
+            // Postcards aren't text — guard the spread so we don't try to
+            // append a delta to a non-text entry (shouldn't happen because
+            // postcards use a different id, but type-safe is type-safe).
+            if (existing.kind !== "text") return prev
             const next = [...prev]
-            next[idx] = { ...next[idx], text: next[idx].text + e.delta }
+            next[idx] = { ...existing, text: existing.text + e.delta }
             return next
           })
           break
@@ -367,6 +444,7 @@ export function VoiceTwin({
               return [
                 ...prev,
                 {
+                  kind: "text",
                   id: e.item_id,
                   role: "assistant",
                   text: e.transcript,
@@ -374,8 +452,10 @@ export function VoiceTwin({
                 },
               ]
             }
+            const existing = prev[idx]
+            if (existing.kind !== "text") return prev
             const next = [...prev]
-            next[idx] = { ...next[idx], text: e.transcript, partial: false }
+            next[idx] = { ...existing, text: e.transcript, partial: false }
             return next
           })
           break
@@ -597,36 +677,96 @@ export function VoiceTwin({
         ) : (
           <ul className="flex flex-col gap-3">
             <AnimatePresence initial={false}>
-              {transcripts.map((t) => (
-                <motion.li
-                  key={t.id}
-                  initial={{ opacity: 0, y: 4 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.15 }}
-                  className={cn(
-                    "flex w-full",
-                    t.role === "user" ? "justify-end" : "justify-start",
-                  )}
-                >
-                  <div
+              {transcripts.map((t) => {
+                if (t.kind === "postcard") {
+                  // Center the postcard so it doesn't try to live in a
+                  // user/assistant column. Same component the chat tab uses
+                  // — no bridge logic, just render with the captured props.
+                  return (
+                    <motion.li
+                      key={t.id}
+                      initial={{ opacity: 0, y: 4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.15 }}
+                      className="flex w-full justify-center"
+                    >
+                      <ReceiptPostcard
+                        amount={t.postcard.amount}
+                        {...(t.postcard.recipientEnsName !== undefined && {
+                          recipientEnsName: t.postcard.recipientEnsName,
+                        })}
+                        {...(t.postcard.fromEnsName !== undefined && {
+                          fromEnsName: t.postcard.fromEnsName,
+                        })}
+                        {...(t.postcard.txHash !== undefined && {
+                          txHash: t.postcard.txHash,
+                        })}
+                        {...(t.postcard.explorerUrl !== undefined && {
+                          explorerUrl: t.postcard.explorerUrl,
+                        })}
+                        {...(t.postcard.stealthAddress !== undefined && {
+                          stealthAddress: t.postcard.stealthAddress,
+                        })}
+                        cosmicSeeded={t.postcard.cosmicSeeded ?? false}
+                        privateBadge={t.postcard.privateBadge ?? false}
+                      />
+                    </motion.li>
+                  )
+                }
+                return (
+                  <motion.li
+                    key={t.id}
+                    initial={{ opacity: 0, y: 4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.15 }}
                     className={cn(
-                      "max-w-[80%] rounded-2xl px-3.5 py-2 text-sm leading-relaxed",
-                      t.role === "user"
-                        ? "bg-primary text-primary-foreground"
-                        : "bg-secondary text-secondary-foreground",
-                      t.partial && "opacity-80",
+                      "flex w-full",
+                      t.role === "user" ? "justify-end" : "justify-start",
                     )}
                   >
-                    {t.text || "…"}
-                  </div>
-                </motion.li>
-              ))}
+                    <div
+                      className={cn(
+                        "max-w-[80%] rounded-2xl px-3.5 py-2 text-sm leading-relaxed",
+                        t.role === "user"
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-secondary text-secondary-foreground",
+                        t.partial && "opacity-80",
+                      )}
+                    >
+                      {t.text || "…"}
+                    </div>
+                  </motion.li>
+                )
+              })}
             </AnimatePresence>
           </ul>
         )}
       </div>
     </Card>
   )
+}
+
+/**
+ * Shape returned by sendStealthUsdc / sendToken when the broadcast lands.
+ * Mirrors the relevant subset of `lib/twin-tools.ts` results — duplicating
+ * the field list here keeps the type guard cheap and avoids importing
+ * server-only code into a client component.
+ */
+type PostcardableResult = {
+  ok: true
+  amount: string
+  recipientEnsName?: string
+  fromEns?: string
+  txHash?: string
+  blockExplorerUrl?: string
+  stealthAddress?: string
+  cosmicSeeded?: boolean
+}
+
+function isPostcardableResult(v: unknown): v is PostcardableResult {
+  if (typeof v !== "object" || v === null) return false
+  const r = v as Record<string, unknown>
+  return r.ok === true && typeof r.amount === "string" && r.amount.length > 0
 }
 
 function labelForState(state: VoiceState): string {
