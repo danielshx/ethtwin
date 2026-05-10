@@ -8,7 +8,6 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { addHistoryEntry } from "@/lib/history"
 import { displayNameFromEns } from "@/lib/ens"
 import { cn } from "@/lib/utils"
@@ -140,26 +139,18 @@ export function Messenger({ myEnsName, getAuthToken, className }: MessengerProps
     return [...chainMessages, ...pendingMessages].sort((a, b) => a.at - b.at)
   }, [chainMessages, pendingMessages, selected])
 
-  // Auto-scroll to newest. Radix `<ScrollArea>` renders a custom viewport
-  // (an inner div with `data-radix-scroll-area-viewport`); plain
-  // `scrollIntoView` on a sentinel doesn't bubble through it correctly.
-  // We climb to the viewport from the sentinel and set scrollTop directly,
-  // which works whether the viewport is overflow-auto or overflow-hidden.
+  // Auto-scroll to newest. The thread is a plain overflow-y-auto div (not
+  // a Radix/Base-UI ScrollArea — those add complexity for no value here),
+  // so we hold a ref directly on the scrolling container and set
+  // scrollTop. rAF lets layout settle after a new bubble inserts.
+  const threadScrollRef = useRef<HTMLDivElement | null>(null)
   const threadEndRef = useRef<HTMLDivElement | null>(null)
   useEffect(() => {
     if (!selected) return
-    const sentinel = threadEndRef.current
-    if (!sentinel) return
-    // rAF lets layout settle (new bubble inserted) before we measure.
+    const viewport = threadScrollRef.current
+    if (!viewport) return
     const raf = requestAnimationFrame(() => {
-      const viewport = sentinel.closest(
-        "[data-radix-scroll-area-viewport]",
-      ) as HTMLElement | null
-      if (viewport) {
-        viewport.scrollTo({ top: viewport.scrollHeight, behavior: "smooth" })
-      } else {
-        sentinel.scrollIntoView({ behavior: "smooth", block: "end" })
-      }
+      viewport.scrollTo({ top: viewport.scrollHeight, behavior: "smooth" })
     })
     return () => cancelAnimationFrame(raf)
   }, [thread.length, selected])
@@ -462,7 +453,7 @@ export function Messenger({ myEnsName, getAuthToken, className }: MessengerProps
           </div>
         </div>
 
-        <ScrollArea className="min-h-0 flex-1">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
           <div className="space-y-1 p-2">
             {agentsLoading ? (
               <div className="flex items-center gap-2 px-2 py-3 text-xs text-muted-foreground">
@@ -554,7 +545,7 @@ export function Messenger({ myEnsName, getAuthToken, className }: MessengerProps
               })
             )}
           </div>
-        </ScrollArea>
+        </div>
       </aside>
 
       {/* Main — chat view */}
@@ -605,7 +596,10 @@ export function Messenger({ myEnsName, getAuthToken, className }: MessengerProps
           <ChatEnsBanner myEnsName={myEnsName} peerEns={selected} />
         ) : null}
 
-        <ScrollArea className="min-h-0 flex-1">
+        <div
+          ref={threadScrollRef}
+          className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
+        >
           <div className="space-y-2 p-5">
             {!selected ? (
               <EmptyState />
@@ -628,7 +622,7 @@ export function Messenger({ myEnsName, getAuthToken, className }: MessengerProps
               </>
             )}
           </div>
-        </ScrollArea>
+        </div>
 
         {selected ? (
           <form
