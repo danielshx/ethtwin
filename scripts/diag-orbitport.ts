@@ -122,7 +122,11 @@ async function main() {
             ({ encryptionAlgorithm: v.encryptionAlgorithm } as any)
           : {}),
       })
-      const ok = dec.data.Plaintext === plaintext
+      const decrypted =
+        typeof dec.data.Plaintext === "string"
+          ? dec.data.Plaintext
+          : new TextDecoder().decode(dec.data.Plaintext)
+      const ok = decrypted === plaintext
       console.log(`  ${ok ? "✓" : "✗"} decrypt round-trip ${ok ? "matched" : "MISMATCH"}`)
       if (ok) {
         console.log(
