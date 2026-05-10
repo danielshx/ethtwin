@@ -235,7 +235,7 @@ Optional audio cues → drop assets per [public/sounds/README.md](./public/sound
 pnpm video:studio             # live preview at http://localhost:3000 (scrub all 7 beats)
 pnpm video:render             # 1920×1080 H.264 → public/demo.mp4 (~7 MB)
 pnpm video:poster             # first-beat hero frame → public/demo-poster.png
-pnpm video:gif                # 540p auto-play GIF → public/demo.gif (~20 MB, the README hero)
+pnpm video:gif                # 768×432 landscape auto-play GIF → public/demo.gif (~7 MB, the README hero)
 ```
 
 The video is built from React components in [`remotion/`](./remotion) using design tokens mirrored from [`app/globals.css`](./app/globals.css). Edit a scene file under `remotion/scenes/`, re-run `pnpm video:render` + `pnpm video:gif`, commit the new files.

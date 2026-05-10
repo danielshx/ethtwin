@@ -32,7 +32,7 @@
     "video:studio": "remotion studio remotion/index.ts",
     "video:render": "remotion render remotion/index.ts EthTwinDemo public/demo.mp4 --codec h264 --crf 18",
     "video:poster": "remotion still remotion/index.ts EthTwinDemo public/demo-poster.png --frame=60",
-    "video:gif": "remotion render remotion/index.ts EthTwinDemo public/demo.gif --codec gif --width=540 --every-nth-frame=4"
+    "video:gif": "remotion render remotion/index.ts EthTwinDemo public/demo.gif --codec gif --scale=0.4 --every-nth-frame=3"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "3.0.76",
