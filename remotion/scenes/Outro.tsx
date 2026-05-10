@@ -7,7 +7,7 @@ const BOUNTIES = [
   { label: "ENS · AI Agents (ENSIP-25)", color: colors.ensBlue },
   { label: "ENS · Most Creative", color: colors.amber },
   { label: "Apify · x402 Live", color: colors.sage },
-  { label: "SpaceComputer · cTRNG", color: colors.satellitePurple },
+  { label: "SpaceComputer · KMS", color: colors.satellitePurple },
   { label: "Best Privacy by Design", color: "#10b981" },
 ]
 

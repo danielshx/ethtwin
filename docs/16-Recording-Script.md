@@ -36,7 +36,6 @@
 - Smart Wallet has ≥$5 USDC + Sepolia ETH for gas
 - `X402_SENDER_KEY` wallet has ≥$3 USDC on Base Mainnet (3 retries' worth)
 - `OPENAI_API_KEY` set, voice tested 1× with one full round-trip
-- cTRNG cache primed (`pnpm test:cosmic` or hit the cosmic-seed endpoint twice)
 - `analyst.ethtwin.eth` answering, ENSIP-25 verified
 - All system notifications silenced (Slack, Mail, Calendar)
 
@@ -60,8 +59,8 @@
 - **Action 0:18:** type `daniel@ethtwin.xyz`, click Continue
 - **Action 0:23:** Privy passkey prompt — confirm
 - **Action 0:28:** OnboardingFlow opens, step 1 → step 2 (username `daniel`)
-- **Action 0:35:** step 3 — **CosmicOrb fires**, attestation hash appears
-- **VO at 0:35:** *"Right now my twin is being seeded with cosmic randomness from a satellite in low-earth orbit. Not VRF. Real entropy from space."*
+- **Action 0:35:** step 3 — twin record multicall fires, on-chain hash appears
+- **VO at 0:35:** *"Right now a Sepolia ENS subname is being minted on-chain — name, address, persona, capabilities, agent registration, stealth meta-key, all in one multicall."*
 - **Action 0:48:** step 4 — twin spawns at `daniel.ethtwin.eth`, welcome animation
 - **VO at 0:50:** *"My twin lives at `daniel.ethtwin.eth`. Persona, capabilities, stealth privacy key — all in ENS text records. ENSIP-25 verified."*
 
@@ -87,19 +86,19 @@
 - **Visual 1:55:** analyst response card, twin synthesizes: *"50% Aave V3 USDC, 50% hold. Low risk."*
 - **VO at 1:58:** *"Agent-to-agent economy. Live, on-chain, ENS-discoverable, ENSIP-25 verified. No spoofing."*
 
-### [2:05 – 2:40] HERO — Cosmic stealth send
+### [2:05 – 2:40] HERO — Stealth send
 - **Action 2:05:** switch to Stealth Send tab
 - **VO:** *"Now the most important part. Privacy."*
 - **VO (in-app) 2:08:** *"Twin, send 1 USDC. Privately."*
-- **Action 2:12:** CosmicOrb takes over the screen — fetching → revealed → sending
-- **VO at 2:15:** *"These bytes are coming from Orbitport, a real satellite. Live. Nobody can predict them. Not me. Not my server. Not Vitalik."*
-- **Visual 2:25:** stealth address materialises, attestation hash, EIP-5564 viewTag
+- **Action 2:12:** Stealth-Send card animates — recipient meta-key resolved → stealth address derived → sending
+- **VO at 2:15:** *"Tom never published his real address. The recipient address is derived live from his ENS `stealth-meta-address` text record — EIP-5564, the ScopeLift SDK, on Base Sepolia."*
+- **Visual 2:25:** stealth address materialises, EIP-5564 viewTag, ephemeral pubkey
 - **Action 2:30:** Tx-Approval modal — plain English: *"You're sending 1 USDC. Recipient is anonymous. Confirm with Face ID?"*
 - **Action 2:33:** Face ID approval, tx broadcasts, basescan.org/sepolia opens in side panel showing the stealth tx
 - **Visual 2:38:** result card — "Privacy: 10/10."
 
 ### [2:40 – 2:55] Closing
-- **VO:** *"In three minutes you saw: onboarding without a seed phrase, voice-controlled twin, ENSIP-25 agent economy, plain-English approvals, live x402 payments, real cosmic privacy."*
+- **VO:** *"In three minutes you saw: onboarding without a seed phrase, voice-controlled twin, ENSIP-25 agent economy, plain-English Sourcify-decoded approvals, live x402 payments, EIP-5564 stealth privacy by default."*
 - **VO at 2:50:** *"EthTwin. ENS-native. Voice-first. Privacy by default. Which twin do you want?"*
 - **Visual:** logo card, `ethtwin.xyz`, slogan
 
@@ -113,11 +112,11 @@
 If the audience is German-speaking, swap to this VO. Visuals identical.
 
 - **0:05:** *"Vor 60 Sekunden hatte ich keine Wallet, kein Crypto, keinen ENS-Namen. Jetzt habe ich alles drei — und einen AI-Zwilling der für mich arbeitet."*
-- **0:35:** *"Mein Twin wird gerade mit kosmischer Zufälligkeit aus einem Satelliten geseedet. Kein VRF. Echte Entropie aus dem All."*
+- **0:35:** *"Gerade läuft on-chain ein einziges Multicall: ENS-Subname minten, Adresse + Persona + Stealth-Meta-Key + ENSIP-25-Agent-Eintrag, alles in einem Tx."*
 - **1:08:** *"Twin, was ist das Sentiment auf den SPACE Token heute?"*
 - **1:22:** *"Twin hat gerade live einen Dollar USDC an Apify bezahlt. On-chain. Via x402."*
 - **2:08:** *"Jetzt der wichtigste Teil. Privatsphäre."*
-- **2:15:** *"Diese Bytes kommen jetzt live aus dem Weltall. Niemand kann sie vorhersagen. Auch wir nicht."*
+- **2:15:** *"Tom hat seine Hauptadresse nie veröffentlicht. Die Stealth-Adresse wird live aus seinem ENS `stealth-meta-address` Text Record abgeleitet — EIP-5564, ScopeLift SDK, on-chain."*
 - **2:50:** *"EthTwin. ENS-native. Voice-first. Privacy by default."*
 
 ---
@@ -149,7 +148,7 @@ If the audience is German-speaking, swap to this VO. Visuals identical.
 | Privy auth error during onboarding | 0:18 | 0:55 (after twin spawns) |
 | x402 tx hangs during voice ask | 1:05 | 1:35 (after sentiment) |
 | analyst.eth times out | 1:35 | 2:05 (after specialist call) |
-| Cosmic-orb / stealth send breaks | 2:05 | 2:40 (closing) |
+| Stealth send breaks | 2:05 | 2:40 (closing) |
 | Total wifi loss | 0:00 | never — play the whole video |
 
 The judge does not need to know which parts were live and which were the backup. Just keep narrating in present tense over the video.

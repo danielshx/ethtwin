@@ -4,12 +4,12 @@
 
 ## What we're building
 
-**EthTwin** is an AI co-pilot for your on-chain life. Each user spawns an AI Twin that lives at their ENS subname (`daniel.ethtwin.eth`), is voice-controlled, can hire other agents via x402 micropayments, and uses cosmic randomness from satellites for stealth-address privacy.
+**EthTwin** is an AI co-pilot for your on-chain life. Each user spawns an AI Twin that lives at their ENS subname (`daniel.ethtwin.eth`), is voice-controlled, can hire other agents via x402 micropayments, and sends payments through EIP-5564 stealth addresses by default — with the recipient's `stealth-meta-address` published as an ENS Text Record.
 
 **One-line pitch (locked 2026-05-09):** *"Crypto for everyone — even my grandma."*
 Sub-line: *"The first crypto interface built for humans, not engineers."*
 
-**Demo persona:** Maria (67, Stuttgart) sends 100 USDC to her grandson Tom (`tom.ethtwin.eth`) via voice. The reveal at the end: every advanced primitive (stealth address, satellite randomness, ENSIP-25 agent verification, x402 micropayments) ran silently underneath. See `docs/06-Demo-Skript.md`.
+**Demo persona:** Maria (67, Stuttgart) sends 100 USDC to her grandson Tom (`tom.ethtwin.eth`) via voice. The reveal at the end: every advanced primitive (EIP-5564 stealth address, ENSIP-25 + ERC-8004 agent verification, Sourcify-decoded plain-English tx, x402 micropayments) ran silently underneath. See `docs/06-Demo-Skript.md`.
 
 ## ⚠️ Critical Verified Facts (May 2026 — verified via web search + npm)
 
@@ -81,13 +81,13 @@ const myTool = tool({
 ## Tech Stack (frozen)
 
 - **Framework:** Next.js 15 App Router, TypeScript, Tailwind 4, shadcn/ui
-- **Animation:** Framer Motion 11 (cosmic seed reveal is the hero moment)
+- **Animation:** Framer Motion 11 (Receipt-Postcard X-ray reveal + Stealth-Send card are the hero moments)
 - **Auth + Wallet:** Privy (`@privy-io/react-auth` for client, `@privy-io/node` for server)
 - **Smart Wallet:** Privy Embedded Smart Wallet via Kernel/ZeroDev (configure in dashboard)
 - **AI:** Vercel AI SDK v6 + Claude Sonnet 4.6 (text), OpenAI Realtime API (voice)
 - **Chain:** viem 2.48 + `@ensdomains/ensjs` 4.2 + `@scopelift/stealth-address-sdk` (beta)
 - **x402:** `@x402/fetch` (client) + `@coinbase/x402` (facilitator on Base Sepolia)
-- **APIs:** Apify x402 endpoints, Orbitport REST API for cTRNG
+- **APIs:** Apify x402 endpoints, Sourcify (ABI lookup for tx-decode + risk classification)
 - **Hosting:** Vercel
 
 ## Bounty stack we're hitting
@@ -96,7 +96,7 @@ const myTool = tool({
 2. **ENS for AI Agents** ($1.25k) — ENSIP-25 + ERC-8004 IdentityRegistry compliance
 3. **ENS Most Creative** ($1.25k) — Custom `stealth-meta-address` Text Record (no ENSIP yet — our innovation)
 4. **Apify x402** ($1-2k) — Live agent-to-agent x402 payments ($1+ USDC)
-5. **SpaceComputer Track 3** ($1-3k from $6k pool) — cTRNG via Orbitport API
+5. **Sourcify Contract Intelligence** — ABI decode + risk classifier turns calldata into a plain-English risk decision before sign
 6. **Best UX Flow** — Voice + Plain English + No Seed Phrase (Privy passkey)
 7. **Best Privacy by Design** — EIP-5564 Stealth Addresses as default
 
@@ -106,10 +106,10 @@ const myTool = tool({
 
 - TypeScript strict mode. No `any`.
 - Server logic in `app/api/*/route.ts`. Never expose API keys client-side.
-- ENS-related code in `lib/ens.ts` + `lib/agents.ts` (directory). Stealth in `lib/stealth.ts` + `lib/payments.ts`. Cosmic in `lib/cosmic.ts`. x402 in `lib/x402-client.ts`. ENS-Subname-Messenger primitives in `lib/messages.ts`. Hybrid history (client + server) in `lib/history.ts` + `lib/history-server.ts`. React hooks in `lib/use-ens-name.ts`, `lib/use-ens-avatar.ts`, `lib/use-notifications.ts`. Voice tool subset for OpenAI Realtime in `lib/voice-tools.ts`.
+- ENS-related code in `lib/ens.ts` + `lib/agents.ts` (directory). Stealth in `lib/stealth.ts` + `lib/payments.ts`. Sourcify lookup + tx-decode + risk in `lib/sourcify.ts` + `lib/tx-decoder.ts` + `lib/contract-risk.ts`. x402 in `lib/x402-client.ts`. ENS-Subname-Messenger primitives in `lib/messages.ts` + `lib/message-crypto.ts`. Hybrid history (client + server) in `lib/history.ts` + `lib/history-server.ts`. React hooks in `lib/use-ens-name.ts`, `lib/use-ens-avatar.ts`, `lib/use-notifications.ts`. Voice tool subset for OpenAI Realtime in `lib/voice-tools.ts`. `lib/cosmic.ts` is a wired Orbitport wrapper but is NOT load-bearing — `lib/stealth.ts` and `lib/message-crypto.ts` no longer cosmic-seed (`cosmicSeeded: false` always).
 - Components colocated with their feature. Reusable UI in `components/ui/` (shadcn).
 - Use shadcn components first.
-- Animations are budget. The cosmic reveal during onboarding + the **Stealth-Send-Tab** (`components/stealth-send.tsx`) are the only heavy Framer Motion / particle scenes.
+- Animations are budget. The Receipt-Postcard X-ray reveal + the **Stealth-Send-Tab** (`components/stealth-send.tsx`) are the only heavy Framer Motion / particle scenes.
 - **AI SDK v6 syntax:** tools use `inputSchema` (zod), not `parameters` (v5 pattern). Twin tools live in `lib/twin-tools.ts` (15 tools total). The chat route (`app/api/twin/route.ts`) calls the `buildTwinTools({ fromEns, fromAddress })` factory so request-scoped context (the user's twin ENS + bound wallet address) reaches context-aware tools like `sendMessage`, `inspectMyWallet`, `readMyEnsRecords`, `readMyMessages`, `hireAgent`.
 
 ## ENS is central — never decorative
@@ -127,7 +127,6 @@ If we remove ENS, the product breaks. That's the test for ENS Bounty 1.
 | Hour | If X fails | Then |
 |---|---|---|
 | 24 | Voice flickers | Drop voice, lock chat mode |
-| 30 | cTRNG API hangs | Use cached cTRNG samples + real attestation hashes |
 | 36 | Stealth on-chain buggy | Drop Tier 2 stealth, polish Tier 1 |
 | 36 | x402 live fails | Pre-sign tx + show in block explorer tab |
 | 40 | Sepolia RPC outage | Pivot to NameStone (`lib/namestone.ts` is wired but unused) |
@@ -148,7 +147,7 @@ If we remove ENS, the product breaks. That's the test for ENS Bounty 1.
 ## Sub-agents available
 
 - `ens-expert` — ENS subname trees, text records, ENSIP-25, ERC-8004, NameStone, Durin
-- `stealth-architect` — EIP-5564 stealth address generation with cosmic seeding (ScopeLift beta)
+- `stealth-architect` — EIP-5564 stealth address generation via @scopelift/stealth-address-sdk + ENS `stealth-meta-address` text record pattern
 - `twin-agent-builder` — Vercel AI SDK v6 agent loops + Claude 4.6 tool calling + x402
 - `demo-coach` — Demo script, pitch flow, story polish
 

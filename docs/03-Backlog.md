@@ -213,6 +213,6 @@ Vor Devfolio-Submission durch:
 - [ ] ENS for AI Agents: ENSIP-25 verification von `tom.ethtwin.eth` + Twin-zu-analyst-Hire im Demo-Reveal
 - [ ] ENS Most Creative: `stealth-meta-address` Text Record + Send-an-tom-Demo (silent stealth)
 - [ ] Apify x402: live $1+ USDC Tx wenn Wallet gefundet — sonst pre-signed Receipt im Reveal
-- [ ] SpaceComputer Track 3: cTRNG-Attestation-Hash im Reveal sichtbar (Mikro-Pulse während Send)
+- [ ] SpaceComputer (KMS): KMS-Signatur-Badge im Reveal — "Every twin signed in orbit" (Twin-Mint via `lib/kms.ts`)
 - [ ] Best UX Flow: Maria-Story IST der Hit — Plain English + Passkey + ENS reverse resolution + Voice in einem Beat
 - [ ] Best Privacy by Design: Stealth-by-default — Maria weiß nicht mal dass sie es nutzt

@@ -22,30 +22,10 @@ Voice-first. Privacy by default. Lives in ENS.
 
 ![EthTwin demo — 50-second walkthrough](./public/demo.gif)
 
-<sub><i>50-second walkthrough: Maria → voice send → postcard → cosmic randomness → on-chain reveal.<br/>
+<sub><i>50-second walkthrough: Maria → voice send → postcard → ENSIP-25 reveal → on-chain receipt.<br/>
 Full-quality MP4: <a href="./public/demo.mp4">public/demo.mp4</a> · Hero frame: <a href="./public/demo-poster.png">public/demo-poster.png</a> · Rendered programmatically with Remotion (`pnpm video:render`).</i></sub>
 
 </div>
-
----
-
-## The 60-second pitch
-
-Meet **Maria, 67, from Stuttgart.** She has never used crypto. She opens EthTwin, taps "Sign up", uses Face ID — and **60 seconds later** she has an AI Twin living at `maria.ethtwin.eth`.
-
-She says out loud: *"Send 100 dollars to my grandson Tom."*
-
-Her Twin replies in plain German, shows a warm receipt postcard, and the money is on its way. Maria sees no seed phrase, no gas estimate, no hex blob.
-
-**Behind the scenes**, in the same call, EthTwin silently composed:
-
-- An **EIP-5564 stealth address** so Tom's address never appears on-chain
-- Seeded with **true cosmic randomness** from a satellite (Orbitport cTRNG)
-- Routed through Tom's twin discovered via **ENSIP-25 + ERC-8004** agent identity
-- Co-signed by an **x402-paid analyst agent** that verified Tom's wallet on the fly
-- Settled on **Base Sepolia** through Maria's gasless **Privy passkey smart wallet**
-
-The reveal at the end of the demo flips the receipt over — *"Show me what really happened"* — and every primitive lights up. That's the wow moment. → [docs/06-Demo-Skript.md](./docs/06-Demo-Skript.md)
 
 ---
 
@@ -62,9 +42,9 @@ Every feature flows from that:
 | **Identity** | `0x4f3a…b21c` | `maria.ethtwin.eth` |
 | **Onboarding** | 12-word seed phrase | Email + passkey, 60 seconds |
 | **Sending money** | Confirm hex calldata | "Send 100 dollars to Tom" |
-| **Privacy** | Reveal address forever | Stealth address by default |
+| **Privacy** | Reveal address forever | Stealth address by default (EIP-5564) |
 | **Agents** | DIY scripts | x402 micropayments to other twins |
-| **Randomness** | `Math.random()` 🤞 | Cosmic cTRNG from a satellite |
+| **Tx review** | Sign hex blind | Plain-English Sourcify-decoded summary |
 
 ---
 
@@ -77,11 +57,12 @@ Every feature flows from that:
 🎙️  Voice + Chat             OpenAI Realtime API for voice, Vercel AI SDK v6 + Claude
                             Sonnet 4.6 for tool-calling. Falls back gracefully.
 
-🛰️  Cosmic randomness        Orbitport cTRNG seeds every stealth address.
-                            Animated reveal of the satellite hash on-screen.
+🕵️  Stealth payments         EIP-5564 default for sends via @scopelift/stealth-address-sdk.
+                            Recipients never expose their main address.
+                            Custom `stealth-meta-address` ENS record (proposed pattern).
 
-🕵️  Stealth payments         EIP-5564 default for sends. Recipients never expose
-                            their main address. Custom `stealth-meta-address` ENS record.
+🛡️  Anti-blind-signing       Sourcify-verified ABI decode + risk classifier turn hex
+                            calldata into a plain-English risk decision before sign.
 
 🤝  Agent-to-agent (x402)    Twins hire other twins (`analyst.ethtwin.eth`) for
                             $1 USDC via Coinbase x402 + Apify Pay-Per-Event Actors.
@@ -99,7 +80,7 @@ Every feature flows from that:
                             previous tasks run in the background.
 
 🪪  Receipt-Postcard         Warm jargon-free send card → flip → blueprint X-ray
-                            with EIP-5564 / cTRNG / ENSIP-25 / Base Sepolia tags.
+                            with EIP-5564 / ENSIP-25 / Sourcify / Base Sepolia tags.
 ```
 
 ---
@@ -117,15 +98,15 @@ Every feature flows from that:
               │                       │                         │
               ▼                       ▼                         ▼
      ┌────────────────┐   ┌──────────────────────┐   ┌────────────────────┐
-     │  ENS resolve   │   │  Cosmic seed (cTRNG) │   │  Hire analyst.eth  │
-     │  tom.ethtwin   │   │  Orbitport satellite │   │  via x402 ($1 USDC)│
+     │  ENS resolve   │   │  Sourcify decode     │   │  Hire analyst.eth  │
+     │  tom.ethtwin   │   │  + risk classifier   │   │  via x402 ($1 USDC)│
      └────────┬───────┘   └──────────┬───────────┘   └─────────┬──────────┘
               │                      │                         │
               └──────────┬───────────┴─────────────────────────┘
                          ▼
             ┌────────────────────────────────┐
             │   EIP-5564 Stealth Address     │
-            │   derived from meta-key + seed │
+            │   ScopeLift SDK + ENS meta-key │
             └────────────────┬───────────────┘
                              ▼
             ┌────────────────────────────────┐
@@ -145,10 +126,10 @@ Full system diagram → [docs/04-Architektur.md](./docs/04-Architektur.md)
 | 1 | **Umia** | Agentic Venture | Twins are autonomous agents that can earn, spend, and hire — full agent economy demo |
 | 2 | **ENS** | AI Agents ($1.25k) | ENSIP-25 + ERC-8004 IdentityRegistry on every twin |
 | 3 | **ENS** | Most Creative ($1.25k) | Custom `stealth-meta-address` Text Record (no ENSIP yet — our innovation) |
-| 4 | **Apify** | x402 Bounty ($1–2k) | Live agent-to-agent x402 payments, $1+ USDC, real Apify Actor |
-| 5 | **SpaceComputer** | Track 3 ($1–3k of $6k) | cTRNG via Orbitport REST API, animated reveal in UI |
-| 6 | **General** | Best UX Flow | Voice + plain English + passkey, no seed phrase ever |
-| 7 | **General** | Best Privacy by Design | EIP-5564 stealth as default, not opt-in |
+| 4 | **Apify** | x402 Bounty ($1–2k) | Agent-to-agent x402 payments via `@x402/fetch` v2 + `@coinbase/x402` facilitator; live `analyst.ethtwin.eth` peer-twin path; Apify mainnet path code-ready |
+| 5 | **General** | Best UX Flow | Voice + plain English + passkey, no seed phrase ever |
+| 6 | **General** | Best Privacy by Design | EIP-5564 stealth as default, not opt-in |
+| 7 | **Sourcify** | Contract Intelligence | Sourcify-verified ABI decode + risk classifier as anti-blind-signing layer |
 
 Realistic outcome: **$8–12k cash + Umia / ENS / SpaceComputer recognition.** Full tracking → [docs/05-Bounties.md](./docs/05-Bounties.md)
 
@@ -251,7 +232,7 @@ app/
     voice/, twin-tool/            OpenAI Realtime ephemeral keys + tool bridge
     x402/, agents/, agent/[ens]   Agent directory + x402 paywalled routes
     ens/, stealth/, stealth/send  ENS resolve, stealth gen, stealth send
-    cosmic-seed/                  Orbitport cTRNG proxy (server-side)
+    cosmic-seed/                  Orbitport cTRNG proxy (wired but not load-bearing)
     onboarding/, profile/         Twin spawn + ENS Text Record write
     messages/, history/, …        Twin-to-twin DM, hybrid history (client + server)
 
@@ -264,7 +245,8 @@ components/
 
 lib/
   viem, ens, ensip25, namestone   Chain + identity (NameStone wired as fallback)
-  cosmic, stealth, payments       Privacy primitives
+  stealth, payments               Privacy primitives (cosmic.ts wrapper exists but unused)
+  sourcify, tx-decoder, contract-risk    Sourcify ABI lookup + plain-English decode + risk classifier
   x402-client, twin-tools         AI SDK v6 tool factory (15+ tools)
   voice-tools, agents, messages   Voice subset, agent directory, ENS messenger
   privy-server, prompts, abis     Server auth, system prompts, contract ABIs
@@ -310,7 +292,6 @@ The full doc set lives under [`docs/`](./docs) and is the source of truth for th
 | Hour | If X fails | Then |
 |---|---|---|
 | 24 | Voice flickers | Drop voice, lock chat mode |
-| 30 | cTRNG API hangs | Cached cTRNG samples + real attestation hashes |
 | 36 | Stealth on-chain buggy | Drop Tier 2 stealth, polish Tier 1 |
 | 36 | x402 live fails | Pre-sign tx + show in block explorer tab |
 | 40 | Sepolia RPC outage | Pivot to NameStone (`lib/namestone.ts` is wired but unused) |
