@@ -1,273 +1,176 @@
-# 05 — Bounty-Stack (Verified May 2026)
+# 05 — Bounty-Stack (Final, 2026-05-10)
 
-> Wir hitten 7+ Bounties realistisch. Realistic outcome: $8-12k cash.
->
-> **Wichtigste Verifikation:** ENSIP-25 ist offizieller Standard für AI Agent Identity in ENS, ERC-8004 IdentityRegistry ist live auf Mainnet (seit 29. Jan 2026) + Base Sepolia. Wir implementieren beides = doppelter ENS-Bounty-Hit.
+> **Status:** Software shipped. The bounty story below describes what's actually in the repo on submission day. Apify x402 was removed from scope; SpaceComputer is now KMS-only (cTRNG was dropped because the gateway didn't sign samples).
 
-## 🎭 Pitch-Frame (locked 2026-05-09)
+## 🎭 Pitch-Frame
 
 **Tagline:** *"Crypto for everyone — even my grandma."*
+**Sub-line:** *"The first crypto interface built for humans, not engineers."*
 
-Die Bounties werden nicht in einer Feature-Tour eingelöst, sondern in **einem Reveal-Beat nach der Maria/Tom-Demo**:
-- Maria (67) sendet Tom 100 USDC per Voice (60 s, ein Touch)
-- Cut. Schwarz. Bullets erscheinen: kein Seed, kein Hex, Stealth by Default (EIP-5564), Sourcify-decoded plain-English tx, ENSIP-25-verified agent-to-agent x402
-- Closing: *"Crypto isn't hard. It's just been built for engineers. Until now."*
+Maria (67, Stuttgart) sends Tom 1 USDC by voice in 60 s. She sees no hex, no seed phrase, no gas. The reveal beat exposes every advanced primitive that ran silently underneath: KMS-signed twin key, EIP-5564 stealth address, ENSIP-25 + ERC-8004 verification, Sourcify-decoded plain-English tx, twin-to-twin x402.
 
-Das macht jeden Bounty zur natürlichen Konsequenz der Story. Volles Skript: `docs/06-Demo-Skript.md`. Slides: `docs/14-Pitch-Slides.md`.
+Full skript: `docs/06-Demo-Skript.md`. Slides: `docs/14-Pitch-Slides.md`.
 
-## 📊 Live-Demo-Status (Stand 2026-05-09)
+## 📊 Bounty Status
 
-| # | Bounty | Status | Was fehlt für volle Punkte |
+| # | Bounty | Status | What's live |
 |---|---|---|---|
-| 1 | Umia — Agentic Venture | 🟡 Code-fertig | Pitch-Skript + Slides |
-| 2 | **ENS for AI Agents** | 🟢 **Live** | nichts technisch — pitch sitzt |
-| 3 | **ENS Creative** | 🟢 **Live** | nichts — `stealth-meta-address` + ENS-Messenger sind on-chain demonstrable |
-| 4 | Apify x402 | 🟡 Mock grün | live Apify-Tx ($1+ USDC, mainnet wallet funded) |
-| 5 | **SpaceComputer (KMS)** | 🟢 **Live** | KMS ist die Signing-Authority für jeden Twin: `lib/kms.ts` (viem `LocalAccount` adapter, EIP-191/EIP-712), `app/api/onboarding/route.ts:108` (createTwinKey pro Twin), `lib/transfers.ts` + `lib/payments.ts` signen via KMS. cTRNG-Wrapper existiert (mock fallback), nicht load-bearing. |
-| 6 | Best UX Flow | 🟢 **Live inkl. Voice** | OpenAI Realtime über WebRTC im Voice-Tab — Listening/Thinking/Speaking-States, Function-Calls via `/api/twin-tool`. Wenn `OPENAI_API_KEY` fehlt → graceful 503 + Switch-to-Chat-Card. |
-| 7 | **Best Privacy by Design** | 🟢 **Live** | nichts — Stealth-Send läuft end-to-end |
-| 8 | **Sourcify — Contract Intelligence** | 🟢 **Live** | Risky-Approval-Demo im Send-Tab zeigen; optional Sourcify-first Decoder für noch stärkeren Sponsor-Claim |
+| 1 | Umia — Agentic Venture | 🟢 ready to pitch | Code + Maria-story locked. Slides in `docs/14-Pitch-Slides.md`. |
+| 2 | **ENS for AI Agents** | 🟢 LIVE | ENSIP-25 + ERC-8004 IdentityRegistry text record set on every twin during onboarding. `findAgents` + `hireAgent` exercise discovery. Verified on every onboarded twin. |
+| 3 | **ENS Most Creative** | 🟢 LIVE | Three creative ENS patterns: `stealth-meta-address`, `twin.kms-key-id` + `twin.kms-public-key` (the KMS-keyed gate for messaging), and `chat.<peer>.msg.<i>` text-records-as-messenger. |
+| 4 | **SpaceComputer (KMS)** | 🟢 LIVE | Every twin's signing key is satellite-attested in Orbitport KMS. `lib/kms.ts` is a viem `LocalAccount` adapter; onboarding mints per-twin keys, transfers/messages/sends all sign via KMS. Live KMS verify panel in agent profile. |
+| 5 | **Best UX Flow** | 🟢 LIVE | Voice + chat both shipped. Demo mode (Maria-Mode) with postcard reveal + Etherscan CTA. Light-mode-only consumer-grade palette. |
+| 6 | **Best Privacy by Design** | 🟢 LIVE | End-to-end stealth send → inbox → claim. `stealth-meta-address` text record is the canonical recipient handle. |
+| 7 | **Sourcify Contract Intelligence** | 🟢 LIVE | Inspect → Decode → Decide flow on every approval. Risky-Approval demo button in send tab. |
+| 8 | **x402 (Coinbase)** | 🟢 LIVE | `analyst.ethtwin.eth` paywalled with `@x402/next`; `hireAgent` auto-pays via `@x402/fetch`. Twin-to-twin only. |
 
-**Solid-Cash-Floor:** ENS×2 + Privacy + UX = ~$3-4k einigermaßen sicher.
-**Stretch-Add:** Umia + Apify + Sourcify wenn Pitch + live Tx + Risky-Demo landen.
+**Solid floor:** ENS×2 + KMS + Privacy + UX + Sourcify + x402 = realistic $7-10k.
+**Stretch:** Umia pitch lands strong.
+
+**Apify x402:** ❌ **DROPPED.** Removed end-to-end (`requestDataViaX402` tool, `callApifyX402` helper, `app/api/x402/route.ts`, scripts, env vars). The Apify story didn't justify the demo math ($1 minimum) and pulled focus from the twin-to-twin x402 angle which is more on-narrative.
+
+**Orbitport cTRNG:** ❌ **DROPPED.** Probed live with `scripts/diag-orbitport.ts` — the gateway returns unsigned samples with no signature/attestation chain, so "cosmic-seeded" would have been a label without provenance. The KMS track carries the SpaceComputer story end-to-end (every twin's signing key IS satellite-attested).
 
 ---
 
-## 🥇 1. Umia — Best Agentic Venture ($2k cash)
+## 🥇 1. Umia — Best Agentic Venture
 
-> **Status: 🟡 Code-fertig.** Twin live auf https://ethtwin-woad.vercel.app — Mint, Messenger, Stealth-Send, Token-Transfer, Agent-Hire alle gewired. Fehlt: Pitch-Skript + Slides (`Phase 3 Pitcher` TODO).
+**Pitch:** EthTwin is the wallet for the next billion users — the people who rejected crypto so far because it was built for engineers. Maria is the proof that the tooling is finally there.
 
-### Anforderung
-Project must classify as Agentic Venture suitable to launch on Umia. Must incorporate Agents in execution. Must have reasonable path to revenue + token.
-
-### Wie wir hitten
-
-| Kriterium | Unsere Antwort |
+| Criterion | Our answer |
 |---|---|
-| Agentic Workflows | Twin ist core Agent. Hires sub-agents via x402 (`analyst.eth`) |
-| Path to Revenue | Subscription tiers (Privacy Premium, Pro Voice, Multi-Twin), x402 service fees, B2B-Twin-as-API |
-| Token-Story | $TWIN governance + service credits + premium-tier-unlock |
-| Crowdfunding-Palatable | Klar definiertes Produkt, demoable, zugänglicher Markt |
-
-### Pitch-Slide für Umia (Maria/Tom-Edition)
-- **Slide 1:** "Crypto for everyone — even my grandma" + Maria-Avatar
-- **Slide 2:** Live-Demo (Stub-Cover)
-- **Slide 3:** Reveal — "What Maria didn't see" (Bullets: kein Seed, kein Hex, Stealth EIP-5564, Sourcify-decode, ENSIP-25 + x402)
-- **Slide 4:** ENS as identity layer (optional Q&A-Backup)
-- **Slide 5:** Umia — "the next 1 billion users", drei Revenue-Säulen + $TWIN Token-Distribution
-
-### Pitch-Sentence (Umia-spezifisch)
-> *"EthTwin ist nicht die Wallet für die nächsten 100 Millionen Power-User. Es ist die Wallet für die nächsten 1 Milliarde — die, die Krypto bisher als zu kompliziert abgelehnt haben. Maria ist der Beweis dass das Tooling jetzt da ist."*
-
-### Mentor: Francesco Mosterts (`@fra_mosterts`)
+| Agentic Workflows | Twin is the core agent. Hires sub-agents via x402 (`analyst.ethtwin.eth`) |
+| Path to Revenue | Subscriptions (Privacy Premium, Pro Voice, Multi-Twin), x402 service fees on agent-to-agent calls, B2B Twin-as-API for fintechs |
+| Token Story | $TWIN governance + service credits + premium-tier unlock |
+| Crowdfunding-Palatable | Demoable, accessible market, clear product |
 
 ---
 
-## 🥈 2. ENS — Best ENS Integration for AI Agents ($1.25k 1st place)
+## 🥈 2. ENS — Best ENS Integration for AI Agents ($1.25k)
 
-> **Status: 🟢 LIVE.** Every twin on Sepolia ENS gets `agent-registration[<interopAddr>][<agentId>]` text record set during onboarding via `lib/ensip25.ts:encodeInteropAddress()`. `verifyAgentRegistration()` reads it back. `findAgents` + `hireAgent` Twin tools exercise the discovery flow. Verified for `daniel.ethtwin.eth` + `rami.ethtwin.eth` + every onboarded twin.
+**Status: 🟢 LIVE.** Every twin on Sepolia ENS gets `agent-registration[<interopAddr>][<agentId>]` set during onboarding via `lib/ensip25.ts:encodeInteropAddress()`. `verifyAgentRegistration()` reads it back. `findAgents` + `hireAgent` exercise the discovery flow.
 
-### 🔥 Killer-Move: ENSIP-25 + ERC-8004 Implementation
-
-**ENSIP-25** (offizieller Standard 2025/2026) + **ERC-8004 IdentityRegistry** (live auf Mainnet seit 29. Jan 2026).
-
-#### Verified Contract Addresses
+### ENSIP-25 + ERC-8004 verified
 
 ```
-ERC-8004 IdentityRegistry:
+ERC-8004 IdentityRegistry
 - Mainnet:       0x8004A169FB4a3325136EB29fA0ceB6D2e539a432
 - Base Sepolia:  0x8004A818BFB912233c491871b3d84c89A494BD9e
 - Sepolia:       0x8004A818BFB912233c491871b3d84c89A494BD9e
 ```
 
-#### What ENSIP-25 Specifies
-
-Text Record key format:
+Text record key format:
 ```
-agent-registration[<registry>][<agentId>]
+agent-registration[<registry>][<agentId>] = "1"
 ```
 
-- `<registry>` = ERC-7930 interoperable address of agent registry
-- `<agentId>` = unique agent ID
-- Value: `"1"` or any non-empty string
+`<registry>` = ERC-7930 interoperable address of the agent registry; `<agentId>` = unique ID; value `"1"` = registered.
 
-#### Our implementation
-```typescript
-// During onboarding
-const registry = '0x8004A818BFB912233c491871b3d84c89A494BD9e' // Base Sepolia
-const agentId = userId
-const interopAddr = buildERC7930(registry, 84532) // Base Sepolia chain id
-const recordKey = `agent-registration[${interopAddr}][${agentId}]`
+### Use-case checklist
 
-await setEnsText({
-  name: "daniel.ethtwin.eth",
-  key: recordKey,
-  value: "1"
-})
-```
-
-#### Verification flow (in our demo!)
-```typescript
-// Twin verifies analyst.eth before paying
-const value = await getEnsText({ 
-  name: "analyst.ethtwin.eth", 
-  key: `agent-registration[${interopAddr}][${analystId}]` 
-})
-const isVerified = value !== null && value !== ''
-if (isVerified) showBadge("✓ ENSIP-25 Verified Agent")
-```
-
-### Use-Case-Hits (workemon's checklist)
-
-| Anforderung | Status | Wo bei uns |
-|---|---|---|
-| Naming individual agents with ENS | ✅ | Jeder Twin = `{name}.ethtwin.eth` |
-| Subname registry for fleet | ✅ | `*.ethtwin.eth` minted on Sepolia ENS (dev wallet = parent owner), agents auto-eingetragen in `agents.directory` text record |
-| Capabilities, endpoints in text records | ✅ | `twin.capabilities`, `twin.endpoint` |
-| Agent-to-agent discovery via ENS | ✅ | Twin findet `analyst.ethtwin.eth` live |
-| **ENS + verifiable credentials/attestations** | ✅✅ | **ENSIP-25 + ERC-8004 implementation** |
-| Delegation: agent acts on behalf of human | ✅ | Twin handelt für User (Smart Wallet delegation) |
-
-**ENS-Removal-Test: 6 von 6 Demo-Momenten brechen ohne ENS. ENSIP-25 macht uns zum Showcase.**
-
-### Pitch-Sentence (Maria-Frame)
-> *"Maria sieht keine Hex-Adressen, sie sieht Tom. Hinter den Kulissen verifyt ihr Twin `tom.ethtwin.eth` über ENSIP-25 + ERC-8004 IdentityRegistry — den offiziellen Standard. Wenn du ENS killst, killst du Maria's Krypto-Erfahrung."*
-
-### Mentor: workemon (`@workemon`)
-
----
-
-## 🥉 3. ENS — Most Creative Use of ENS ($1.25k 1st)
-
-> **Status: 🟢 LIVE — TWO creative patterns shipping on-chain.**
-> 1. `stealth-meta-address` text record (proposed pattern, no ENSIP yet) — published to `daniel.ethtwin.eth` via `pnpm ens:stealth-provision` ([tx 0xbf9f…2a7e](https://sepolia.etherscan.io/tx/0xbf9fffbedd589176c70c9fbac43a20f7cb2b10770afc33c547fd72c932782a7e))
-> 2. **ENS-as-messaging-medium** — every message is a sub-subname `msg-<ts>-<seq>.<recipient>.ethtwin.eth` with `from`/`body`/`at` text records, indexed via `messages.list` text record on the recipient. Live in the **ENS Messenger** tab. Reads via single direct resolver eth_call (`readTextRecordFast`).
-
-### 🔥 Unsere kreative Erfindung: Stealth-Meta-Address Text Record
-
-**Es gibt KEINEN offiziellen ENSIP für stealth meta-addresses in ENS.** Wir definieren das Pattern:
-
-```typescript
-await setEnsText({
-  name: "daniel.ethtwin.eth",
-  key: "stealth-meta-address",  // ← Unser proposed pattern
-  value: "st:eth:0x..."  // EIP-5564 standard format
-})
-```
-
-**Das ist exakt "creative use that goes beyond name → address resolution"**
-
-### Hits-Tabelle
-
-| Ihre Anforderung | Status |
+| Requirement | Where in our build |
 |---|---|
-| **Stealth addresses (EIP-5564) in ENS** | ✅✅ **Unser hero use case** |
-| Verifiable credentials via Text Records | ✅ ENSIP-25 doppelt |
-| Privacy primitives | ✅ Stealth via ScopeLift SDK + ENS-Messenger als sub-subname pattern |
+| Naming individual agents with ENS | Every twin = `<name>.ethtwin.eth` |
+| Subname registry for an agent fleet | `*.ethtwin.eth` minted on Sepolia ENS, agents.directory text record on the parent |
+| Capabilities, endpoints in text records | `twin.capabilities`, `twin.endpoint` |
+| Agent-to-agent discovery via ENS | Twin finds `analyst.ethtwin.eth` live |
+| ENS + verifiable credentials/attestations | **ENSIP-25 + ERC-8004 implementation** |
+| Delegation: agent acts on behalf of human | Twin signs via KMS-derived address bound to the user's ENS |
 
-### Pitch-Angle (Maria-Frame)
-> *"Marias 100 USDC gingen an Toms `stealth-meta-address` Text Record — direkt aus ENS. Kein extra Registry, kein extra Onboarding für Tom. Genau das ist 'creative use of ENS': Privacy-Infrastruktur als Text-Record-Pattern. Wir proposen das als neuen ENSIP."*
-
----
-
-## 4. Apify — x402 Integration ($1k Visa + $1k Credits 1st place)
-
-> **Status: 🟡 Code-fertig, live-Tx ausstehend.**
-> - `lib/x402-client.ts` mit v1+v2 SDK dispatch (ExactEvmScheme + ExactEvmSchemeV1, CAIP-2 + chain slugs), receipt-parsing inline
-> - Mock-Test grün: `pnpm test:x402-mock` → 402-challenge → signed X-PAYMENT → 200
-> - **Fehlt:** funded mainnet wallet (~$5 USDC on Base) + x402-enabled Apify actor slug + live tx
-
-### ⚠️ Verified Reality Check
-- **Minimum payment: $1 USDC per request**
-- Only **Pay-Per-Event Actors** are x402-enabled
-- Base **Mainnet** primary, Base Sepolia depends on facilitator
-- **Apify MCP server supports x402** — agents pay via x402, no API token needed
-- Use `@x402/fetch` v2.x (NOT `x402-fetch` v1.x)
-
-### Wie wir hitten (Maria-Frame)
-
-- **Demo-Beat 1 (Verify):** Maria fragt "is this safe?" → ihr Twin bezahlt $1 USDC an `analyst.ethtwin.eth` über x402 für eine Verifikations-Antwort. Live, on-chain, sichtbar als $1-USDC-Pill.
-- **Demo-Beat 2 (Daten):** Twin nutzt Apify x402 (Pay-Per-Event Actor) für Real-Time-Recipient-Reputation-Lookup wenn Apify-Endpoint live ist.
-- **Story:** Maria sieht den Preis nie. Twin entscheidet — das ist agent-driven payment, nicht user-driven. x402 Mikro-Markt in Action.
-
-### Demo-Adjustment
-- ❌ Old script: "Twin pays $0.20 to Apify"
-- ✅ New script: "Twin pays $1 USDC to Apify via x402"
-
-### Mentor: Jakub Kopecky (`@themq37`)
-- **Klären in Phase 0:** Funktioniert x402 auf Base Sepolia oder müssen wir Mainnet nutzen?
-- Sandbox-Endpoint bestätigen
+**ENS-removal test:** every demo beat breaks if you remove ENS. ENSIP-25 makes us the showcase.
 
 ---
 
-## 5. SpaceComputer — Best Use of Space-Powered Tech ($6k Pool) — DROPPED
+## 🥉 3. ENS — Most Creative Use of ENS ($1.25k)
 
-> **Status: ⚪ NOT submitting.** Der Orbitport-Wrapper (`lib/cosmic.ts`) ist im Code, aber `lib/stealth.ts` und `lib/message-crypto.ts` haben das cosmic-seeding explizit entfernt (`cosmicSeeded: false`, "post-cosmic flow"). Damit ist cTRNG NICHT load-bearing für irgendeinen Demo-Beat. Wir submitten den Track nicht — sonst riskieren wir einen "claim != reality" Punktabzug.
->
-> Falls vor Demo-Tag noch `ORBITPORT_CLIENT_ID` + `_SECRET` gesetzt UND cosmic seeding wieder in `lib/stealth.ts:generatePrivateAddress()` re-aktiviert wird, kann der Track wieder rein.
+**Status: 🟢 LIVE — three creative ENS patterns shipping on-chain.**
 
----
+### Pattern 1 — `stealth-meta-address` text record
 
-## 6. ETHPrague — Best UX Flow
+No official ENSIP exists for stealth meta-addresses in ENS. We define the pattern:
 
-> **Status: 🟢 LIVE.** Voice wurde wieder eingebaut (Realtime über WebRTC mit Function-Calls), Chat bleibt der zuverlässige Fallback (`docs/13-Chat-Only-Demo-Runbook.md`). Alles andere live auf https://ethtwin-woad.vercel.app.
+```
+stealth-meta-address = "st:eth:0x04<x32><y32><x32><y32>"  // 132 hex chars
+                                ↑ spending pubkey  ↑ viewing pubkey
+```
 
-| Ihre Checkliste | Status | Wie wir's machen |
-|---|---|---|
-| **Anti-Blind Signing** | ✅ | Plain English Tx Summary via `lib/tx-decoder.ts` + `components/tx-approval-modal.tsx` (used by token-transfer) |
-| Gradual Disclosure | ✅ | Privy Passkey + Email + Wallet, no seed phrase |
-| Gas/Chain Abstraction | ✅ | Privy Smart Wallet on Base Sepolia, dev-wallet relays user txs gasless |
-| ENS over hex | ✅ | `withEnsName(addr)` + `useEnsName` hook + `AvatarImage` fallback to short 0x… everywhere |
-| Fear of Loss | 🟡 | Tx approval modal shows the action; no explicit "risk warning" UI yet |
-| Global Accessibility | 🟢 | Voice-Tab live (`components/voice-twin.tsx`) + Chat-only Runbook als Fallback |
+Compatible with EIP-5564 stealth-address derivation; ENS Text Records replace ERC-6538's onchain registry for better UX. Live on every onboarded twin.
 
----
+### Pattern 2 — KMS handle as ENS text record (`twin.kms-key-id` + `twin.kms-public-key`)
 
-## 7. ETHPrague — Best Privacy by Design
+The twin's signing identity is published as ENS text records:
+- `twin.kms-key-id` — the SpaceComputer Orbitport KMS handle.
+- `twin.kms-public-key` — 65-byte uncompressed secp256k1 pubkey (`0x04 || x || y`).
 
-> **Status: 🟢 LIVE.** End-to-end stealth send works in the **Stealth Send** tab. `lib/payments.ts:sendStealthUSDC()` → `lib/stealth.ts:generatePrivateAddress()` (real ScopeLift SDK, mocked-flag visible) → on-chain USDC.transfer to a one-time stealth address. Verified via `pnpm send:stealth-usdc`.
+This is the gate for the on-chain messenger (Path C-lite, see `lib/messages.ts`): every message carries a KMS-EIP-191 signature, and readers verify it against the sender's published pubkey. ENS becomes the canonical KMS handle directory.
 
-- ✅ **Stealth Addresses by Default** — Sealth Send is a top-level tab, not a hidden setting
-- ✅ **No User Data Collected** — Privy custodied wallet (TEE + sharding); server only stores Privy user ID + ENS name
-- ✅ **EIP-5564 via ScopeLift SDK** — `@scopelift/stealth-address-sdk` for the on-chain stealth address derivation; ENS Text Record `stealth-meta-address` is the canonical recipient handle
-- ✅ **Zero Metadata Leak on receiver side** — every send goes to a fresh stealth address derived from the recipient's `stealth-meta-address` text record; no on-chain link between sender and recipient
+### Pattern 3 — ENS-as-messenger (text-records-on-twin)
 
-> *"Maria weiß nicht mal was 'stealth' heißt — und genau deshalb ist sie geschützt. Privacy ist nicht Feature in EthTwin. Privacy IST das Default."*
+Every conversation lives directly on each twin's subname as `chat.<peer>.msg.<i>`, `chat.<peer>.count`, `chat.<peer>.participants` text records. No separate chat subname — messages live in your existing twin record, alongside `stealth-meta-address`, `twin.kms-key-id`, etc. Open the twin in the ENS app and you see the conversations as records.
+
+This is exactly "creative use of ENS that goes beyond name → address resolution."
 
 ---
 
-## 8. Sourcify — Contract Intelligence / Anti-Blind-Signing
+## 4. SpaceComputer Orbitport — Best Use of Space-Powered Tech
 
-> **Status: 🟢 LIVE.** Sourcify ist als Contract-Intelligence-Layer im Send-Flow sichtbar. Base-Sepolia-Sends öffnen vor der Ausführung das `Sourcify Contract Intelligence` Review: **Inspect → Decode → Decide**. Zusätzlich gibt es im Send-Tab einen non-executable **Try risky approval demo** Button, der ein `approve(spender, maxUint256)` simuliert und als HIGH risk markiert.
+**Status: 🟢 LIVE — KMS is load-bearing for every twin.**
 
-### Anforderung
-Build a tool, platform, or application that makes meaningful use of Sourcify's open dataset of verified smart contracts. Sourcify verification means open-source / inspectable — nicht automatisch safe. Besonders relevant: AI-powered contract explainer, risk highlighting, common vulnerability / wallet-risk patterns.
+Each twin's signing key is a satellite-attested ETHEREUM secp256k1 key in SpaceComputer Orbitport KMS. We never see the private key; we send signing intents over JSON-RPC and get back signatures.
 
-### Wie wir hitten
+### Where KMS shows up in the build
 
-| Kriterium | Unsere Antwort |
+| File / Route | KMS-signed action |
 |---|---|
-| Use of Sourcify data | `lib/sourcify.ts` liest `full_match` / `partial_match` Metadata, ABI, Contract-Name und Source-URL aus `repo.sourcify.dev` für Mainnet, Sepolia und Base Sepolia |
-| Impact & usefulness | EthTwin verhindert Blind Signing für nicht-technische Nutzer: Maria sieht keine Hex-Calldata, sondern eine verständliche Sicherheitsentscheidung |
-| Technical execution | `/api/decode-transaction` routet Browser-Decoding serverseitig; `lib/tx-decoder.ts` verbindet Sourcify ABI Decode + Plain-English Summary + Risk Layer |
-| Novelty | Sourcify ist nicht nur Badge, sondern Schritt 1 eines agentischen Safety-Flows: **Inspect → Decode → Decide** |
+| `app/api/onboarding/route.ts` | `createTwinKey(label)` mints a new ETHEREUM key per twin during mint. The keyId + uncompressed pubkey are published as ENS text records (`twin.kms-key-id`, `twin.kms-public-key`). |
+| `lib/kms.ts:kmsAccount({ keyId, address })` | viem-compatible `LocalAccount`. Plug it into any `WalletClient`; `signTransaction` / `signMessage` / `signTypedData` all proxy to KMS. |
+| `lib/transfers.ts:sendToken` | When the twin has funds + a published `twin.kms-key-id`, `sendToken` signs with the twin's KMS key (not the dev wallet). |
+| `lib/payments.ts:sendStealthUSDC` | Same — KMS-signed when the twin can pay; dev wallet relays otherwise. |
+| `lib/messages.ts:sendMessage` | Each on-chain message body is KMS-signed via EIP-191. |
+| `app/api/kms/verify/route.ts` | Live KMS proof endpoint — signs a fresh nonce with the twin's key, recovers the signer locally, confirms it matches the twin's `addr` text record. The agent profile dialog has a "Verify" button that calls this. |
+| `scripts/diag-orbitport.ts` | Live KMS + cTRNG capability probe (used during development). |
 
-### 🔥 Core Framing
+### Why cTRNG was dropped
 
-> *"Sourcify does not tell Maria what is safe. It gives EthTwin verified source evidence, and EthTwin turns that evidence into a plain-English risk decision before she signs."*
+The diagnostic confirmed that Orbitport's `ctrng.random` returns bytes but no `signature` field — there is no provenance chain a verifier can check. Without verifiability, "cosmic-seeded" would have been a label, not a claim. The KMS track stays — every twin's key actually IS in the satellite-attested HSM.
 
-### Implementation
+> *"The grandma's wallet is signed by a key that lives in space. She never sees it. But every byte of every transaction has been through orbital infrastructure."*
 
-- `lib/sourcify.ts` — Sourcify repository lookup for `metadata.json`, ABI, contract name, `full_match` / `partial_match`, source URL
-- `lib/tx-decoder.ts` — decodes tx calldata, uses Sourcify as fallback for unknown contracts, attaches source verification + risk summary
-- `lib/contract-risk.ts` — wallet-risk classifier on top of Sourcify-derived evidence
-- `app/api/decode-transaction/route.ts` — server-side decode API so Sourcify lookup does not depend on browser/CORS behavior
-- `components/tx-approval-modal.tsx` — visible UX: Sourcify Contract Intelligence, source check, risk check, high-risk acknowledgement, demo-only reviews
-- `components/token-transfer.tsx` — Base Sepolia sends always run Sourcify review before execution; `Try risky approval demo` shows the HIGH-risk approval path without sending a tx
+---
 
-### Risk Patterns
+## 5. ETHPrague — Best UX Flow
 
-| Pattern | Risk | User-facing behavior |
+**Status: 🟢 LIVE.**
+
+| Checklist | Where in the build |
+|---|---|
+| Anti-blind-signing | `lib/tx-decoder.ts` + `components/tx-approval-modal.tsx` — Sourcify ABI decode + plain-English risk |
+| Gradual disclosure | Recovery code is the only secret; KMS holds the actual signing key |
+| Gas / chain abstraction | Dev wallet relays gas top-ups for stealth claims; KMS twin handles its own funds when funded |
+| ENS over hex | `withEnsName()`, `useEnsName`, `AvatarImage` everywhere; `0x...` is short-form fallback only |
+| Voice-first | `components/voice-twin.tsx` over WebRTC + background reply watcher |
+| Demo Mode | `?demoMode=1` toggles Maria-Shell (single-view phone shell + quick-send cards + receipt postcards with space-themed reveal) |
+
+---
+
+## 6. ETHPrague — Best Privacy by Design
+
+**Status: 🟢 LIVE.** End-to-end stealth send works in the **Stealth Send** tab.
+
+- `lib/payments.ts:sendStealthUSDC()` → `lib/stealth.ts:generatePrivateAddress()` (real ScopeLift SDK) → on-chain USDC.transfer to a one-time stealth address + ERC-5564 Announcement.
+- `app/api/stealth/inbox/route.ts` scans Announcer logs and re-derives stealth addresses with the recipient's viewing key, so the receiver can find their incoming payments.
+- `app/api/stealth/claim/route.ts` sweeps the stealth address into the recipient's twin wallet (gas top-up from dev wallet, sweep tx signed by the locally-derived stealth private key).
+- `stealth-meta-address` is the canonical recipient handle on ENS — no separate registry needed.
+
+> *"Maria doesn't know what 'stealth' means — and that's exactly why she's protected. Privacy isn't a feature in EthTwin. Privacy IS the default."*
+
+---
+
+## 7. Sourcify — Contract Intelligence / Anti-Blind-Signing
+
+**Status: 🟢 LIVE.** Sourcify is the contract-intelligence layer in the send flow. Base-Sepolia sends open the **Sourcify Contract Intelligence** review before execution (Inspect → Decode → Decide). The send tab also has a non-executable **Try risky approval demo** button that simulates `approve(spender, maxUint256)` and marks it HIGH risk.
+
+| Risk pattern | Risk level | UX message |
 |---|---|---|
 | Unverified contract + calldata | HIGH | "Twin cannot inspect verified source" |
 | Unknown selector | HIGH | "Function could not be mapped to verified ABI" |
@@ -277,56 +180,30 @@ Build a tool, platform, or application that makes meaningful use of Sourcify's o
 | Sourcify partial match | MEDIUM | "Inspectable, but needs extra caution" |
 | Verified decoded transfer | LOW | "Understandable action; confirm recipient and amount" |
 
-### Demo Beat
-
-1. Open **Send** tab on Base Sepolia.
-2. Click **Try risky approval demo**.
-3. Modal shows `Sourcify Contract Intelligence`:
-   - Inspect: Sourcify / known ABI evidence
-   - Decode: unlimited USDC approval
-   - Decide: **HIGH — Unlimited token approval**
-4. Point out that it is **demo-only and non-executable**.
-5. Pitch line: *"Sourcify makes the code inspectable. EthTwin turns that inspectability into a safety decision Maria can understand."*
-
-### Mentor / Sponsor Feedback Incorporated
-
-Sourcify feedback was that verification should not be equated with safety. We changed the product accordingly: Sourcify is the open-source evidence layer, and EthTwin adds a separate wallet-risk pattern layer before presenting any recommendation.
+> *"Sourcify makes the code inspectable. EthTwin turns that inspectability into a safety decision Maria can understand."*
 
 ---
 
-## 📊 Score-Matrix für Self-Assessment (refreshed 2026-05-09)
+## 8. x402 (Coinbase) — Twin-to-Twin Micropayments
 
-| Bounty | Confidence | Was hochpushen würde |
-|---|---|---|
-| Umia | **7** | Maria-Story + Pitch-Slide-Markdown done; Slides müssen noch in Keynote/Slides gebaut werden |
-| ENS for Agents | **9** | live; Maria + Tom seed-script ready (T1-22 done) |
-| ENS Creative | **9** | doppelter Hit (stealth-meta-address + ENS-Messenger) — strongest claim |
-| Apify x402 | **5** | live tx auf Base Mainnet muss endlich laufen — sonst nur Mock-Story |
-| SpaceComputer | **0 (dropped)** | cosmic seeding ist aus stealth.ts entfernt — Track wird nicht submittet |
-| Best UX | **9** | komplett rebuilt zu warmem Premium-Konsumer-Look + Maria-Mode + Quick-Send-Cards + Gamification-Pills |
-| Best Privacy | **8** | Stealth-Send läuft live; X-ray-Reveal-Card zeigt EIP-5564 + ENSIP-25 + Sourcify transparent |
-| Sourcify Contract Intelligence | **8** | Risky-Approval-Demo live zeigen; noch stärker mit Sourcify-first Decode für normale ERC20-Sends |
-| **Aesthetics** (general scoring axis) | **8.5** | warm Premium-Konsumer-Palette als Default, ContrastCard auf Landing, Receipt-Postcard mit X-ray-Reveal, Confetti-Pulse, Twin-Avatar-Breathing, Onboarding entjargonisiert |
-| **Wow Factor** (general scoring axis) | **8** | X-ray Reveal + Tom-Auto-Reply ("thanks oma! 💜") + Confetti-Pulse on send + Maria-Persona-Story landen 3 emotionale Beats |
+**Status: 🟢 LIVE.** Twin-to-twin only (Apify path was dropped).
 
-**Erwarteter Cash-Output realistic:** $5-8k floor (ENS×2 + Privacy + UX + Best UX = solid mit aktuellem Polish-Stand). $9-12k stretch (wenn Umia-Pitch + Apify-Live-Tx + Sourcify-Polish am Demo-Tag landen).
+- `lib/x402-client.ts` wraps `@x402/fetch` v2 with both v1 (chain slugs) and v2 (CAIP-2) namespace registration so the wrapper picks whichever the server requests.
+- `paidFetch()` / `paidFetchWithReceipt()` auto-pay HTTP 402 challenges and parse the `X-PAYMENT-RESPONSE` header into a typed receipt with tx hash + Basescan URL.
+- `app/api/agents/analyst/route.ts` is paywalled with `@x402/next` middleware (`@coinbase/x402` facilitator); when `X402_ANALYST_PAY_TO` is set, calls require x402 settlement.
+- `lib/twin-tools.ts:hireAgent` runs ENSIP-25 verify → `paidFetch` → settled receipt with tx hash mirrored into server history.
 
-**Quick wins to close the gap (zu Demo-Tag):**
-1. `pnpm twins:seed-demo` laufen lassen (5 min, ~0.01 Sepolia-ETH) — sonst keine Live-Demo mit Maria/Tom
-2. 3 Sound-MP3s in `public/sounds/` droppen (15 min, freesound.org) — visceral polish
-3. Fund Base Mainnet wallet w/ $5 USDC + pick x402-actor (30 min) → Apify geht von 5 → 7
-4. Pitch 5× geprobt mit Timer (60 min) → Demo unter 3 min, sicher
-5. Backup-Video aufgenommen (45 min) — Insurance für Live-Crash
+Mock test (no real money) lives at `scripts/test-x402-mock.ts` (`pnpm test:x402-mock`) — spins up a local server speaking the x402 wire protocol to exercise the client end-to-end.
 
 ---
 
-## ⚠️ Multi-Bounty-Submissions
+## ⚠️ Multi-Bounty Submissions
 
-ETHPrague erlaubt **dasselbe Projekt für mehrere Bounties einzureichen**. Sicherstellen in Devfolio:
-- Jeder Bounty wird explizit bei der Submission angekreuzt
-- In der Project-Description jedem Bounty einen Absatz gewidmet
-- Alle Sponsoren-Mentoren wissen vor Pitch-Tag von uns
-- **ENSIP-25 + ERC-8004 prominent in Description** — das ist der Differentiator
+ETHPrague allows the same project to enter multiple bounty tracks. In Devfolio:
+- Tick every relevant bounty
+- Devote a paragraph in the project description to each
+- Mention sponsor mentors before pitch day
+- **Lead with ENSIP-25 + ERC-8004 + KMS-keyed-ENS** — that's the differentiator
 
 ## Sources
 
@@ -335,6 +212,5 @@ ETHPrague erlaubt **dasselbe Projekt für mehrere Bounties einzureichen**. Siche
 - ERC-8004 contracts: https://github.com/erc-8004/erc-8004-contracts
 - EIP-5564: https://eips.ethereum.org/EIPS/eip-5564
 - x402 protocol: https://docs.cdp.coinbase.com/x402/welcome
-- Apify x402: https://docs.apify.com/platform/integrations/x402
 - Sourcify repository: https://repo.sourcify.dev/
-- Sourcify docs: https://docs.sourcify.dev/
+- SpaceComputer Orbitport KMS: https://docs.spacecomputer.io/docs/how-to/kms
