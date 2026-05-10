@@ -550,7 +550,7 @@ export function VoiceTwin({
           )}
         </div>
         {errorMessage && state !== "unavailable" ? (
-          <p className="max-w-md text-center text-xs text-amber-300/80">
+          <p className="max-w-md text-center text-xs text-amber-700">
             {errorMessage}
           </p>
         ) : null}
@@ -558,13 +558,13 @@ export function VoiceTwin({
 
       {state === "unavailable" ? (
         <div className="border-t border-border/60 px-4 py-5">
-          <div className="flex items-start gap-3 rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-3">
-            <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-300" />
+          <div className="flex items-start gap-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-3">
+            <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-700" />
             <div className="flex-1 space-y-2">
-              <p className="text-sm font-medium text-amber-100">
+              <p className="text-sm font-medium text-amber-800">
                 Voice unavailable — using chat
               </p>
-              <p className="text-xs text-amber-100/70">
+              <p className="text-xs text-amber-700">
                 {errorMessage ??
                   "OPENAI_API_KEY is not set on the server. Falling back to text chat keeps the demo on track."}
               </p>

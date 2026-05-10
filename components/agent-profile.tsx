@@ -661,9 +661,9 @@ function VerifyKmsPanel({ ens }: { ens: string }) {
   }
 
   return (
-    <div className="rounded-md border border-purple-500/30 bg-purple-500/5 p-3 text-left">
+    <div className="rounded-md border border-violet-300 bg-violet-50 p-3 text-left">
       <div className="mb-1 flex items-center justify-between">
-        <span className="text-[10px] uppercase tracking-wider text-purple-300">
+        <span className="text-[10px] uppercase tracking-wider text-violet-700">
           Live KMS proof
         </span>
         <Button
@@ -698,8 +698,8 @@ function VerifyKmsPanel({ ens }: { ens: string }) {
             className={cn(
               "rounded-md px-2 py-1 text-[11px] font-semibold",
               result.kmsSigned
-                ? "bg-emerald-500/15 text-emerald-300"
-                : "bg-red-500/15 text-red-300",
+                ? "bg-emerald-50 text-emerald-700"
+                : "bg-red-50 text-red-700",
             )}
           >
             {result.kmsSigned
@@ -710,8 +710,8 @@ function VerifyKmsPanel({ ens }: { ens: string }) {
             className={cn(
               "rounded-md px-2 py-1 text-[11px] font-semibold",
               result.ensInSync
-                ? "bg-emerald-500/15 text-emerald-300"
-                : "bg-amber-500/15 text-amber-300",
+                ? "bg-emerald-50 text-emerald-700"
+                : "bg-amber-50 text-amber-700",
             )}
           >
             {result.ensInSync
@@ -758,7 +758,7 @@ function VerifyKmsPanel({ ens }: { ens: string }) {
         </div>
       ) : null}
       {error ? (
-        <p className="mt-2 text-[11px] text-red-300">{error}</p>
+        <p className="mt-2 text-[11px] text-red-700">{error}</p>
       ) : null}
     </div>
   )
@@ -785,8 +785,8 @@ function OwnRecoveryCodePanel({ ens }: { ens: string }) {
   }, [ens])
 
   return (
-    <div className="rounded-md border border-purple-500/30 bg-purple-500/5 p-3 text-left">
-      <div className="mb-1 text-[10px] uppercase tracking-wider text-purple-300">
+    <div className="rounded-md border border-violet-300 bg-violet-50 p-3 text-left">
+      <div className="mb-1 text-[10px] uppercase tracking-wider text-violet-700">
         Your KMS recovery code
       </div>
       {code ? (
@@ -799,14 +799,9 @@ function OwnRecoveryCodePanel({ ens }: { ens: string }) {
           <div className="mt-2 flex items-stretch gap-2">
             <code
               className={cn(
-                "flex-1 break-all rounded-md border border-border/60 bg-background/60 px-3 py-2 font-mono text-sm",
-                revealed ? "" : "select-none text-transparent",
+                "flex-1 break-all rounded-md border border-border/60 bg-card px-3 py-2 font-mono text-sm",
+                revealed ? "text-foreground" : "select-none text-muted-foreground tracking-widest",
               )}
-              style={
-                revealed
-                  ? undefined
-                  : { textShadow: "0 0 12px rgba(255,255,255,0.5)" }
-              }
             >
               {revealed ? code : "•".repeat(Math.min(code.length, 22))}
             </code>

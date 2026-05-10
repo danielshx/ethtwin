@@ -39,10 +39,10 @@ const META: Record<BountyTag, BountyMeta> = {
   ens: {
     label: "ENS",
     tip:
-      "Twin lives at an ENS subname; messages live as text records on a chat sub-subdomain. " +
+      "Twin lives at an ENS subname; messages live as text records on each twin's subdomain. " +
       "Resolved via the standard ENS Registry on Sepolia.",
     Icon: Globe,
-    tone: "text-sky-400",
+    tone: "text-sky-600",
   },
   ensip25: {
     label: "ENSIP-25",
@@ -50,7 +50,7 @@ const META: Record<BountyTag, BountyMeta> = {
       "Agent identity registered per ENSIP-25 + ERC-8004 IdentityRegistry — " +
       "the agent's chain interop address is published as a text record.",
     Icon: Coins,
-    tone: "text-blue-400",
+    tone: "text-blue-600",
   },
   kms: {
     label: "SpaceComputer KMS",
@@ -58,7 +58,7 @@ const META: Record<BountyTag, BountyMeta> = {
       "Twin's signing key is a satellite-attested ETHEREUM key in SpaceComputer Orbitport KMS. " +
       "Every transaction (mint, message, send) is signed by KMS server-side.",
     Icon: Satellite,
-    tone: "text-purple-400",
+    tone: "text-violet-600",
   },
   stealth: {
     label: "EIP-5564",
@@ -66,7 +66,7 @@ const META: Record<BountyTag, BountyMeta> = {
       "Payment goes to a one-time stealth address derived from the recipient's " +
       "stealth-meta-address — only the recipient can spend it.",
     Icon: Eye,
-    tone: "text-fuchsia-400",
+    tone: "text-fuchsia-600",
   },
   sourcify: {
     label: "Sourcify",
@@ -74,7 +74,7 @@ const META: Record<BountyTag, BountyMeta> = {
       "Calldata decoded against verified contract source from Sourcify before signing. " +
       "Risky approvals get flagged in plain English.",
     Icon: ShieldCheck,
-    tone: "text-emerald-400",
+    tone: "text-emerald-600",
   },
   x402: {
     label: "x402",
@@ -82,7 +82,7 @@ const META: Record<BountyTag, BountyMeta> = {
       "Agent-to-agent micropayment — the called agent gates its response with HTTP 402 and " +
       "is paid in USDC per request.",
     Icon: Zap,
-    tone: "text-yellow-400",
+    tone: "text-amber-600",
   },
 }
 
@@ -111,10 +111,10 @@ export function BountyTrail({
           <span
             key={t}
             title={m.tip}
-            className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-card/70 px-2 py-0.5 text-[10px] font-medium"
+            className="inline-flex items-center gap-1 rounded-full border border-border/70 bg-card px-2 py-0.5 text-[10px] font-medium shadow-sm"
           >
             <Icon className={cn("h-3 w-3 shrink-0", m.tone)} />
-            <span className="text-foreground/85">{m.label}</span>
+            <span className="text-foreground">{m.label}</span>
           </span>
         )
       })}

@@ -24,6 +24,30 @@ const TX_EXPLORERS = {
   "base-sepolia": "https://sepolia.basescan.org",
 } as const
 
+const PARENT_TWIN_DOMAIN = "ethtwin.eth"
+
+/**
+ * Normalize a user-supplied recipient string into a twin's full ENS name.
+ * Belt-and-braces backstop for the system-prompt rule: even when the model
+ * forgets to expand "tom" → "tom.ethtwin.eth", the tool layer fixes it.
+ *
+ * - "tom"             → "tom.ethtwin.eth"     (bare label)
+ * - "tom-1"           → "tom-1.ethtwin.eth"   (bare label with dash)
+ * - "Tom"             → "tom.ethtwin.eth"     (lowercased)
+ * - "tom.ethtwin.eth" → "tom.ethtwin.eth"     (already full)
+ * - "alice.eth"       → "alice.eth"           (untouched — different parent)
+ * - "0x…"             → "0x…"                 (untouched — raw address)
+ */
+function normalizeTwinEns(input: string): string {
+  if (!input) return input
+  const cleaned = input.trim().toLowerCase()
+  if (!cleaned) return cleaned
+  if (cleaned.startsWith("0x")) return cleaned
+  if (cleaned.endsWith(`.${PARENT_TWIN_DOMAIN}`)) return cleaned
+  if (/^[a-z0-9-]+$/.test(cleaned)) return `${cleaned}.${PARENT_TWIN_DOMAIN}`
+  return cleaned
+}
+
 export const twinTools = {
   getWalletSummary: tool({
     description:
@@ -182,7 +206,7 @@ export const twinTools = {
     }),
     execute: async (input) => {
       try {
-        const result = await sendToken(input)
+        const result = await sendToken({ ...input, to: normalizeTwinEns(input.to) })
         return {
           ok: true,
           chain: result.chain,
@@ -211,7 +235,7 @@ export const twinTools = {
     }),
     execute: async ({ chain, token, address }) => {
       try {
-        const resolved = await parseRecipient(address)
+        const resolved = await parseRecipient(normalizeTwinEns(address))
         const balance = await getTokenBalance({ chain, token, address: resolved })
         return {
           ok: true,
@@ -238,7 +262,10 @@ export const twinTools = {
     }),
     execute: async ({ recipientEnsName, amountUsdc }) => {
       try {
-        const result = await sendStealthUSDC({ recipientEnsName, amountUsdc })
+        const result = await sendStealthUSDC({
+          recipientEnsName: normalizeTwinEns(recipientEnsName),
+          amountUsdc,
+        })
         return {
           ok: true,
           recipientEnsName: result.recipient.ens,
@@ -267,16 +294,17 @@ export const twinTools = {
       recipientEnsName: z.string(),
     }),
     execute: async ({ recipientEnsName }) => {
-      const records = await readTwinRecords(recipientEnsName)
+      const ens = normalizeTwinEns(recipientEnsName)
+      const records = await readTwinRecords(ens)
       const meta = records["stealth-meta-address"]
       if (!meta) {
         return {
           ok: false,
-          error: `${recipientEnsName} has no stealth-meta-address record`,
+          error: `${ens} has no stealth-meta-address record`,
         }
       }
       const result = await generatePrivateAddress(meta)
-      return { ok: true, recipientEnsName, ...result }
+      return { ok: true, recipientEnsName: ens, ...result }
     },
   }),
 
@@ -354,6 +382,7 @@ function buildHireAgentTool(ctx: TwinToolContext) {
       task: z.string(),
     }),
     execute: async ({ agentEnsName, agentId, task }) => {
+      agentEnsName = normalizeTwinEns(agentEnsName)
       const verified = await verifyAgentRegistration(
         agentEnsName,
         ERC8004_REGISTRY.baseSepolia,
@@ -478,6 +507,7 @@ export function buildTwinTools(ctx: TwinToolContext = {}) {
         try {
           const result = await sendToken({
             ...input,
+            to: normalizeTwinEns(input.to),
             ...(ctx.fromEns ? { fromEns: ctx.fromEns } : {}),
           })
           return {
@@ -514,7 +544,10 @@ export function buildTwinTools(ctx: TwinToolContext = {}) {
       }),
       execute: async ({ recipientEnsName, amountUsdc }) => {
         try {
-          const result = await sendStealthUSDC({ recipientEnsName, amountUsdc })
+          const result = await sendStealthUSDC({
+            recipientEnsName: normalizeTwinEns(recipientEnsName),
+            amountUsdc,
+          })
           if (ctx.fromEns) {
             triggerThankYou({
               fromEns: ctx.fromEns,
@@ -678,6 +711,7 @@ export function buildTwinTools(ctx: TwinToolContext = {}) {
               "Twin has no ENS identity in this session — cannot send messages.",
           }
         }
+        toEns = normalizeTwinEns(toEns)
         try {
           const result = await sendEnsMessage({
             fromEns: ctx.fromEns,
@@ -760,7 +794,7 @@ export function buildTwinTools(ctx: TwinToolContext = {}) {
             ? sinceUnixSec
             : Math.floor(Date.now() / 1000) - 30
         const deadline = Date.now() + (timeoutMs ?? 25_000)
-        const peerLower = fromEns.toLowerCase()
+        const peerLower = normalizeTwinEns(fromEns)
         // Poll inbox every ~3s. The auto-reply tx usually lands in ~12-24s
         // on Sepolia, so the default 25s window covers it.
         while (Date.now() < deadline) {

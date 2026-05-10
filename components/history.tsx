@@ -72,10 +72,10 @@ const KIND_ICON: Record<HistoryKind, typeof Coins> = {
 }
 
 const KIND_COLOR: Record<HistoryKind, string> = {
-  transfer: "text-emerald-400",
-  "stealth-send": "text-fuchsia-400",
-  message: "text-sky-400",
-  mint: "text-amber-400",
+  transfer: "text-emerald-600",
+  "stealth-send": "text-fuchsia-600",
+  message: "text-sky-600",
+  mint: "text-amber-600",
   other: "text-muted-foreground",
 }
 

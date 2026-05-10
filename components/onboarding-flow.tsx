@@ -269,7 +269,7 @@ export function OnboardingFlow({
                 <motion.div
                   animate={{ scale: [1, 1.05, 1], opacity: [0.7, 1, 0.7] }}
                   transition={{ duration: 2, repeat: Infinity }}
-                  className="grid h-20 w-20 place-items-center rounded-full bg-purple-500/20 text-purple-300"
+                  className="grid h-20 w-20 place-items-center rounded-full bg-violet-100 text-violet-700"
                 >
                   <Satellite className="h-10 w-10" />
                 </motion.div>
@@ -325,8 +325,8 @@ export function OnboardingFlow({
                  *  public key is the verifiable artefact: anyone can hash it
                  *  and confirm it derives the on-chain `addr` record. */}
                 {mintCtxRef.current?.kmsKeyId ? (
-                  <div className="w-full max-w-md rounded-lg border border-purple-500/30 bg-purple-500/5 p-3 text-left">
-                    <div className="mb-1 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wider text-purple-300">
+                  <div className="w-full max-w-md rounded-lg border border-violet-300 bg-violet-50 p-3 text-left">
+                    <div className="mb-1 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wider text-violet-700">
                       <Satellite className="h-3 w-3" /> SpaceComputer KMS key
                     </div>
                     <div className="grid gap-1 font-mono text-[10px] leading-relaxed text-muted-foreground">

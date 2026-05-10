@@ -716,12 +716,12 @@ function AgentBadges({
           </span>
         ) : null}
         {output.verified ? (
-          <span className="inline-flex items-center gap-1 rounded-sm bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-medium text-emerald-300">
+          <span className="inline-flex items-center gap-1 rounded-sm bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">
             <ShieldCheck className="h-3 w-3" />
             ENSIP-25 verified
           </span>
         ) : (
-          <span className="inline-flex items-center gap-1 rounded-sm bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-300">
+          <span className="inline-flex items-center gap-1 rounded-sm bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">
             <ShieldAlert className="h-3 w-3" />
             unverified
           </span>
@@ -734,7 +734,7 @@ function AgentBadges({
     return (
       <span className="text-[10px] text-muted-foreground">
         {output.agents.length} agent{output.agents.length === 1 ? "" : "s"} ·{" "}
-        <span className="text-emerald-300">{verifiedCount} verified</span>
+        <span className="text-emerald-700">{verifiedCount} verified</span>
       </span>
     )
   }
@@ -805,10 +805,10 @@ function AgentDetail({
   if (toolName === "hireAgent" && output.ok && output.answer) {
     const agentEns = output.agentEnsName ?? null
     return (
-      <div className="ml-5 rounded-md border border-emerald-500/20 bg-emerald-500/5 px-2.5 py-1.5 text-[11px] text-emerald-100/90">
+      <div className="ml-5 rounded-md border border-emerald-500/20 bg-emerald-500/5 px-2.5 py-1.5 text-[11px] text-emerald-800">
         <div className="flex items-center gap-2">
           {agentEns ? <EnsAvatar ens={agentEns} size={20} /> : null}
-          <span className="font-mono text-[10px] text-emerald-300/80">
+          <span className="font-mono text-[10px] text-emerald-700">
             {agentEns ? `${displayNameFromEns(agentEns).displayName} replied` : "agent replied"}
           </span>
         </div>
@@ -882,14 +882,14 @@ function AgentDetail({
   }
   if (toolName === "hireAgent" && output.ok === false && output.error) {
     return (
-      <div className="ml-5 rounded-md border border-amber-500/20 bg-amber-500/5 px-2.5 py-1.5 text-[11px] text-amber-200/90">
+      <div className="ml-5 rounded-md border border-amber-500/20 bg-amber-500/5 px-2.5 py-1.5 text-[11px] text-amber-800">
         {output.error}
       </div>
     )
   }
   if (output.ok === false && output.error) {
     return (
-      <div className="ml-5 rounded-md border border-amber-500/20 bg-amber-500/5 px-2.5 py-1.5 text-[11px] text-amber-200/90">
+      <div className="ml-5 rounded-md border border-amber-500/20 bg-amber-500/5 px-2.5 py-1.5 text-[11px] text-amber-800">
         {output.error}
       </div>
     )
@@ -922,25 +922,25 @@ const RECEIPT_THEME: Record<
 > = {
   token: {
     icon: Coins,
-    iconClass: "text-emerald-300",
+    iconClass: "text-emerald-700",
     ringClass: "ring-emerald-400/20",
     gradientClass: "from-emerald-500/10 via-emerald-500/5 to-transparent",
   },
   stealth: {
     icon: Lock,
-    iconClass: "text-fuchsia-300",
+    iconClass: "text-fuchsia-700",
     ringClass: "ring-fuchsia-400/20",
     gradientClass: "from-fuchsia-500/10 via-fuchsia-500/5 to-transparent",
   },
   message: {
     icon: Mail,
-    iconClass: "text-sky-300",
+    iconClass: "text-sky-700",
     ringClass: "ring-sky-400/20",
     gradientClass: "from-sky-500/10 via-sky-500/5 to-transparent",
   },
   x402: {
     icon: Zap,
-    iconClass: "text-amber-300",
+    iconClass: "text-amber-700",
     ringClass: "ring-amber-400/20",
     gradientClass: "from-amber-500/10 via-amber-500/5 to-transparent",
   },
@@ -1030,7 +1030,7 @@ function ExplorerReceipt({
           rel="noreferrer"
           className={cn(
             "inline-flex shrink-0 items-center gap-1 self-center rounded-full px-3 py-1.5 text-[11px] font-medium transition",
-            "bg-background/70 text-foreground/90 ring-1 ring-white/10 hover:bg-primary/20 hover:text-primary hover:ring-primary/30",
+            "bg-background/70 text-foreground/90 ring-1 ring-border/60 hover:bg-primary/20 hover:text-primary hover:ring-primary/30",
           )}
         >
           Explorer <ArrowUpRight className="h-3 w-3" />
@@ -1071,9 +1071,9 @@ function AgentRow({
         {displayNameFromEns(ens).displayName}
       </span>
       {verified ? (
-        <ShieldCheck className="h-3 w-3 text-emerald-400" />
+        <ShieldCheck className="h-3 w-3 text-emerald-600" />
       ) : (
-        <ShieldAlert className="h-3 w-3 text-amber-400" />
+        <ShieldAlert className="h-3 w-3 text-amber-600" />
       )}
       {persona ? (
         <span className="truncate text-muted-foreground/80">— {persona}</span>

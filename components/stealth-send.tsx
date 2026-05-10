@@ -774,16 +774,16 @@ function StealthInboxCard({
   const totalUnclaimed = formatUsdc(totalUnclaimedRaw)
 
   return (
-    <div className="space-y-2 rounded-md border border-border/60 bg-card/40 px-3 py-2.5 text-xs">
+    <div className="space-y-2 rounded-lg border border-border/70 bg-card/80 px-3 py-2.5 text-xs shadow-sm">
       <div className="flex items-center justify-between">
-        <span className="font-medium text-foreground/90">
-          Stealth inbox · {myEnsName}
+        <span className="font-medium text-foreground">
+          Stealth inbox
         </span>
         <button
           type="button"
           onClick={onRefresh}
           disabled={loading}
-          className="font-mono text-[10px] text-primary/80 hover:text-primary disabled:opacity-50"
+          className="font-mono text-[10px] text-primary hover:underline disabled:opacity-50"
         >
           {loading ? "scanning…" : "refresh"}
         </button>
@@ -795,7 +795,7 @@ function StealthInboxCard({
         sweep funds from a one-time address into your twin&apos;s main wallet.
       </p>
       {items.length > 0 ? (
-        <div className="rounded-md border border-emerald-500/30 bg-emerald-500/5 px-2 py-1 font-mono text-[11px] text-emerald-300">
+        <div className="rounded-md border border-emerald-300 bg-emerald-50 px-2 py-1 font-mono text-[11px] text-emerald-700">
           unclaimed total: {totalUnclaimed} USDC
         </div>
       ) : null}
@@ -812,10 +812,10 @@ function StealthInboxCard({
             return (
               <li
                 key={it.txHash}
-                className="rounded-md border border-border/60 bg-background/40 px-2.5 py-1.5"
+                className="rounded-md border border-border/60 bg-background px-2.5 py-1.5"
               >
                 <div className="flex items-center justify-between gap-2">
-                  <span className="font-mono text-[11px] text-emerald-300">
+                  <span className="font-mono text-[11px] font-semibold text-emerald-700">
                     {it.amountHuman ?? "?"} USDC
                   </span>
                   <div className="flex items-center gap-2">
@@ -823,7 +823,7 @@ function StealthInboxCard({
                       href={it.explorerUrl}
                       target="_blank"
                       rel="noreferrer"
-                      className="font-mono text-[10px] text-primary/80 hover:text-primary"
+                      className="font-mono text-[10px] text-primary hover:underline"
                     >
                       view ↗
                     </a>
@@ -858,7 +858,7 @@ function StealthInboxCard({
                         href={`https://sepolia.app.ens.domains/${it.senderEns}`}
                         target="_blank"
                         rel="noreferrer"
-                        className="text-primary/85 hover:underline"
+                        className="text-primary hover:underline"
                         title={it.caller}
                       >
                         {it.senderEns} ↗
@@ -872,12 +872,12 @@ function StealthInboxCard({
                       href={claimRes.explorerUrl}
                       target="_blank"
                       rel="noreferrer"
-                      className="text-emerald-400 hover:underline"
+                      className="text-emerald-700 hover:underline"
                     >
                       sweep tx · {short(claimRes.sweepTx)} ↗
                     </a>
                   ) : claimRes?.error ? (
-                    <span className="text-red-300">claim error · {claimRes.error}</span>
+                    <span className="text-red-700">claim error · {claimRes.error}</span>
                   ) : null}
                 </div>
               </li>
@@ -909,10 +909,10 @@ function ResultCard({
     <motion.div
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
-      className="space-y-2 rounded-md border border-emerald-500/20 bg-emerald-500/5 px-3 py-2.5 text-xs"
+      className="space-y-2 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2.5 text-xs shadow-sm"
     >
       <div className="flex items-center justify-between">
-        <span className="font-medium text-emerald-300">
+        <span className="font-medium text-emerald-700">
           ✓ {result.amountHuman} USDC sent privately on{" "}
           {result.chain === "sepolia" ? "Sepolia" : "Base Sepolia"}
         </span>
@@ -938,7 +938,7 @@ function ResultCard({
           href={`https://sepolia.app.ens.domains/${result.recipientEnsName}`}
           target="_blank"
           rel="noreferrer"
-          className="text-primary/80 hover:text-primary"
+          className="text-primary hover:underline"
           title="Recipient's stealth-meta-address text record lives here"
         >
           {result.recipientEnsName} on ENS app ↗
@@ -956,13 +956,13 @@ function ResultCard({
             erc-5564 announce · {short(result.announceTxHash)} ↗
           </a>
         ) : (
-          <span className="text-amber-300">
+          <span className="text-amber-700">
             ⚠ ERC-5564 Announcer not on this chain — recipient needs the API
             response to find the payment
           </span>
         )}
         {result.mocked ? (
-          <span className="text-amber-300">⚠ stealth SDK fell back to mock</span>
+          <span className="text-amber-700">⚠ stealth SDK fell back to mock</span>
         ) : null}
       </div>
       <BountyTrail

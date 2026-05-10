@@ -42,9 +42,9 @@ const ICON_BY_KIND: Record<Notification["kind"], typeof Bell> = {
   other: Sparkles,
 }
 const COLOR_BY_KIND: Record<Notification["kind"], string> = {
-  message: "text-sky-300",
-  "transfer-in": "text-emerald-300",
-  "transfer-out": "text-amber-300",
+  message: "text-sky-700",
+  "transfer-in": "text-emerald-700",
+  "transfer-out": "text-amber-700",
   other: "text-muted-foreground",
 }
 
