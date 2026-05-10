@@ -18,12 +18,8 @@ import {
   ChevronDown,
   ChevronUp,
   Sparkles,
-  Eye,
-  EyeOff,
   Globe,
-  KeyRound,
   Satellite,
-  ShieldCheck,
 } from "lucide-react"
 import { useEnsAvatar } from "@/lib/use-ens-avatar"
 
@@ -91,78 +87,73 @@ export function ReceiptPostcard({
         trigger={txHash ?? cardClassId}
         originSelector={`.${cardClassId}`}
       />
-      <div className="relative">
-        {/* Front: warm postcard. Slides up + fades when X-ray opens. */}
-        <motion.div
-          animate={
-            open
-              ? { y: -6, opacity: 0.4, scale: 0.97 }
-              : { y: 0, opacity: 1, scale: 1 }
-          }
-          transition={{ duration: 0.35, ease: "easeOut" }}
-          className="overflow-hidden rounded-3xl border border-border/50 bg-card/90 p-5 shadow-lg"
-        >
-          <div className="flex items-center gap-4">
-            <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-full bg-secondary/60 ring-2 ring-primary/40">
-              {avatar ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={avatar}
-                  alt={friendly}
-                  className="h-full w-full object-cover"
-                />
-              ) : (
-                <div
-                  className="h-full w-full"
-                  style={{
-                    background:
-                      "conic-gradient(from 200deg, oklch(0.78 0.14 30), oklch(0.85 0.1 145), oklch(0.78 0.14 30))",
-                  }}
-                />
-              )}
-              <div className="absolute -bottom-1 -right-1 grid h-6 w-6 place-items-center rounded-full bg-emerald-500 text-white shadow">
-                <Check className="h-3.5 w-3.5" strokeWidth={3} />
-              </div>
-            </div>
-
-            <div className="flex flex-1 flex-col">
-              <div className="flex items-baseline gap-1.5">
-                <span className="text-3xl font-semibold tracking-tight text-foreground">
-                  {fiat.value}
-                </span>
-                {fiat.unit ? (
-                  <span className="text-base text-muted-foreground">{fiat.unit}</span>
-                ) : null}
-              </div>
-              <div className="text-sm text-muted-foreground">
-                sent to <span className="font-medium text-foreground">{friendly}</span> ·
-                just now
-              </div>
-              <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                {privateBadge ? (
-                  <div className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-300">
-                    <Sparkles className="h-3 w-3" />
-                    Private
-                  </div>
-                ) : null}
-                <SpaceSecuredBadge />
-              </div>
+      {/* Postcard front — always visible, never gets covered. */}
+      <div className="overflow-hidden rounded-3xl border border-border/50 bg-card/90 p-5 shadow-lg">
+        <div className="flex items-center gap-4">
+          <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-full bg-secondary/60 ring-2 ring-primary/40">
+            {avatar ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={avatar}
+                alt={friendly}
+                className="h-full w-full object-cover"
+              />
+            ) : (
+              <div
+                className="h-full w-full"
+                style={{
+                  background:
+                    "conic-gradient(from 200deg, oklch(0.78 0.14 30), oklch(0.85 0.1 145), oklch(0.78 0.14 30))",
+                }}
+              />
+            )}
+            <div className="absolute -bottom-1 -right-1 grid h-6 w-6 place-items-center rounded-full bg-emerald-500 text-white shadow">
+              <Check className="h-3.5 w-3.5" strokeWidth={3} />
             </div>
           </div>
-        </motion.div>
 
-        {/* X-ray layer: same shape, tech detail rows, blueprint backdrop.
-            Fades in *behind* the postcard, then takes over when open. */}
-        <AnimatePresence initial={false}>
-          {open ? (
-            <motion.div
-              key="xray"
-              initial={{ opacity: 0, y: -8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              transition={{ duration: 0.35, delay: 0.1, ease: "easeOut" }}
-              className="absolute inset-0 overflow-hidden rounded-3xl border border-emerald-500/30 bg-[linear-gradient(135deg,oklch(0.18_0.04_240/0.96),oklch(0.22_0.04_280/0.96))] p-5 text-emerald-50 shadow-xl"
-            >
+          <div className="flex flex-1 flex-col">
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-3xl font-semibold tracking-tight text-foreground">
+                {fiat.value}
+              </span>
+              {fiat.unit ? (
+                <span className="text-base text-muted-foreground">{fiat.unit}</span>
+              ) : null}
+            </div>
+            <div className="text-sm text-muted-foreground">
+              sent to <span className="font-medium text-foreground">{friendly}</span> ·
+              just now
+            </div>
+            <div className="mt-1 flex flex-wrap items-center gap-1.5">
+              {privateBadge ? (
+                <div className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-300">
+                  <Sparkles className="h-3 w-3" />
+                  Private
+                </div>
+              ) : null}
+              <SpaceSecuredBadge />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Reveal — tight one-liner about on-chain + space, then a fancy
+          Basescan/Etherscan CTA. Renders inline (NOT absolute), so it
+          grows below the postcard front instead of clipping content
+          inside the front's height. */}
+      <AnimatePresence initial={false}>
+        {open ? (
+          <motion.div
+            key="xray"
+            initial={{ opacity: 0, height: 0, marginTop: 0 }}
+            animate={{ opacity: 1, height: "auto", marginTop: 12 }}
+            exit={{ opacity: 0, height: 0, marginTop: 0 }}
+            transition={{ duration: 0.32, ease: "easeOut" }}
+            className="overflow-hidden"
+          >
+            <div className="relative overflow-hidden rounded-3xl border border-emerald-500/30 bg-[linear-gradient(135deg,oklch(0.18_0.04_240/0.96),oklch(0.22_0.04_280/0.96))] p-5 text-emerald-50 shadow-xl">
+              {/* Blueprint grid background. */}
               <div
                 aria-hidden
                 className="absolute inset-0 opacity-[0.07]"
@@ -172,69 +163,33 @@ export function ReceiptPostcard({
                   backgroundSize: "24px 24px",
                 }}
               />
-              <div className="relative flex items-center justify-between">
-                <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-emerald-200/80">
-                  what really happened
-                </span>
-                <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 font-mono text-[10px] text-emerald-200">
-                  on-chain
-                </span>
+              {/* Drifting starfield to match the sponsor's space aesthetic. */}
+              <RevealStars />
+
+              <div className="relative flex flex-col items-center gap-1 text-center">
+                <div className="inline-flex items-center gap-1.5 rounded-full border border-emerald-400/30 bg-emerald-500/10 px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.2em] text-emerald-200">
+                  <Satellite className="h-3 w-3" />
+                  on-chain · space-secured
+                </div>
+                <p className="mt-2 text-sm font-medium leading-snug text-emerald-50">
+                  Settled on-chain.
+                  <br />
+                  Signed off-Earth.
+                </p>
+                <p className="mt-1 max-w-xs text-[11px] leading-relaxed text-emerald-100/70">
+                  Your twin&apos;s key lives in a satellite-attested KMS, and
+                  the transaction is publicly verifiable on{" "}
+                  {explorerUrl?.includes("basescan") ? "Basescan" : "Etherscan"}.
+                </p>
               </div>
-              <ul className="relative mt-3 space-y-2.5 font-mono text-[11px]">
-                <XrayRow
-                  icon={<KeyRound className="h-3.5 w-3.5" />}
-                  label="signed with passkey"
-                  badge="Privy · ERC-4337"
-                  delay={0}
-                />
-                {recipientEnsName ? (
-                  <XrayRow
-                    icon={<Globe className="h-3.5 w-3.5" />}
-                    label={`resolved ${recipientEnsName}`}
-                    badge="ENS Sepolia"
-                    delay={0.06}
-                  />
-                ) : null}
-                {stealthAddress ? (
-                  <XrayRow
-                    icon={<Eye className="h-3.5 w-3.5" />}
-                    label={`one-time address ${shortHex(stealthAddress)}`}
-                    badge="EIP-5564"
-                    delay={0.12}
-                  />
-                ) : null}
-                {cosmicSeeded ? (
-                  <XrayRow
-                    icon={<Satellite className="h-3.5 w-3.5" />}
-                    label="randomness from satellite"
-                    badge="Orbitport cTRNG"
-                    delay={0.18}
-                  />
-                ) : null}
-                <XrayRow
-                  icon={<ShieldCheck className="h-3.5 w-3.5" />}
-                  label="recipient verified"
-                  badge="ENSIP-25"
-                  delay={0.24}
-                />
-                {txHash ? (
-                  <XrayRow
-                    icon={<EyeOff className="h-3.5 w-3.5" />}
-                    label={`tx ${shortHex(txHash)}`}
-                    badge="Base Sepolia"
-                    delay={0.3}
-                  />
-                ) : null}
-              </ul>
+
               {explorerUrl ? (
                 <a
                   href={explorerUrl}
                   target="_blank"
                   rel="noreferrer"
                   className={[
-                    // Big designed CTA — emerald glassmorphic with hover glow.
-                    // Sits at the bottom of the reveal as the cta hand-off.
-                    "relative mt-4 flex w-full items-center justify-between gap-3",
+                    "group relative mt-4 flex w-full items-center justify-between gap-3",
                     "rounded-2xl border border-emerald-400/40 px-4 py-3",
                     "bg-gradient-to-br from-emerald-500/25 via-emerald-500/10 to-transparent",
                     "shadow-lg shadow-emerald-500/10 ring-1 ring-emerald-400/20",
@@ -261,11 +216,15 @@ export function ReceiptPostcard({
                     <ArrowUpRight className="h-3.5 w-3.5 transition group-hover:translate-x-0.5" />
                   </span>
                 </a>
-              ) : null}
-            </motion.div>
-          ) : null}
-        </AnimatePresence>
-      </div>
+              ) : (
+                <p className="relative mt-4 rounded-xl border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-center text-[11px] text-amber-100">
+                  Block-explorer link unavailable for this send.
+                </p>
+              )}
+            </div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
 
       <button
         type="button"
@@ -288,32 +247,50 @@ export function ReceiptPostcard({
   )
 }
 
-function XrayRow({
-  icon,
-  label,
-  badge,
-  delay = 0,
-}: {
-  icon: React.ReactNode
-  label: string
-  badge: string
-  delay?: number
-}) {
+/**
+ * Drifting starfield for the reveal layer's blueprint background. Twelve
+ * dots positioned deterministically across the canvas, each twinkling on a
+ * staggered loop. Cosmetic only — pairs with the SpaceComputer aesthetic
+ * the sponsor uses across their marketing.
+ */
+function RevealStars() {
+  const stars = [
+    { top: "8%", left: "6%", delay: 0, size: 1 },
+    { top: "14%", left: "82%", delay: 0.4, size: 2 },
+    { top: "22%", left: "38%", delay: 1.1, size: 1 },
+    { top: "26%", left: "70%", delay: 0.7, size: 1 },
+    { top: "44%", left: "12%", delay: 1.5, size: 2 },
+    { top: "52%", left: "92%", delay: 0.2, size: 1 },
+    { top: "60%", left: "48%", delay: 0.9, size: 1 },
+    { top: "70%", left: "20%", delay: 1.3, size: 2 },
+    { top: "76%", left: "76%", delay: 0.5, size: 1 },
+    { top: "85%", left: "8%", delay: 1.0, size: 1 },
+    { top: "90%", left: "60%", delay: 1.7, size: 1 },
+    { top: "32%", left: "94%", delay: 0.3, size: 1 },
+  ]
   return (
-    <motion.li
-      initial={{ opacity: 0, x: -6 }}
-      animate={{ opacity: 1, x: 0 }}
-      transition={{ duration: 0.3, delay, ease: "easeOut" }}
-      className="flex items-center justify-between gap-3 rounded-xl border border-emerald-500/15 bg-emerald-500/5 px-2.5 py-1.5"
-    >
-      <span className="flex min-w-0 items-center gap-2 text-emerald-50/90">
-        <span className="text-emerald-300">{icon}</span>
-        <span className="truncate">{label}</span>
-      </span>
-      <span className="shrink-0 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-medium tracking-wide text-emerald-200">
-        {badge}
-      </span>
-    </motion.li>
+    <div aria-hidden className="pointer-events-none absolute inset-0">
+      {stars.map((s, i) => (
+        <motion.span
+          key={i}
+          className="absolute rounded-full bg-white shadow-[0_0_6px_1px_rgba(255,255,255,0.75)]"
+          style={{
+            top: s.top,
+            left: s.left,
+            width: `${s.size}px`,
+            height: `${s.size}px`,
+          }}
+          initial={{ opacity: 0.15, scale: 0.6 }}
+          animate={{ opacity: [0.15, 1, 0.15], scale: [0.6, 1.5, 0.6] }}
+          transition={{
+            duration: 2.6,
+            delay: s.delay,
+            repeat: Infinity,
+            ease: "easeInOut",
+          }}
+        />
+      ))}
+    </div>
   )
 }
 
