@@ -744,7 +744,22 @@ function StealthInboxCard({
           ...(item.senderEns ? { senderEns: item.senderEns } : {}),
         }),
       })
-      const data = (await res.json()) as ClaimResult
+      // Defensive parse — Vercel function timeouts and uncaught throws return
+      // empty / HTML bodies, not JSON. If we just call res.json() the user
+      // sees a confusing "Unexpected end of JSON input" instead of a real
+      // error message.
+      const ct = res.headers.get("content-type") ?? ""
+      let data: ClaimResult
+      if (!ct.includes("application/json")) {
+        const text = await res.text().catch(() => "")
+        const friendly =
+          res.status === 504
+            ? "Vercel timed out — the sweep may still be landing. Try claiming again in ~30s."
+            : `Server returned ${res.status} (${text.slice(0, 120) || "no body"}).`
+        data = { ok: false, error: friendly }
+      } else {
+        data = (await res.json()) as ClaimResult
+      }
       setClaimed((prev) => ({ ...prev, [item.stealthAddress]: data }))
       if (data.ok && data.sweptAmountHuman) {
         const fromLabel = item.senderEns ? ` from ${item.senderEns}` : ""
