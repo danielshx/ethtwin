@@ -18,6 +18,15 @@ Voice-first. Privacy by default. Lives in ENS.
 
 </div>
 
+<div align="center">
+
+![EthTwin demo — 50-second walkthrough](./public/demo.gif)
+
+<sub><i>50-second walkthrough: Maria → voice send → postcard → cosmic randomness → on-chain reveal.<br/>
+Full-quality MP4: <a href="./public/demo.mp4">public/demo.mp4</a> · Hero frame: <a href="./public/demo-poster.png">public/demo-poster.png</a> · Rendered programmatically with Remotion (`pnpm video:render`).</i></sub>
+
+</div>
+
 ---
 
 ## The 60-second pitch
@@ -219,6 +228,17 @@ pnpm test:x402-apify          # live x402 → Apify Actor
 ```
 
 Optional audio cues → drop assets per [public/sounds/README.md](./public/sounds/README.md).
+
+### Regenerate the README demo video (optional)
+
+```bash
+pnpm video:studio             # live preview at http://localhost:3000 (scrub all 7 beats)
+pnpm video:render             # 1920×1080 H.264 → public/demo.mp4 (~7 MB)
+pnpm video:poster             # first-beat hero frame → public/demo-poster.png
+pnpm video:gif                # 768×432 landscape auto-play GIF → public/demo.gif (~7 MB, the README hero)
+```
+
+The video is built from React components in [`remotion/`](./remotion) using design tokens mirrored from [`app/globals.css`](./app/globals.css). Edit a scene file under `remotion/scenes/`, re-run `pnpm video:render` + `pnpm video:gif`, commit the new files.
 
 ---
 

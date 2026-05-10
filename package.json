@@ -28,7 +28,11 @@
     "wallet:rotate": "tsx --env-file=.env.local scripts/rotate-dev-wallet.ts",
     "twins:backfill": "tsx --env-file=.env.local scripts/backfill-twin-profiles.ts",
     "twins:seed-demo": "tsx --env-file=.env.local scripts/seed-demo-twins.ts",
-    "test:privy-key": "tsx --env-file=.env.local scripts/test-privy-key.ts"
+    "test:privy-key": "tsx --env-file=.env.local scripts/test-privy-key.ts",
+    "video:studio": "remotion studio remotion/index.ts",
+    "video:render": "remotion render remotion/index.ts EthTwinDemo public/demo.mp4 --codec h264 --crf 18",
+    "video:poster": "remotion still remotion/index.ts EthTwinDemo public/demo-poster.png --frame=60",
+    "video:gif": "remotion render remotion/index.ts EthTwinDemo public/demo.gif --codec gif --scale=0.4 --every-nth-frame=3"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "3.0.76",
@@ -66,6 +70,9 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@remotion/bundler": "^4.0.459",
+    "@remotion/cli": "^4.0.459",
+    "@remotion/google-fonts": "^4.0.459",
     "@tailwindcss/postcss": "^4.0.0",
     "@types/canvas-confetti": "^1.9.0",
     "@types/node": "^22.9.0",
@@ -74,6 +81,7 @@
     "dotenv": "^17.4.2",
     "jose": "^6.2.3",
     "postcss": "^8.4.0",
+    "remotion": "^4.0.459",
     "tailwindcss": "^4.0.0",
     "tsx": "^4.19.0",
     "typescript": "^5.6.0"
