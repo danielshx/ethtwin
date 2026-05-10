@@ -20,9 +20,10 @@ Voice-first. Privacy by default. Lives in ENS.
 
 <div align="center">
 
-[![EthTwin demo — 50-second walkthrough](./public/demo-poster.png)](https://github.com/danielshamsi/twinpilot/raw/main/public/demo.mp4)
+![EthTwin demo — 50-second walkthrough](./public/demo.gif)
 
-<sub><i>▶ click to watch — 50-second walkthrough: Maria → voice send → postcard → cosmic randomness → on-chain reveal. <br/>Rendered programmatically with Remotion (`pnpm video:render` to regenerate).</i></sub>
+<sub><i>50-second walkthrough: Maria → voice send → postcard → cosmic randomness → on-chain reveal.<br/>
+Full-quality MP4: <a href="./public/demo.mp4">public/demo.mp4</a> · Hero frame: <a href="./public/demo-poster.png">public/demo-poster.png</a> · Rendered programmatically with Remotion (`pnpm video:render`).</i></sub>
 
 </div>
 
@@ -234,9 +235,10 @@ Optional audio cues → drop assets per [public/sounds/README.md](./public/sound
 pnpm video:studio             # live preview at http://localhost:3000 (scrub all 7 beats)
 pnpm video:render             # 1920×1080 H.264 → public/demo.mp4 (~7 MB)
 pnpm video:poster             # first-beat hero frame → public/demo-poster.png
+pnpm video:gif                # 540p auto-play GIF → public/demo.gif (~20 MB, the README hero)
 ```
 
-The video is built from React components in [`remotion/`](./remotion) using design tokens mirrored from [`app/globals.css`](./app/globals.css). Edit a scene file under `remotion/scenes/`, re-run `pnpm video:render`, commit the new MP4.
+The video is built from React components in [`remotion/`](./remotion) using design tokens mirrored from [`app/globals.css`](./app/globals.css). Edit a scene file under `remotion/scenes/`, re-run `pnpm video:render` + `pnpm video:gif`, commit the new files.
 
 ---
 
