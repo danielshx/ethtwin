@@ -384,27 +384,27 @@ export function StealthSend({ myEnsName, getAuthToken, className }: StealthSendP
     <Card className={cn("flex flex-col gap-0 overflow-hidden p-0", className)}>
       <header className="flex items-center justify-between border-b border-border/60 px-4 py-3">
         <div className="flex items-center gap-2">
-          <span className="grid h-7 w-7 place-items-center rounded-full bg-primary/20 text-primary">
+          <span className="grid h-7 w-7 place-items-center rounded-full bg-primary/15 text-primary">
             <Lock className="h-4 w-4" />
           </span>
           <div className="leading-tight">
             <div className="text-sm font-medium">Stealth Send</div>
             <div className="text-xs text-muted-foreground">
-              EIP-5564 · Sourcify-reviewed · cosmic-seeded · Base Sepolia
+              EIP-5564 · Sourcify-reviewed · KMS-signed · Base Sepolia
             </div>
           </div>
         </div>
         <Badge variant="secondary" className="font-mono text-[10px]">
-          <ShieldCheck className="mr-1 h-3 w-3 text-emerald-300" />
+          <ShieldCheck className="mr-1 h-3 w-3 text-emerald-600" />
           private by default
         </Badge>
       </header>
 
-      <div className="grid gap-6 p-6 md:grid-cols-[260px_1fr]">
-        {/* Hero column: stealth identity panel */}
+      {/* Top half — SEND. Two-column: hero + send form. */}
+      <div className="grid gap-6 p-6 md:grid-cols-[240px_1fr]">
         <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-border/60 bg-card/40 p-5 text-center">
-          <div className="grid h-20 w-20 place-items-center rounded-full bg-fuchsia-500/15 text-fuchsia-300">
-            <Lock className="h-10 w-10" />
+          <div className="grid h-16 w-16 place-items-center rounded-full bg-primary/10 text-primary">
+            <Lock className="h-8 w-8" />
           </div>
           <div>
             <div className="text-sm font-semibold text-foreground/90">
@@ -416,10 +416,9 @@ export function StealthSend({ myEnsName, getAuthToken, className }: StealthSendP
               KMS key when funded; otherwise relayed by the dev wallet.
             </p>
           </div>
-          <PhaseLabel phase={phase} cosmicSeeded={result?.cosmicSeeded} />
+          <PhaseLabel phase={phase} />
         </div>
 
-        {/* Form column */}
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
             <label className="text-xs uppercase tracking-wider text-muted-foreground">
@@ -433,7 +432,7 @@ export function StealthSend({ myEnsName, getAuthToken, className }: StealthSendP
               className="font-mono"
             />
             {agents.length > 0 ? (
-              <ScrollArea className="-mx-2 max-h-32 rounded-md">
+              <ScrollArea className="-mx-2 max-h-28 rounded-md">
                 <div className="flex flex-wrap gap-1.5 px-2">
                   {agents.map((a) => (
                     <button
@@ -457,49 +456,50 @@ export function StealthSend({ myEnsName, getAuthToken, className }: StealthSendP
             ) : null}
           </div>
 
-          <div className="flex flex-col gap-2">
-            <label className="text-xs uppercase tracking-wider text-muted-foreground">
-              Chain
-            </label>
-            <div className="flex gap-2">
-              {(["base-sepolia", "sepolia"] as const).map((c) => (
-                <Button
-                  key={c}
-                  type="button"
-                  variant={chain === c ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setChain(c)}
-                  disabled={phase === "fetching" || phase === "reviewing" || phase === "sending"}
-                  className="flex-1"
-                >
-                  {c === "sepolia" ? "Sepolia" : "Base Sepolia"}
-                </Button>
-              ))}
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="flex flex-col gap-2">
+              <label className="text-xs uppercase tracking-wider text-muted-foreground">
+                Chain
+              </label>
+              <div className="flex gap-2">
+                {(["base-sepolia", "sepolia"] as const).map((c) => (
+                  <Button
+                    key={c}
+                    type="button"
+                    variant={chain === c ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setChain(c)}
+                    disabled={phase === "fetching" || phase === "reviewing" || phase === "sending"}
+                    className="flex-1"
+                  >
+                    {c === "sepolia" ? "Sepolia" : "Base Sepolia"}
+                  </Button>
+                ))}
+              </div>
+            </div>
+            <div className="flex flex-col gap-2">
+              <label className="text-xs uppercase tracking-wider text-muted-foreground">
+                Amount (USDC, max 1)
+              </label>
+              <Input
+                type="number"
+                step="0.01"
+                min="0"
+                max="1"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                disabled={phase === "fetching" || phase === "reviewing" || phase === "sending"}
+                className="font-mono"
+              />
             </div>
           </div>
-
-          <div className="flex flex-col gap-2">
-            <label className="text-xs uppercase tracking-wider text-muted-foreground">
-              Amount (USDC, max 1)
-            </label>
-            <Input
-              type="number"
-              step="0.01"
-              min="0"
-              max="1"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              disabled={phase === "fetching" || phase === "reviewing" || phase === "sending"}
-              className="font-mono"
-            />
-            <p className="text-[11px] text-muted-foreground">
-              Sourcify contract review → USDC.transfer(stealthAddr) → ERC-5564
-              Announcement on the canonical announcer.
-            </p>
-          </div>
+          <p className="text-[11px] text-muted-foreground">
+            Sourcify contract review → USDC.transfer(stealthAddr) → ERC-5564
+            Announcement on the canonical announcer.
+          </p>
 
           {error ? (
-            <div className="rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-300">
+            <div className="rounded-md border border-amber-500/40 bg-amber-50 px-3 py-2 text-xs text-amber-700">
               {error}
             </div>
           ) : null}
@@ -511,43 +511,19 @@ export function StealthSend({ myEnsName, getAuthToken, className }: StealthSendP
             />
           ) : null}
 
-          <TwinWalletCard
-            myEnsName={myEnsName}
-            chain={chain}
-            wallet={twinWallet}
-            onRefresh={loadTwinWallet}
-          />
-
-          <FundTwin twinAddress={twinAddress} defaultChain={chain} />
-
-          <StealthInboxCard
-            myEnsName={myEnsName}
-            chain={chain}
-            items={inbox}
-            loading={inboxLoading}
-            onRefresh={() => {
-              loadInbox()
-              loadTwinWallet()
-            }}
-          />
-
           <div className="flex items-center gap-2 pt-1">
             <Button
               onClick={handleSend}
               disabled={!canSend}
               className="flex-1"
             >
-              {phase === "fetching" ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" /> requesting cosmic seed…
-                </>
-              ) : phase === "reviewing" ? (
+              {phase === "reviewing" ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" /> opening Sourcify review…
                 </>
               ) : phase === "sending" ? (
                 <>
-                  <Loader2 className="h-4 w-4 animate-spin" /> broadcasting on Base Sepolia…
+                  <Loader2 className="h-4 w-4 animate-spin" /> broadcasting…
                 </>
               ) : phase === "done" ? (
                 <>
@@ -564,6 +540,41 @@ export function StealthSend({ myEnsName, getAuthToken, className }: StealthSendP
                 reset
               </Button>
             ) : null}
+          </div>
+        </div>
+      </div>
+
+      {/* Bottom half — RECEIVE. Wallet, fund, inbox. Visually separated
+       *  with a divider so the send + receive paths read as two distinct
+       *  flows instead of one giant scroll. */}
+      <div className="border-t border-border/60 bg-card/30">
+        <div className="flex items-center justify-between px-6 pt-4">
+          <h3 className="text-sm font-semibold text-foreground/90">
+            Receive
+          </h3>
+          <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+            wallet · fund · inbox
+          </span>
+        </div>
+        <div className="grid gap-3 p-6 md:grid-cols-2">
+          <TwinWalletCard
+            myEnsName={myEnsName}
+            chain={chain}
+            wallet={twinWallet}
+            onRefresh={loadTwinWallet}
+          />
+          <FundTwin twinAddress={twinAddress} defaultChain={chain} />
+          <div className="md:col-span-2">
+            <StealthInboxCard
+              myEnsName={myEnsName}
+              chain={chain}
+              items={inbox}
+              loading={inboxLoading}
+              onRefresh={() => {
+                loadInbox()
+                loadTwinWallet()
+              }}
+            />
           </div>
         </div>
       </div>
@@ -591,29 +602,21 @@ export function StealthSend({ myEnsName, getAuthToken, className }: StealthSendP
   )
 }
 
-function PhaseLabel({
-  phase,
-  cosmicSeeded,
-}: {
-  phase: Phase
-  cosmicSeeded?: boolean
-}) {
+function PhaseLabel({ phase }: { phase: Phase; cosmicSeeded?: boolean }) {
   const text = (() => {
     switch (phase) {
       case "idle":
         return "Pick a twin and an amount."
       case "fetching":
-        return "Pulling cTRNG entropy from Orbitport…"
+        return "Resolving recipient meta-key…"
       case "revealed":
-        return "Cosmic seed locked in."
+        return "Stealth target locked in."
       case "reviewing":
         return "Sourcify is reviewing the contract call…"
       case "sending":
         return "Deriving stealth address & broadcasting…"
       case "done":
-        return cosmicSeeded
-          ? "Sent. Seeded by the cosmos. ✨"
-          : "Sent. (seed fell back to local entropy)"
+        return "Sent privately."
     }
   })()
   return (
@@ -641,40 +644,41 @@ function TwinWalletCard({
 }) {
   const ensAppUrl = `https://sepolia.app.ens.domains/${myEnsName}`
   return (
-    <div className="rounded-md border border-purple-500/30 bg-purple-500/5 p-3 text-xs">
+    <div className="flex flex-col gap-2 rounded-lg border border-border/70 bg-card/80 p-3 text-xs shadow-sm">
       <div className="flex items-center justify-between">
-        <span className="font-medium text-foreground/90">
-          Twin wallet · {myEnsName}
+        <span className="font-medium text-foreground">
+          Twin wallet
         </span>
         <button
           type="button"
           onClick={onRefresh}
           disabled={wallet.loading}
-          className="font-mono text-[10px] text-primary/80 hover:text-primary disabled:opacity-50"
+          className="font-mono text-[10px] text-primary hover:underline disabled:opacity-50"
         >
           {wallet.loading ? "reading…" : "refresh"}
         </button>
       </div>
-      <p className="mt-1 text-[10px] leading-relaxed text-muted-foreground">
-        The KMS-derived address bound to your twin&apos;s ENS{" "}
+      <p className="text-[10px] leading-relaxed text-muted-foreground">
+        KMS-derived address bound to{" "}
+        <span className="font-mono text-foreground/85">{myEnsName}</span>&apos;s{" "}
         <code className="font-mono text-foreground/80">addr</code> record.
         Claimed stealth funds land here.
       </p>
-      <div className="mt-2 grid gap-1 font-mono text-[11px]">
+      <div className="grid gap-1 rounded-md bg-secondary/40 p-2 font-mono text-[11px]">
         <div className="flex items-center justify-between">
           <span className="text-muted-foreground">USDC</span>
-          <span className="text-foreground/90">
+          <span className="text-foreground">
             {wallet.usdcHuman === "—" ? "—" : `${wallet.usdcHuman}`}
           </span>
         </div>
         <div className="flex items-center justify-between">
           <span className="text-muted-foreground">ETH</span>
-          <span className="text-foreground/90">
+          <span className="text-foreground">
             {wallet.ethHuman === "—" ? "—" : `${wallet.ethHuman}`}
           </span>
         </div>
         {wallet.address ? (
-          <div className="flex items-center justify-between gap-2 pt-1">
+          <div className="flex items-center justify-between gap-2 border-t border-border/60 pt-1">
             <span className="text-muted-foreground">addr</span>
             <button
               type="button"
@@ -683,25 +687,26 @@ function TwinWalletCard({
                 navigator.clipboard.writeText(wallet.address ?? "").catch(() => {})
                 toast.success("Address copied")
               }}
-              className="truncate text-foreground/80 hover:underline"
+              className="truncate text-foreground hover:underline"
             >
               {short(wallet.address)}
             </button>
           </div>
         ) : null}
+      </div>
+      <div className="flex items-center justify-between text-[10px]">
+        <span className="text-muted-foreground">
+          {chain === "sepolia" ? "Sepolia" : "Base Sepolia"}
+        </span>
         <a
           href={ensAppUrl}
           target="_blank"
           rel="noreferrer"
-          className="mt-1 text-[10px] text-primary/80 hover:text-primary"
+          className="text-primary hover:underline"
         >
-          view ENS records on sepolia.app.ens.domains ↗
+          ENS records ↗
         </a>
       </div>
-      <p className="mt-2 text-[10px] leading-relaxed text-muted-foreground">
-        Chain: {chain === "sepolia" ? "Sepolia" : "Base Sepolia"}. To switch
-        which chain&apos;s balance you see, change it in the form above.
-      </p>
     </div>
   )
 }

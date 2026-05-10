@@ -659,16 +659,9 @@ export function Messenger({ myEnsName, getAuthToken, className }: MessengerProps
               </Button>
             </div>
             <p className="mt-1.5 px-1 font-mono text-[10px] text-muted-foreground">
-              Stored on-chain · text record on{" "}
-              <span className="text-foreground/70">
-                {(() => {
-                  const a = myEnsName.split(".")[0]?.toLowerCase() ?? ""
-                  const b = selected.split(".")[0]?.toLowerCase() ?? ""
-                  const [lo, hi] = [a, b].sort()
-                  return `chat-${lo}-${hi}.ethtwin.eth`
-                })()}
-              </span>{" "}
-              · EIP-5564-encrypted · ~24s
+              Stored on-chain · ENS gate via{" "}
+              <span className="text-foreground/80">twin.kms-public-key</span>{" "}
+              · EIP-5564-encrypted · KMS-signed · ~24s
             </p>
           </form>
         ) : null}
@@ -777,7 +770,7 @@ function renderThreadWithDateSeparators(thread: Message[], myEnsName: string) {
     if (k !== lastKey) {
       items.push(
         <div key={`sep-${k}`} className="flex justify-center py-1">
-          <span className="rounded-full bg-card/95 px-3 py-1 font-mono text-[10px] uppercase tracking-wider text-muted-foreground ring-1 ring-white/5">
+          <span className="rounded-full border border-border/60 bg-card px-3 py-1 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
             {dayLabel(m.at)}
           </span>
         </div>,
@@ -806,15 +799,15 @@ function MessageBubble({ message, mine }: { message: Message; mine: boolean }) {
         className={cn(
           "group max-w-[78%] rounded-2xl px-3.5 py-2 text-sm shadow-sm",
           mine
-            ? "rounded-br-sm bg-primary/85 text-primary-foreground"
-            : "rounded-bl-sm bg-card/95 text-foreground/95 ring-1 ring-white/5",
+            ? "rounded-br-sm bg-primary text-primary-foreground"
+            : "rounded-bl-sm border border-border/60 bg-card text-foreground",
         )}
       >
         <p className="whitespace-pre-wrap break-words leading-relaxed">{message.body}</p>
         <div
           className={cn(
             "mt-0.5 flex items-center justify-end gap-1.5 font-mono text-[9px]",
-            mine ? "text-primary-foreground/70" : "text-muted-foreground",
+            mine ? "text-primary-foreground/80" : "text-muted-foreground",
           )}
         >
           {message.kmsVerified ? (
@@ -823,8 +816,8 @@ function MessageBubble({ message, mine }: { message: Message; mine: boolean }) {
               className={cn(
                 "rounded-full px-1.5 py-px text-[8px] uppercase tracking-wider",
                 mine
-                  ? "bg-primary-foreground/15 text-primary-foreground/85"
-                  : "bg-purple-500/20 text-purple-300",
+                  ? "bg-primary-foreground/15 text-primary-foreground"
+                  : "bg-emerald-500/15 text-emerald-700",
               )}
             >
               KMS ✓

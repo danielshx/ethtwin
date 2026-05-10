@@ -14,22 +14,36 @@
 //   Both twins also carry `chats.list` = JSON of peer ENS names, used to
 //   enumerate the inbox.
 //
-// Why this shape (vs minting chat-<a>-<b>.ethtwin.eth subnames):
-//   - ENS apps display existing twin subnames as readable labels because
-//     those labels were registered visibly (during onboarding, with the
-//     dev wallet broadcasting the literal username). Newly-minted
-//     setSubnodeRecord subnames only know their LABELHASH, so apps fall
-//     back to "[<hash>].ethtwin.eth" — the bracket-encoded display the
-//     user kept hitting.
-//   - Each twin's ENS subname is now a self-contained inbox. Open it in
-//     the ENS app and you see the conversations as text records, alongside
-//     stealth-meta-address, twin.kms-key-id, twin.kms-public-key, etc.
+// ── Path C-lite (ENS-gated KMS messaging) ──────────────────────────────
+// Orbitport KMS gateway only supports SIGN_VERIFY (probed live in
+// scripts/diag-orbitport.ts — RSA / ECC encrypt-decrypt keySpecs all
+// reject). So messages are encrypted via static-static ECDH on the pair's
+// EIP-5564 stealth spending keys (the only viable confidentiality channel
+// available to a backend that can't ask KMS to do encrypt/decrypt).
 //
-// Encryption: AES-256-GCM with EIP-5564 static-static ECDH on the pair's
-// stealth spending keys (lib/message-crypto.ts). Same as before.
-// Authentication: per-message SpaceComputer KMS signature (EIP-191) over
-// a canonical payload. Verified against the sender's ENS-published
-// twin.kms-public-key. Dev wallet pays gas (meta-tx pattern).
+// The ENS gate makes KMS load-bearing anyway:
+//   1. sendMessage refuses unless BOTH sides have `twin.kms-key-id` AND
+//      `twin.kms-public-key` published as text records on their twin's
+//      ENS subname (assertKmsGateForEns).
+//   2. Every message MUST carry a KMS-EIP-191 signature over the canonical
+//      payload. Signing is non-optional — if the sender's KMS rejects the
+//      sign request, the multicall is aborted (no unsigned messages reach
+//      chain).
+//   3. readChatThread refuses to decrypt any message whose kmsSig either
+//      is missing OR doesn't recover to the sender's ENS-published
+//      twin.kms-public-key. Wiping the sender's ENS records breaks
+//      verification → the body shows up as "[KMS-unsigned — rejecting]".
+//
+// So the message flow is:
+//   plaintext --AES-256-GCM--> ciphertext --KMS sign--> signed blob --ENS--> chain
+//                                          ^                     ^
+//                                          |                     |
+//                                  recipient's `twin.kms-key-id`  sender's `twin.kms-public-key`
+//                                  (gate at encrypt time)        (gate at verify time)
+//
+// Wiping either party's `twin.kms-*` text records permanently breaks the
+// channel — that's the "saved in the ENS subdomain" hard-binding the
+// product calls out.
 
 import {
   encodeFunctionData,
@@ -44,7 +58,7 @@ import { ensResolverAbi } from "./abis"
 import { PARENT_DOMAIN, getDevWalletClient, sepoliaClient } from "./viem"
 import { sepolia as sepoliaChain } from "viem/chains"
 import { encryptMessage, decryptMessage, isStealthBlob } from "./message-crypto"
-import { kmsAccountForEns, kmsSignEIP191 } from "./kms"
+import { kmsSignEIP191 } from "./kms"
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -110,6 +124,41 @@ export function chatSubnameFor(aEns: string, bEns: string): string {
 export function chatSubnamesFor(myEns: string, peerEns: string) {
   const shared = chatSubnameFor(myEns, peerEns)
   return { mine: shared, theirs: shared }
+}
+
+// ── ENS gate ──────────────────────────────────────────────────────────────
+
+export type EnsKmsHandle = {
+  keyId: string
+  publicKey: `0x${string}`
+}
+
+/**
+ * Path C-lite gate. Reads `twin.kms-key-id` AND `twin.kms-public-key` from
+ * `ens` and throws if either is missing or malformed. The published pubkey
+ * MUST be a 65-byte uncompressed secp256k1 point (0x04 || x(32) || y(32))
+ * — that's what KMS hands back at mint time — otherwise we can't trust
+ * the per-message signature verification.
+ */
+export async function assertKmsGateForEns(ens: string): Promise<EnsKmsHandle> {
+  const [keyId, pubKey] = await Promise.all([
+    readTextRecordFast(ens, "twin.kms-key-id").catch(() => ""),
+    readTextRecordFast(ens, "twin.kms-public-key").catch(() => ""),
+  ])
+  if (!keyId) {
+    throw new Error(
+      `${ens} has no \`twin.kms-key-id\` text record — it can't authenticate ` +
+        `messages. Ask the owner to re-mint or re-publish their KMS key.`,
+    )
+  }
+  if (!pubKey || !/^0x04[0-9a-fA-F]{128}$/.test(pubKey)) {
+    throw new Error(
+      `${ens} has no valid \`twin.kms-public-key\` text record (need 65-byte ` +
+        `uncompressed secp256k1 pubkey). Without it, messages can't be ` +
+        `verified — the chat is gated by ENS.`,
+    )
+  }
+  return { keyId, publicKey: pubKey as `0x${string}` }
 }
 
 // ── Read helpers ────────────────────────────────────────────────────────────
@@ -264,16 +313,29 @@ export async function readChatThread(
   for (let i = 0; i < stored.length; i++) {
     const m = stored[i]
     if (!m) continue
+    const verified = verifications[i] ?? false
     let body = m.body
     let stealth = false
     if (isStealthBlob(m.body)) {
       stealth = true
-      const plain = decryptMessage({
-        senderEns: myEns,
-        recipientEns: peerEns,
-        ciphertext: m.body,
-      })
-      body = plain ?? "[encrypted — could not decrypt]"
+      // Path C-lite gate at READ time: only decrypt if the per-message KMS
+      // signature recovers to the sender's ENS-published twin key. Older
+      // unsigned messages or those whose sender wiped their ENS records
+      // surface as a placeholder so a casual viewer doesn't mistake an
+      // unverified message for an authentic one.
+      if (!m.kmsSig) {
+        body = "[KMS-unsigned — refusing to decrypt]"
+      } else if (!verified) {
+        body =
+          "[KMS signature does not match sender's ENS-published key — refusing to decrypt]"
+      } else {
+        const plain = decryptMessage({
+          senderEns: myEns,
+          recipientEns: peerEns,
+          ciphertext: m.body,
+        })
+        body = plain ?? "[encrypted — could not decrypt]"
+      }
     }
     out.push({
       index: i,
@@ -285,7 +347,7 @@ export async function readChatThread(
       stealth,
       cosmicAttestation: "",
       kmsSig: m.kmsSig ?? null,
-      kmsVerified: verifications[i] ?? false,
+      kmsVerified: verified,
     })
   }
   return out
@@ -334,6 +396,11 @@ export type SendMessageResult = {
  * multicall. Dev wallet pays gas (parent owner — already authorised on
  * both subnames). The sender's KMS signs the canonical payload for
  * authentication; that signature is bundled into the on-chain JSON.
+ *
+ * ENS gate (Path C-lite): both `fromEns` AND `toEns` MUST have
+ * `twin.kms-key-id` + `twin.kms-public-key` text records published. KMS
+ * signing is non-optional — if either gate or the sign call fails, the
+ * send is aborted before any chain write happens.
  */
 export async function sendMessage(args: {
   fromEns: string
@@ -346,6 +413,14 @@ export async function sendMessage(args: {
   if (fromEns.toLowerCase() === toEns.toLowerCase()) {
     throw new Error("Sender and recipient are the same twin.")
   }
+
+  // ENS gate — both parties MUST publish their KMS handle in ENS.
+  // We resolve in parallel and throw with a clear error before doing any
+  // crypto or chain work.
+  const [senderGate, recipientGate] = await Promise.all([
+    assertKmsGateForEns(fromEns),
+    assertKmsGateForEns(toEns),
+  ])
 
   const fromLabel = labelOf(fromEns)
   const toLabel = labelOf(toEns)
@@ -383,53 +458,56 @@ export async function sendMessage(args: {
     body,
   })
 
-  // KMS-sign the canonical payload using the sender's twin key. We sign
-  // ONCE here (the payload binds index + at + ciphertext) and store the
-  // same signature on both twins' records. The verifier reconstructs the
-  // payload using the twin it's reading from.
-  let kmsSigForFromTwin: string | null = null
-  let kmsSigForToTwin: string | null = null
+  // KMS-sign the canonical payload using the sender's twin key. The send
+  // is aborted if signing fails — Path C-lite refuses to put unsigned
+  // messages on chain so readers can rely on `kmsSig` being present and
+  // verifiable against the sender's ENS-published `twin.kms-public-key`.
+  // We sign ONCE per twin-side because the payload binds the *twin* whose
+  // records we're writing into, so verifying from either side reconstructs
+  // the exact bytes that were signed.
+  const fromPayload = canonicalSignPayload({
+    fromEns,
+    twinEns: fromEns,
+    peerLabel: toLabel,
+    ciphertext: encrypted.ciphertext,
+    at,
+    index: newIndex,
+  })
+  const toPayload = canonicalSignPayload({
+    fromEns,
+    twinEns: toEns,
+    peerLabel: fromLabel,
+    ciphertext: encrypted.ciphertext,
+    at,
+    index: newIndex,
+  })
+  let kmsSigForFromTwin: string
+  let kmsSigForToTwin: string
   try {
-    const senderKms = await kmsAccountForEns(fromEns)
-    if (senderKms) {
-      const fromPayload = canonicalSignPayload({
-        fromEns,
-        twinEns: fromEns,
-        peerLabel: toLabel,
-        ciphertext: encrypted.ciphertext,
-        at,
-        index: newIndex,
-      })
-      const toPayload = canonicalSignPayload({
-        fromEns,
-        twinEns: toEns,
-        peerLabel: fromLabel,
-        ciphertext: encrypted.ciphertext,
-        at,
-        index: newIndex,
-      })
-      // Sign both so verification works on either side's records.
-      const [s1, s2] = await Promise.all([
-        kmsSignEIP191(senderKms.keyId, fromPayload),
-        kmsSignEIP191(senderKms.keyId, toPayload),
-      ])
-      kmsSigForFromTwin = s1
-      kmsSigForToTwin = s2
-    }
+    const [s1, s2] = await Promise.all([
+      kmsSignEIP191(senderGate.keyId, fromPayload),
+      kmsSignEIP191(senderGate.keyId, toPayload),
+    ])
+    kmsSigForFromTwin = s1
+    kmsSigForToTwin = s2
   } catch (err) {
-    console.warn(
-      `[messages] KMS signing failed for ${fromEns}; posting unsigned msg:`,
-      err instanceof Error ? err.message : err,
+    throw new Error(
+      `KMS signing failed for ${fromEns} (keyId=${senderGate.keyId}). The ` +
+        `send was aborted — no unsigned messages reach chain. Underlying ` +
+        `error: ${err instanceof Error ? err.message : String(err)}`,
     )
   }
+  // Mark recipientGate as intentionally used (the gate check earlier was
+  // its purpose; recipient pubkey isn't bundled into the signed payload).
+  void recipientGate
 
-  const buildJson = (kmsSig: string | null) =>
+  const buildJson = (kmsSig: string) =>
     JSON.stringify({
       from: fromEns,
       body: encrypted.ciphertext,
       at,
       nonce: encrypted.nonceHex,
-      ...(kmsSig ? { kmsSig } : {}),
+      kmsSig,
     })
 
   // Multicall: write msg.<i> + count to BOTH twins, plus participants on
@@ -550,7 +628,7 @@ export async function sendMessage(args: {
       stealth: true,
       cosmicAttestation: "",
       kmsSig: kmsSigForFromTwin,
-      kmsVerified: kmsSigForFromTwin !== null, // optimistic; reader re-verifies
+      kmsVerified: true, // optimistic; the reader re-verifies against ENS-published pubkey
     },
     chatEns: fromEns,
     mineChatEns: fromEns,
